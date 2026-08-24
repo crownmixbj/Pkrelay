@@ -138,6 +138,30 @@ export function SettingsMenu({ open, onClose }: { open: boolean; onClose: () => 
                   badge={isAdmin ? 'Admin' : isApprovedDriver ? 'Approved driver' : undefined}
                 />
 
+                {/*
+                  The way into the profile screen. Without an entry here it is
+                  a route with no door — reachable only by typing the URL,
+                  which is the orphan-route failure `verify-navigation` exists
+                  to catch.
+                */}
+                <Pressable
+                  onPress={() => {
+                    onClose();
+                    router.push('/profile');
+                  }}
+                  accessibilityRole="link"
+                  accessibilityLabel="Profile and settings"
+                  style={({ pressed }) => [
+                    styles.option,
+                    { borderColor: theme.border },
+                    pressed && { backgroundColor: theme.surfaceMuted },
+                  ]}>
+                  <UserRound color={theme.primary} size={18} />
+                  <Text style={[styles.optionLabel, { color: theme.text }]}>
+                    Profile &amp; account details
+                  </Text>
+                </Pressable>
+
                 <Pressable
                   onPress={() => {
                     onClose();

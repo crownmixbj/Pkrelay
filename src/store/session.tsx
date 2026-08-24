@@ -51,6 +51,13 @@ export type SessionUser = {
   phone: string;
   /** Where transactional mail goes. Always set for a Supabase account. */
   email: string | null;
+  /**
+   * When the account was created, as Supabase's ISO string.
+   *
+   * Null on the seeded demo owner, which predates accounts — so anything
+   * rendering "member since" has to handle its absence rather than assume it.
+   */
+  createdAt: string | null;
 };
 
 /**
@@ -69,6 +76,8 @@ export const SESSION_USER: SessionUser = {
   name: 'You',
   phone: '+2348012345678',
   email: null,
+  /* Predates accounts, so there is no join date to claim. */
+  createdAt: null,
 };
 
 /**
@@ -183,6 +192,7 @@ function toSessionUser(user: User): SessionUser {
     name: typeof meta.name === 'string' && meta.name.trim() ? meta.name.trim() : 'You',
     phone: typeof meta.phone === 'string' ? meta.phone : '',
     email: user.email ?? null,
+    createdAt: user.created_at ?? null,
   };
 }
 
