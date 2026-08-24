@@ -346,6 +346,72 @@ check(
  * Sign out sits apart. Flush against the account card it reads as part of it,
  * and it is the one irreversible action in the sheet.
  */
+// --------------------------------------------------------- the header ----
+
+const nav = read('src/components/ui/app-nav-bar.tsx');
+const header = read('src/components/ui/screen.tsx');
+
+/*
+ * ⚠ The gear goes on this screen, and stays on every other one.
+ *
+ *   It is in the global nav bar, not in the profile's own header. Deleting it
+ *   would remove the only route to role switching and sign out from around
+ *   twenty screens in order to tidy one — so it is conditioned on the route.
+ */
+check(
+  'the settings gear is hidden on the profile screen',
+  nav.includes("!matchesHref(pathname, '/profile')"),
+  'the gear opens a sheet saying what the page underneath already says',
+);
+check(
+  'and still rendered everywhere else',
+  nav.includes('<Settings color={theme.text}') && nav.includes('setSettingsOpen(true)'),
+  'removing it globally would strip role switching and sign out from every other screen',
+);
+
+check('the screen is titled My Profile', code.includes('title="My Profile"'), '');
+
+/*
+ * ⚠ The back arrow needs somewhere to go when there is no history.
+ *
+ *   Opened from a link, a bookmark or a reload, the stack is empty and
+ *   `router.back()` does nothing at all — an arrow that silently refuses is
+ *   worse than no arrow.
+ */
+check(
+  'the back arrow handles an empty history',
+  /router\.canGoBack\(\) \? router\.back\(\) : router\.replace\(/.test(code),
+  'router.back() on an empty stack is a control that does nothing',
+);
+check(
+  'the header renders the arrow beside the title',
+  header.includes('styles.titleRow') && header.includes('<ArrowLeft'),
+  '',
+);
+check(
+  'and the arrow is opt-in rather than on every screen',
+  header.includes('onBack ? (') && header.includes('onBack?: () => void'),
+  'a back arrow on a top-level tab either does nothing or reverses a tab switch',
+);
+
+/*
+ * ⚠ No Edit button in the header, deliberately.
+ *
+ *   The avatar carries a pencil and each editable row carries a chevron. A
+ *   third control for the same job would also be the vaguest of the three —
+ *   it would not say what it edits.
+ */
+check(
+  'the header carries no third edit control',
+  !/<ScreenHeader[\s\S]{0,300}[Ee]dit/.test(code),
+  'the avatar pencil and the row chevrons already edit; a header Edit would not say what it edits',
+);
+check(
+  'the pencil on the avatar is still there',
+  code.includes('accessibilityLabel="Edit your details"'),
+  'removing the header action must not leave the screen with no edit affordance at all',
+);
+
 check(
   'sign out is in its own block',
   menuCode.includes('styles.signOutBlock'),

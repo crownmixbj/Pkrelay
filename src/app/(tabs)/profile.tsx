@@ -146,7 +146,27 @@ export default function ProfileScreen() {
       contentContainerStyle={[styles.screen, screenPadding]}
       keyboardShouldPersistTaps="handled">
       <View style={styles.content}>
-        <ScreenHeader title="Profile" />
+        {/*
+          ⚠ `canGoBack` first, because this screen has two ways in.
+
+            Opened from the account menu there is a history entry to return to.
+            Opened from a link, a bookmark or a fresh reload there is not, and
+            `router.back()` on an empty stack does nothing at all — a back
+            arrow that silently refuses is worse than no arrow. Falling back to
+            the home screen gives it something honest to do.
+
+          ⚠ No action on the right.
+
+            The design offered "an Edit text button or nothing". Nothing: the
+            avatar already carries a pencil and every editable row already
+            carries a chevron, so a header Edit would be a third control for
+            the same job, and the ambiguous one — it would not say *what* it
+            edits.
+        */}
+        <ScreenHeader
+          title="My Profile"
+          onBack={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+        />
 
         <Card style={styles.card}>
           <ProfileHeader

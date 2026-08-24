@@ -653,14 +653,26 @@ export function AppNavBar() {
               than to the page, and two controls doing the same thing is how
               they end up disagreeing.
             */}
-            <Pressable
-              onPress={() => setSettingsOpen(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Settings"
-              hitSlop={6}
-              style={({ pressed }) => [styles.actionIcon, pressed && styles.pressed]}>
-              <Settings color={theme.text} size={20} />
-            </Pressable>
+            {/*
+              ⚠ Hidden on the profile screen, and only there.
+
+                Everything behind this gear — the account, the Sender/Driver
+                switch, sign out — is on that page already, so the icon offers a
+                sheet that says what the screen underneath is saying. It is not
+                removed outright because every *other* screen reaches role
+                switching and sign out through it, and dropping it globally
+                would strip that from the whole app to tidy one header.
+            */}
+            {!matchesHref(pathname, '/profile') && (
+              <Pressable
+                onPress={() => setSettingsOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Settings"
+                hitSlop={6}
+                style={({ pressed }) => [styles.actionIcon, pressed && styles.pressed]}>
+                <Settings color={theme.text} size={20} />
+              </Pressable>
+            )}
 
             {/*
               The account control. It used to push /sign-in unconditionally,

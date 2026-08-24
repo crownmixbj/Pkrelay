@@ -1,6 +1,7 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { ArrowLeft } from 'lucide-react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { MaxContentWidth, Spacing, Typography, font } from '@/constants/theme';
+import { MaxContentWidth, Radius, Spacing, Typography, font } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
@@ -18,17 +19,60 @@ export function ScreenHeader({
   subtitle,
   /** Shows the LOCI wordmark above the title. */
   brand = true,
+  /**
+   * Renders a back arrow to the left of the title, on the same line.
+   *
+   * ⚠ Opt-in, because most screens here are top-level tabs.
+   *
+   *   A back arrow on a tab either does nothing or reverses a tab switch,
+   *   which is not what the arrow means. It belongs on screens somebody
+   *   arrives at from somewhere else — the profile, opened from the account
+   *   menu, is one.
+   */
+  onBack,
 }: {
   title: string;
   subtitle?: string;
   brand?: boolean;
+  onBack?: () => void;
 }) {
   const theme = useTheme();
 
   return (
     <View style={styles.header}>
       {brand && <Text style={[styles.brand, { color: theme.primary }]}>LOCI</Text>}
-      <Text style={[styles.title, { color: theme.text }]}>{title}</Text>
+
+      {/*
+        ⚠ The arrow and the title share a row and are centred against each
+          other, rather than the title being centred in the screen.
+
+          Centring a title across the full width leaves it visually off-centre
+          the moment anything sits on one side and not the other, and it drifts
+          as the title's length changes. Aligning it to the arrow keeps the two
+          reading as one unit at every width.
+      */}
+      {onBack ? (
+        <View style={styles.titleRow}>
+          <Pressable
+            onPress={onBack}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            hitSlop={10}
+            style={({ pressed }) => [
+              styles.back,
+              { backgroundColor: theme.surfaceMuted },
+              pressed && styles.backPressed,
+            ]}>
+            <ArrowLeft color={theme.text} size={18} />
+          </Pressable>
+          <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>
+            {title}
+          </Text>
+        </View>
+      ) : (
+        <Text style={[styles.title, { color: theme.text }]}>{title}</Text>
+      )}
+
       {!!subtitle && (
         <Text style={[styles.subtitle, { color: theme.textSecondary }]}>{subtitle}</Text>
       )}
@@ -66,6 +110,21 @@ const styles = StyleSheet.create({
     gap: Spacing.one + 2,
     marginBottom: Spacing.four,
     maxWidth: MaxContentWidth,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  back: {
+    width: 34,
+    height: 34,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backPressed: {
+    opacity: 0.6,
   },
   brand: {
     ...Typography.label,
