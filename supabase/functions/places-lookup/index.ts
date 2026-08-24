@@ -61,9 +61,11 @@ Deno.serve(async (request: Request) => {
   let input = '';
   let placeId = '';
   let sessionToken = '';
+  let bodyCache: Record<string, unknown> = {};
 
   try {
     const body = (await request.json()) as Record<string, unknown>;
+    bodyCache = body;
     mode = typeof body.mode === 'string' ? body.mode : '';
     input = typeof body.input === 'string' ? body.input.trim() : '';
     placeId = typeof body.place_id === 'string' ? body.place_id : '';
@@ -173,6 +175,52 @@ Deno.serve(async (request: Request) => {
        */
       location: payload.result.geometry?.location ?? null,
     });
+  }
+
+  if (mode === 'distance') {
+    /*
+     * ⚠ Road distance, and it is allowed to fail.
+     *
+     *   Distance Matrix is a second billable product on top of Autocomplete,
+     *   and a second thing that can be out of quota. The client falls back to a
+     *   straight line bent by a road factor, which is a worse number but never
+     *   a missing quote — so this returns an error rather than trying to be
+     *   clever, and the caller decides.
+     */
+    const origin = typeof (bodyCache.origin ?? null) === 'string' ? String(bodyCache.origin) : '';
+    const destination =
+      typeof (bodyCache.destination ?? null) === 'string' ? String(bodyCache.destination) : '';
+
+    if (!origin || !destination) return json({ error: 'origin and destination are required' }, 400);
+
+    const url = new URL('https://maps.googleapis.com/maps/api/distancematrix/json');
+    url.searchParams.set('origins', origin);
+    url.searchParams.set('destinations', destination);
+    url.searchParams.set('key', PLACES_KEY);
+    url.searchParams.set('units', 'metric');
+    /*
+     * Driving, because a parcel goes by road. The default is also driving, but
+     * stating it means a change to that default cannot quietly reprice every
+     * inter-state fare.
+     */
+    url.searchParams.set('mode', 'driving');
+
+    const response = await fetch(url);
+    if (!response.ok) return json({ error: 'Lookup failed' }, 502);
+
+    const payload = (await response.json()) as {
+      status?: string;
+      rows?: { elements?: { status?: string; distance?: { value?: number } }[] }[];
+    };
+
+    const element = payload.rows?.[0]?.elements?.[0];
+
+    if (payload.status !== 'OK' || element?.status !== 'OK' || !element.distance?.value) {
+      return json({ error: element?.status ?? payload.status ?? 'No route' }, 502);
+    }
+
+    /* Metres from Google; kilometres everywhere in this app. */
+    return json({ km: Math.round(element.distance.value / 1000) });
   }
 
   return json({ error: 'Unknown mode' }, 400);

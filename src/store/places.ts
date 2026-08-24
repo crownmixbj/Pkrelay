@@ -1,6 +1,7 @@
 import { errorMessage } from '@/lib/errors';
 import { resolvePlaceCity, type AddressComponent, type PlaceResolution } from '@/lib/place-to-city';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+import { estimateRoadKm, type Distance, type Point } from '@/lib/distance';
 
 /**
  * Address suggestions, and what they mean to the quote.
@@ -120,6 +121,39 @@ export function unavailableReason(reason: Unavailable): string {
 export async function probePlacesLookup(): Promise<Unavailable | null> {
   const { unavailable } = await fetchSuggestions('a', 'probe');
   return unavailable;
+}
+
+/**
+ * Road kilometres between two points, measured if possible and estimated if not.
+ *
+ * ⚠ Never returns null, and never blocks a quote.
+ *
+ *   Distance Matrix is a second billable Google product and a second thing that
+ *   can be out of quota or unreachable. When it cannot answer, the straight
+ *   line bent by a road factor is used instead — a worse number, honestly
+ *   labelled, rather than a fare that cannot be quoted at all.
+ */
+export async function measureDistance(from: Point, to: Point): Promise<Distance> {
+  const estimated: Distance = { km: estimateRoadKm(from, to), source: 'estimated' };
+
+  try {
+    const { data, error } = await supabase.functions.invoke('places-lookup', {
+      body: {
+        mode: 'distance',
+        origin: `${from.lat},${from.lng}`,
+        destination: `${to.lat},${to.lng}`,
+      },
+    });
+
+    if (error) return estimated;
+
+    const payload = (data ?? {}) as { km?: number; error?: string };
+    if (payload.error || typeof payload.km !== 'number' || payload.km <= 0) return estimated;
+
+    return { km: payload.km, source: 'measured' };
+  } catch {
+    return estimated;
+  }
 }
 
 export type PlaceDetails = {

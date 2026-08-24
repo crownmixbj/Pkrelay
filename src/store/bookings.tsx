@@ -414,8 +414,30 @@ export function stageProgress(stage: BookingStage): {
  * ------------------------------------------------------------------ */
 
 export const PRICING = {
-  base: { local: 1500, interstate: 4500 },
+  /*
+    ⚠ REBALANCED FOR DISTANCE PRICING — these numbers need signing off.
+
+      The fare used to be a flat band plus weight: ₦1,500 within a city and
+      ₦4,500 between two, whatever the journey. A 3km hop across Ibadan and a
+      700km run to Abuja were charged the same, which is the inaccuracy the
+      distance term below exists to remove.
+
+      Adding a per-km charge on top of the old base would have raised every
+      price. So the base came down and the difference moved into `perKm`,
+      calibrated so a *typical* trip costs what it costs today:
+
+        local, 8km, 2kg      700 + 400 + 800   = ₦1,900   (was ₦1,900)
+        Ibadan→Lagos, 2kg   1500 + 900 + 2990  = ₦5,390   (was ₦5,400)
+        Abuja→Lagos, 2kg    1500 + 900 + 16100 = ₦18,500  (was ₦5,400)
+
+      The third line is the point, and it is also the risk: long routes now
+      cost what they cost to run, and nobody has been charged that before.
+      These four numbers are a commercial decision, not a technical one.
+  */
+  base: { local: 700, interstate: 1500 },
   perKg: { local: 200, interstate: 450 },
+  /** Charged on the measured route, or on a straight line when that is all there is. */
+  perKm: { local: 100, interstate: 23 },
   /** Share of declared value charged as insurance. */
   insuranceRate: 0.01,
   /**
@@ -434,6 +456,19 @@ export const PRICING = {
 export type FeeInput = {
   deliveryType: DeliveryType;
   weight: number;
+  /**
+   * Road kilometres between the two ends, when they are known.
+   *
+   * ⚠ Optional, and absent means *no distance charge at all* rather than a
+   *   default one.
+   *
+   *   Half the callers have no coordinates to offer: the rate calculator, the
+   *   booking form, the service catalogue, and the quote form itself whenever
+   *   address search is unavailable and somebody picks a city. Charging them a
+   *   guessed distance would invent a number; charging them nothing leaves
+   *   them on exactly the fare they saw before this existed.
+   */
+  distanceKm?: number;
   declaredValue: number;
   /**
    * Both default to the cheapest legal mode for their end — see
@@ -451,6 +486,10 @@ export type FeeInput = {
 export type FeeBreakdown = {
   base: number;
   weight: number;
+  /** The per-km charge. ₦0 whenever no distance was measured. */
+  distance: number;
+  /** The kilometres it was charged on, or null when nothing was measured. */
+  distanceKm: number | null;
   insurance: number;
   /** Handover fee, ₦0 / ₦800 / ₦1,600 depending on the two legs. */
   handover: number;
@@ -474,23 +513,42 @@ export type FeeBreakdown = {
  * to handle it.
  */
 export function estimateFee(input: FeeInput): FeeBreakdown {
-  const safe = (n: number) => (Number.isFinite(n) && n > 0 ? n : 0);
+  /*
+    Accepts `undefined` as well as a number, because `distanceKm` is optional
+    and "not measured" has to arrive here as 0 rather than as NaN.
+  */
+  const safe = (n: number | undefined) =>
+    typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : 0;
 
   const base = PRICING.base[input.deliveryType];
   const weight = Math.round(safe(input.weight) * PRICING.perKg[input.deliveryType]);
   const insurance = Math.round(safe(input.declaredValue) * PRICING.insuranceRate);
+
+  /*
+   * ⚠ Zero when the distance is unknown, and that is load-bearing.
+   *
+   *   `safe` turns undefined, NaN and negatives into 0, so a caller with no
+   *   coordinates pays exactly what it paid before the distance term existed.
+   *   Every screen but the quote form is in that position, and so is the quote
+   *   form whenever address search cannot answer — `verify-pricing` pins the
+   *   two fares against each other so this cannot drift.
+   */
+  const distance = Math.round(safe(input.distanceKm) * PRICING.perKm[input.deliveryType]);
 
   const handoverLegs =
     (isChargeableHandover(input.pickupMode ?? CHEAPEST_HANDOVER.pickup, 'pickup') ? 1 : 0) +
     (isChargeableHandover(input.dropoffMode ?? CHEAPEST_HANDOVER.dropoff, 'dropoff') ? 1 : 0);
   const handover = handoverLegs * PRICING.handoverSurcharge;
 
-  const subtotal = base + weight + insurance + handover;
+  const subtotal = base + weight + distance + insurance + handover;
   const total = Math.ceil(subtotal / 50) * 50;
 
   return {
     base,
     weight,
+    distance,
+    /** Null when nothing was measured, so a summary can say so rather than print "0 km". */
+    distanceKm: safe(input.distanceKm) > 0 ? safe(input.distanceKm) : null,
     insurance,
     handover,
     handoverLegs,

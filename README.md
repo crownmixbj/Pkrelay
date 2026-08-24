@@ -186,3 +186,29 @@ a state LOCI does not serve.
 city or not — with no distance term, so the address chooses the city and then
 travels to the booking form as something a driver can find. If you want distance
 to affect the fare, that is a pricing change, not a form change.
+
+### Distance pricing
+
+`estimateFee` charges `base + weight×perKg + distanceKm×perKm`, where the
+distance comes from the two addresses on the quote form. Everything else — the
+rate calculator, the booking form, the service catalogue — passes no distance
+and is charged exactly what it was before.
+
+⚠ The four rate constants in `PRICING` are a commercial decision, not a
+technical one. They were calibrated so a typical trip costs what it cost under
+the old flat bands:
+
+| Journey             | Before  | Now     |
+| ------------------- | ------- | ------- |
+| Local, 8km, 2kg     | ₦1,900  | ₦1,900  |
+| Ibadan→Lagos, 2kg   | ₦5,400  | ₦5,390  |
+| Abuja→Lagos, 2kg    | ₦5,400  | ₦18,500 |
+
+The third row is the point of the change and also its risk: long routes now
+cost what they cost to run, and nobody has been charged that before. Check the
+numbers before this reaches customers.
+
+Distance is measured by Distance Matrix through the same `places-lookup`
+function. When that cannot answer, a straight line multiplied by a 1.3 road
+factor is used instead and the quote says "about" — an estimate presented to
+the kilometre implies a precision it does not have.

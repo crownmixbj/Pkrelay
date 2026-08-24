@@ -7,6 +7,7 @@ import { Field } from '@/components/ui/field';
 import { Radius, Spacing, Typography, font } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { resolutionSummary } from '@/lib/place-to-city';
+import type { Point } from '@/lib/distance';
 import {
   fetchPlaceDetails,
   fetchSuggestions,
@@ -49,8 +50,12 @@ export function AddressField({
   label: string;
   /** The currently chosen city — what the quote is actually priced on. */
   city: City;
-  /** `address` is null when the city was picked from the list rather than typed. */
-  onSelect: (next: { city: City; address: string | null }) => void;
+  /**
+   * `address` and `point` are null when the city came from the emergency
+   * picker rather than from a resolved address — which is also what tells the
+   * quote form it has no distance to price on.
+   */
+  onSelect: (next: { city: City; address: string | null; point: Point | null }) => void;
   icon?: (color: string, size: number) => React.ReactNode;
 }) {
   const theme = useTheme();
@@ -150,7 +155,7 @@ export function AddressField({
       return;
     }
 
-    onSelect({ city: resolution.city, address: formattedAddress });
+    onSelect({ city: resolution.city, address: formattedAddress, point: result.details.location });
   };
 
   /* ---------- the fallback, and the way back to it ---------- */
@@ -163,7 +168,7 @@ export function AddressField({
           searchable
           searchPlaceholder="Search city or state"
           selected={city}
-          onSelect={(next) => onSelect({ city: next, address: null })}
+          onSelect={(next) => onSelect({ city: next, address: null, point: null })}
           renderLabel={cityHubLabel}
           compact
           icon={icon}
@@ -238,14 +243,19 @@ export function AddressField({
       */}
       {note.length > 0 && <Text style={[styles.note, { color: theme.textMuted }]}>{note}</Text>}
 
+      {/*
+        ⚠ No "pick a city" link here any more.
+
+          The fare is now priced on the measured distance between two
+          addresses, so a city chosen from a list has no distance to price on
+          and quietly falls back to the old flat band. Offering that as an
+          equal option invited people to take the less accurate route for no
+          reason. The picker still exists, but only appears when address search
+          genuinely cannot answer — see the branch above.
+      */}
       {!note && !searching && (
         <Text style={[styles.note, { color: theme.textMuted }]}>
-          Priced as {city}.{' '}
-          <Text
-            style={[styles.link, { color: theme.primary }]}
-            onPress={() => setUnavailable(true)}>
-            Pick a city
-          </Text>
+          Start typing to find the exact address.
         </Text>
       )}
     </View>

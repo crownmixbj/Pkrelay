@@ -1,8 +1,10 @@
 import { ArrowRight, Building2, Calculator, Navigation, Weight } from 'lucide-react-native';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 
 import { Badge } from '@/components/ui/badge';
+import { distanceLabel, type Distance, type Point } from '@/lib/distance';
+import { measureDistance } from '@/store/places';
 import { Button } from '@/components/ui/button';
 import { AddressField } from '@/components/ui/address-field';
 import { Field } from '@/components/ui/field';
@@ -41,6 +43,42 @@ export function QuickQuote({ onBook }: QuickQuoteProps) {
   const [originAddress, setOriginAddress] = useState<string | null>(null);
   const [destinationAddress, setDestinationAddress] = useState<string | null>(null);
 
+  const [originPoint, setOriginPoint] = useState<Point | null>(null);
+  const [destinationPoint, setDestinationPoint] = useState<Point | null>(null);
+
+  /*
+   * The distance the fare is priced on.
+   *
+   * ⚠ Null until both ends are known, and null is not zero.
+   *
+   *   `estimateFee` charges nothing for an unknown distance, which is what
+   *   keeps a city picked from the emergency fallback on exactly the fare it
+   *   had before distance pricing existed. Defaulting it to 0 would look the
+   *   same and mean something different — a measured journey of no length.
+   */
+  const [distance, setDistance] = useState<Distance | null>(null);
+  const [measuring, setMeasuring] = useState(false);
+
+  useEffect(() => {
+    if (!originPoint || !destinationPoint) {
+      setDistance(null);
+      return;
+    }
+
+    let cancelled = false;
+    setMeasuring(true);
+
+    void measureDistance(originPoint, destinationPoint).then((result) => {
+      if (cancelled) return;
+      setDistance(result);
+      setMeasuring(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [originPoint, destinationPoint]);
+
   const deliveryType = origin === destination ? 'local' : 'interstate';
   const parsedWeight = Number(weight);
   const hasWeight = Number.isFinite(parsedWeight) && parsedWeight > 0;
@@ -51,8 +89,9 @@ export function QuickQuote({ onBook }: QuickQuoteProps) {
         deliveryType,
         weight: parsedWeight,
         declaredValue: 0,
+        distanceKm: distance?.km,
       }),
-    [deliveryType, parsedWeight],
+    [deliveryType, parsedWeight, distance?.km],
   );
 
   return (
@@ -83,9 +122,10 @@ export function QuickQuote({ onBook }: QuickQuoteProps) {
           <AddressField
             label="Collect from"
             city={origin}
-            onSelect={({ city, address }) => {
+            onSelect={({ city, address, point }) => {
               setOrigin(city);
               setOriginAddress(address);
+              setOriginPoint(point);
             }}
             icon={(color, size) => <Building2 color={color} size={size} />}
           />
@@ -94,9 +134,10 @@ export function QuickQuote({ onBook }: QuickQuoteProps) {
           <AddressField
             label="Deliver to"
             city={destination}
-            onSelect={({ city, address }) => {
+            onSelect={({ city, address, point }) => {
               setDestination(city);
               setDestinationAddress(address);
+              setDestinationPoint(point);
             }}
             icon={(color, size) => <Navigation color={color} size={size} />}
           />
@@ -116,8 +157,17 @@ export function QuickQuote({ onBook }: QuickQuoteProps) {
       </View>
 
       <View style={[styles.result, { backgroundColor: theme.surfaceMuted }]}>
+        {/*
+          The distance is named on the line the price is on.
+
+          A fare that moves with the journey has to say what journey it thinks
+          it is pricing, or a customer comparing two quotes has no way to see
+          why they differ. "about" appears when the distance was estimated
+          rather than measured — see `distanceLabel`.
+        */}
         <Text style={[styles.resultRoute, { color: theme.textSecondary }]} numberOfLines={1}>
           {origin} → {destination} · {hasWeight ? `${parsedWeight} kg` : '—'}
+          {measuring ? ' · measuring…' : distance ? ` · ${distanceLabel(distance)}` : ''}
         </Text>
         <Text style={[styles.price, { color: theme.primary }]}>
           {hasWeight ? `Est. ${formatNaira(fee.total)}` : '—'}

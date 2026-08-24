@@ -300,11 +300,27 @@ check(
 
 const quote = code(read('src/components/ui/quick-quote.tsx'));
 
+/*
+ * ⚠ This asserted the opposite until the fare gained a distance term.
+ *
+ *   It read "the estimate is still priced on the city, not the address", which
+ *   was true when `estimateFee` had no distance in it — passing one would have
+ *   implied a precision the pricing did not have. The pricing has it now, so
+ *   the assertion is inverted: the measured distance must reach the fare.
+ *
+ *   What has *not* changed is that the address string itself never does. A
+ *   formatted address is for a driver to read; only the kilometres between two
+ *   points are a price input.
+ */
 check(
-  'the estimate is still priced on the city, not the address',
-  /estimateFee\(\{[\s\S]{0,160}deliveryType,[\s\S]{0,160}weight: parsedWeight/.test(quote) &&
-    !/estimateFee\([\s\S]{0,200}(originAddress|location|distance)/.test(quote),
-  'there is no distance term in estimateFee; an address in the call would imply one',
+  'the measured distance reaches the fare',
+  /estimateFee\(\{[\s\S]{0,200}distanceKm: distance\?\.km/.test(quote),
+  'the address is worth collecting only if the journey it implies is priced',
+);
+check(
+  'and the address string never does',
+  !/estimateFee\([\s\S]{0,240}(originAddress|destinationAddress|formattedAddress)/.test(quote),
+  'a street name is for a driver to read, not an input to a fare',
 );
 check(
   'the address is passed to the booking form when there is one',
