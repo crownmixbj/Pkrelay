@@ -11,6 +11,7 @@ import {
   fetchPlaceDetails,
   fetchSuggestions,
   newSessionToken,
+  unavailableReason,
   type Suggestion,
 } from '@/store/places';
 import { CITIES, cityHubLabel, type City } from '@/store/bookings';
@@ -87,7 +88,30 @@ export function AddressField({
 
       setSearching(false);
       setSuggestions(result.suggestions);
-      setUnavailable(!result.available);
+
+      /*
+       * ⚠ Say why, every time the control changes underneath somebody.
+       *
+       *   This used to set `unavailable` and nothing else, so the field a
+       *   person was typing into silently became a dropdown. They could not
+       *   tell a broken feature from one that was never switched on from
+       *   something they had done wrong — and the most likely reading is the
+       *   last one, which is both wrong and discouraging.
+       */
+      if (result.unavailable) {
+        setUnavailable(true);
+        setNote(unavailableReason(result.unavailable));
+        return;
+      }
+
+      /*
+       * A working lookup that matched nothing is not a reason to swap the
+       * control. "24 Abayomi" with no results usually means one more word is
+       * needed, not that the feature is broken.
+       */
+      if (result.suggestions.length === 0) {
+        setNote('No matches yet — keep typing, or pick a city.');
+      }
     }, DEBOUNCE_MS);
 
     return () => {

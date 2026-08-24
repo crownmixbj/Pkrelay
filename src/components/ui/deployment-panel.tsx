@@ -87,7 +87,20 @@ export function DeploymentPanel() {
                     <HelpCircle color={theme.textMuted} size={14} />
                   )}
 
-                  <Text style={[styles.label, { color: theme.text }]}>{capability.label}</Text>
+                  <View style={styles.labelBlock}>
+                    <Text style={[styles.label, { color: theme.text }]}>{capability.label}</Text>
+                    {/*
+                      "Missing" is not always the useful half. An edge function
+                      that is deployed but has no API key needs a different
+                      action from one that was never deployed, and the panel is
+                      the only place that difference is visible.
+                    */}
+                    {!!capability.note && (
+                      <Text style={[styles.note, { color: theme.warningOnSoft }]}>
+                        {capability.note}
+                      </Text>
+                    )}
+                  </View>
 
                   {/*
                     The file name, not a status word.
@@ -149,9 +162,11 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.half,
     borderRadius: Radius.sm,
   },
+  labelBlock: {
+    flex: 1,
+  },
   label: {
     ...Typography.caption,
-    flex: 1,
   },
   file: {
     ...Typography.caption,

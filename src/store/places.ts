@@ -28,24 +28,47 @@ export type Suggestion = {
  */
 export type LookupStatus = 'idle' | 'searching' | 'unavailable';
 
+/**
+ * Why lookup could not be used, when it could not.
+ *
+ * ⚠ Three reasons, not one boolean, because the field has to say which.
+ *
+ *   The first version collapsed all of these into `available: false`, and the
+ *   field swapped itself for the city picker without a word. Somebody typing an
+ *   address watched the control they were using turn into a dropdown and had no
+ *   way to tell whether they had done something wrong, whether the feature was
+ *   broken, or whether it had never been switched on. Silence is the worst
+ *   answer of the three.
+ */
+export type Unavailable = 'not-configured' | 'refused' | 'unreachable';
+
 export type SuggestionResult = {
   suggestions: Suggestion[];
-  /** False when the deployment has no key, or Google refused. */
-  available: boolean;
+  /** Null when lookup worked, whether or not it matched anything. */
+  unavailable: Unavailable | null;
 };
 
 export async function fetchSuggestions(
   input: string,
   sessionToken: string,
 ): Promise<SuggestionResult> {
-  if (!isSupabaseConfigured) return { suggestions: [], available: false };
+  if (!isSupabaseConfigured) return { suggestions: [], unavailable: 'not-configured' };
 
   try {
     const { data, error } = await supabase.functions.invoke('places-lookup', {
       body: { mode: 'suggest', input, session_token: sessionToken },
     });
 
-    if (error) return { suggestions: [], available: false };
+    /*
+     * ⚠ An invoke error is most often the function not being deployed.
+     *
+     *   `functions.invoke` answers a missing function with a transport-level
+     *   error rather than a 404 body, so this branch and a genuine network
+     *   failure look identical from here. It is reported as unreachable, and
+     *   the deployment panel — which probes the function directly — is where
+     *   the difference is resolved.
+     */
+    if (error) return { suggestions: [], unavailable: 'unreachable' };
 
     const payload = (data ?? {}) as {
       configured?: boolean;
@@ -53,19 +76,50 @@ export async function fetchSuggestions(
       error?: string;
     };
 
-    /*
-     * An empty list from a working lookup is *available* — it means "nowhere
-     * matched", which is worth saying. An empty list because the lookup itself
-     * failed is not, and hides the field in favour of the picker.
-     */
-    if (payload.configured === false || payload.error) {
-      return { suggestions: [], available: false };
+    if (payload.configured === false) {
+      return { suggestions: [], unavailable: 'not-configured' };
     }
 
-    return { suggestions: payload.suggestions ?? [], available: true };
+    /*
+     * Google refused: out of quota, key restricted, billing lapsed. Separated
+     * from the two above because it is the one that is nobody's fault here and
+     * usually fixes itself.
+     */
+    if (payload.error) return { suggestions: [], unavailable: 'refused' };
+
+    /*
+     * An empty list from a working lookup is available — it means "nowhere
+     * matched", which is worth saying rather than hiding the field for.
+     */
+    return { suggestions: payload.suggestions ?? [], unavailable: null };
   } catch {
-    return { suggestions: [], available: false };
+    return { suggestions: [], unavailable: 'unreachable' };
   }
+}
+
+/** What to tell somebody whose address field just turned into a dropdown. */
+export function unavailableReason(reason: Unavailable): string {
+  if (reason === 'not-configured') {
+    return 'Address search is not switched on yet — pick a city instead.';
+  }
+  if (reason === 'refused') {
+    return 'Address search is busy right now — pick a city instead.';
+  }
+  return 'Address search could not be reached — pick a city instead.';
+}
+
+/**
+ * Whether the lookup is usable at all, without asking Google anything.
+ *
+ * ⚠ Free to call, deliberately.
+ *
+ *   A one-character input is refused by the edge function before it builds a
+ *   Google request, so this returns the deployment's state and bills nothing.
+ *   That is what makes it safe to run from a diagnostics panel on every load.
+ */
+export async function probePlacesLookup(): Promise<Unavailable | null> {
+  const { unavailable } = await fetchSuggestions('a', 'probe');
+  return unavailable;
 }
 
 export type PlaceDetails = {

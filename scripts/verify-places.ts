@@ -207,7 +207,68 @@ check(
 );
 check(
   'and the client reads that as "offer the picker"',
-  store.includes('payload.configured === false || payload.error'),
+  store.includes('payload.configured === false') && store.includes('unavailable:'),
+);
+
+/*
+ * ⚠ The reason is carried, not collapsed into a boolean.
+ *
+ *   The first version returned `available: false` for all three causes, so the
+ *   field swapped itself for a dropdown without a word. Somebody typing an
+ *   address watched their control change and could not tell a broken feature
+ *   from one never switched on from something they had done wrong — and the
+ *   last of those is the reading most people reach for.
+ */
+check(
+  'the three reasons lookup can fail are kept apart',
+  ['not-configured', 'refused', 'unreachable'].every((reason) => store.includes(`'${reason}'`)),
+  'a single boolean cannot say which, and the field has to tell somebody something',
+);
+check(
+  'and the field says which, whenever it swaps itself',
+  /if \(result\.unavailable\) \{[\s\S]{0,200}setNote\(unavailableReason\(result\.unavailable\)\)/.test(
+    field,
+  ),
+  'a control that changes underneath somebody without explanation reads as their mistake',
+);
+check(
+  'no matches is not treated as a failure',
+  /result\.suggestions\.length === 0[\s\S]{0,160}setNote/.test(field) &&
+    !/result\.suggestions\.length === 0[\s\S]{0,160}setUnavailable/.test(field),
+  '"24 Abayomi" with no results usually means one more word, not a broken feature',
+);
+
+/*
+ * The panel probes the edge function directly, because PostgREST's list covers
+ * database functions only — the panel could otherwise report everything green
+ * while the one thing somebody was looking at was not deployed.
+ */
+const deployment = code(read('src/store/deployment.ts'));
+
+/*
+ * ⚠ Pinned to the call inside `fetchDeployment`, not to the helper existing.
+ *
+ *   My first version looked for `probePlacesLookup()` anywhere in the file,
+ *   which stayed true when I removed the call from `fetchDeployment` and left
+ *   the helper orphaned above it. What matters is that the panel's own answer
+ *   depends on the probe.
+ */
+check(
+  'the deployment panel checks address search too',
+  /fetchDeployment\(\)[\s\S]{0,200}placesCapability\(\)/.test(deployment) &&
+    deployment.includes('probePlacesLookup()'),
+  'edge functions are not in the schema list, so nothing else would notice',
+);
+check(
+  'and that probe costs nothing',
+  store.includes("fetchSuggestions('a', 'probe')") && fn.includes('input.length < 2'),
+  'the function refuses a one-character input before it builds a Google request',
+);
+check(
+  'the panel distinguishes "no key" from "not deployed"',
+  deployment.includes('GOOGLE_PLACES_KEY is not set') &&
+    deployment.includes('Not deployed, or unreachable'),
+  'those need different actions, and this is the only place the difference is visible',
 );
 check(
   'the picker is what appears when lookup cannot work',
@@ -265,5 +326,6 @@ console.log(
   'PASS — a typed address resolves to a served city by locality before state, refuses\n' +
     '       rather than guesses when LOCI does not reach it, and explains which city the\n' +
     '       price came from. The Google key never leaves the edge function, one address\n' +
-    '       costs one session, and the city picker returns whenever lookup cannot work.',
+    '       costs one session, and the city picker returns whenever lookup cannot work —\n' +
+    '       saying which of the three reasons it was, rather than changing silently.',
 );

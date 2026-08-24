@@ -1,5 +1,6 @@
 import { buildLabel } from '@/lib/build-info';
 import { restEndpoint } from '@/lib/supabase';
+import { probePlacesLookup } from '@/store/places';
 
 /**
  * Whether the thing you are looking at is the thing that was built.
@@ -41,9 +42,12 @@ const CAPABILITIES: { label: string; fn: string; migration: string }[] = [
 
 export type Capability = {
   label: string;
+  /** The file to run, or the command to deploy. */
   migration: string;
-  /** Null when the schema could not be read at all. */
+  /** Null when the state could not be read at all. */
   present: boolean | null;
+  /** Set when there is something more useful to say than "missing". */
+  note?: string;
 };
 
 export type Deployment = {
@@ -80,16 +84,45 @@ async function exposedFunctions(): Promise<Set<string> | null> {
   }
 }
 
+/*
+ * ⚠ Edge functions are not in PostgREST's list, so they need their own probe.
+ *
+ *   `places-lookup` refuses a one-character input before it builds a Google
+ *   request, which makes asking it whether it is alive free. Without this the
+ *   panel could say the database was complete while the one thing somebody was
+ *   actually looking at — address search — was not deployed at all.
+ */
+async function placesCapability(): Promise<Capability> {
+  const reason = await probePlacesLookup();
+
+  if (reason === null) {
+    return { label: 'Address search', migration: 'places-lookup', present: true };
+  }
+
+  return {
+    label: 'Address search',
+    migration: 'places-lookup',
+    present: false,
+    note:
+      reason === 'not-configured'
+        ? 'Deployed, but GOOGLE_PLACES_KEY is not set'
+        : 'Not deployed, or unreachable from here',
+  };
+}
+
 export async function fetchDeployment(): Promise<Deployment> {
-  const exposed = await exposedFunctions();
+  const [exposed, places] = await Promise.all([exposedFunctions(), placesCapability()]);
 
   return {
     build: buildLabel(),
-    capabilities: CAPABILITIES.map(({ label, fn, migration }) => ({
-      label,
-      migration,
-      present: exposed ? exposed.has(fn) : null,
-    })),
+    capabilities: [
+      ...CAPABILITIES.map(({ label, fn, migration }) => ({
+        label,
+        migration,
+        present: exposed ? exposed.has(fn) : null,
+      })),
+      places,
+    ],
     error: exposed ? null : 'The database schema could not be read from here.',
   };
 }
