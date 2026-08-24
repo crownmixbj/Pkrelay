@@ -249,6 +249,109 @@ check(
   'a route with no door is only reachable by typing the URL',
 );
 
+// ------------------------------------- the settings menu's account card --
+
+const menuCode = menu
+  .replace(/(^|[\s{(=,;])\/\*[\s\S]*?\*\//g, '$1')
+  .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, '')
+  .replace(/^\s*\/\/.*$/gm, '');
+
+/*
+ * ⚠ The email appeared three times on one small sheet.
+ *
+ *   Under the title, then again as the subtitle of the identity row below it.
+ *   Repetition in a menu this size reads as a rendering bug rather than as
+ *   emphasis.
+ */
+check(
+  'the header no longer prints the email',
+  !/styles\.title[\s\S]{0,400}user\?\.email/.test(menuCode),
+  'it was stated under the title and again in the card a few pixels down',
+);
+check(
+  'but a signed-out visitor is still told so',
+  menuCode.includes('Not signed in'),
+  'an empty menu with no explanation is worse than a redundant line',
+);
+
+/*
+ * ⚠ One target for one destination.
+ *
+ *   The identity row and the profile link were adjacent, looked alike, and only
+ *   one of them did anything. Merging them is the change; asserting the card is
+ *   pressable *and* that the passive row is gone is what stops it drifting back
+ *   into two.
+ */
+const cardAt = menuCode.indexOf('styles.accountCard');
+check('the account card exists', cardAt >= 0);
+
+/*
+ * The card's own element, bounded by its closing tag rather than by a
+ * character count — prettier reflowed it past a fixed window and this failed
+ * against correct markup.
+ */
+const card = menuCode.slice(
+  Math.max(0, menuCode.lastIndexOf('<Pressable', cardAt)),
+  menuCode.indexOf('</Pressable>', cardAt),
+);
+check(
+  'the whole card navigates to the profile',
+  card.includes("router.push('/profile')") && card.includes('<Pressable'),
+  'a chevron on something that is not pressable is a control that does nothing',
+);
+check(
+  'it carries an avatar, the name and a chevron',
+  card.includes('styles.avatar') && card.includes('user?.name') && card.includes('<ChevronRight'),
+  '',
+);
+check(
+  'the helper text says what is on the other side',
+  card.includes('View personal info, NIN and verification'),
+  'helper text under a link is a promise about where the tap goes',
+);
+check(
+  'and it does not print the email again',
+  !card.includes('user?.email'),
+  'the address it replaced was the redundancy this change is about',
+);
+check(
+  'the passive identity row is gone rather than merely unused',
+  !menuCode.includes('function Row('),
+  'leaving it behind invites somebody to render it next to the card and restore the duplication',
+);
+
+/*
+ * ⚠ The helper text names the NIN, so the NIN has to be there.
+ *
+ *   It was not, until this change added the row. Copy is the cheapest thing to
+ *   write and the easiest to leave pointing at nothing.
+ */
+check(
+  'the profile screen actually shows a NIN',
+  code.includes('label="NIN"') && code.includes('ninLast4'),
+  'the settings card promises it — either the row exists or the promise is false',
+);
+check(
+  'and only its last four digits',
+  code.includes('•••• •••• ${ninLast4}') || /`[^`]*\$\{ninLast4\}`/.test(code),
+  'the full number is sensitive personal data under the NDPA and never leaves the server',
+);
+check(
+  'the NIN row is not editable',
+  !/label="NIN"[\s\S]{0,300}onPress=/.test(code),
+  'changing a verified NIN is a re-verification, not a text edit',
+);
+
+/*
+ * Sign out sits apart. Flush against the account card it reads as part of it,
+ * and it is the one irreversible action in the sheet.
+ */
+check(
+  'sign out is in its own block',
+  menuCode.includes('styles.signOutBlock'),
+  'the one irreversible action should not be a neighbour of the one people open the menu for',
+);
+
 if (failures > 0) {
   console.error(`\n${failures} assertion(s) failed.`);
   process.exit(1);

@@ -5,6 +5,7 @@ import {
   Headphones,
   Mail,
   MapPin,
+  Fingerprint,
   Package,
   Pencil,
   Phone,
@@ -28,7 +29,7 @@ import { MaxContentWidth, Radius, Spacing, Typography, font } from '@/constants/
 import { useTheme } from '@/hooks/use-theme';
 import { formatNaira, isFinished, parcelsForUser, useBookings } from '@/store/bookings';
 import { useHubs } from '@/store/hubs';
-import { fetchSenderIdentity, type IdentityStatus } from '@/store/identity';
+import { fetchSenderIdentity, type IdentityStatus, type SenderIdentity } from '@/store/identity';
 import { memberSince, saveOwnDetails } from '@/store/own-details';
 import { useSession } from '@/store/session';
 import { fetchBalance, type Balance } from '@/store/wallet';
@@ -65,7 +66,7 @@ export default function ProfileScreen() {
   const { bookings } = useBookings();
   const { hubs } = useHubs();
 
-  const [identity, setIdentity] = useState<IdentityStatus | null>(null);
+  const [identity, setIdentity] = useState<SenderIdentity | null>(null);
   const [balance, setBalance] = useState<Balance | null>(null);
   /*
    * ⚠ Held here rather than inside the section, so the pencil can open it.
@@ -89,7 +90,14 @@ export default function ProfileScreen() {
     let cancelled = false;
 
     void fetchSenderIdentity().then((record) => {
-      if (!cancelled) setIdentity(record?.status ?? 'unverified');
+      /*
+       * ⚠ The whole record, not just the status.
+       *
+       *   `ninLast4` is on it, and the settings menu now promises this screen
+       *   shows the NIN. Keeping only the status would have made that promise
+       *   false — which is why the copy and the data were changed together.
+       */
+      if (!cancelled) setIdentity(record);
     });
 
     return () => {
@@ -144,7 +152,7 @@ export default function ProfileScreen() {
           <ProfileHeader
             name={user.name}
             joined={joined}
-            identity={identity}
+            identity={identity?.status ?? null}
             onEdit={() => setEditing((was) => (was === 'name' ? null : 'name'))}
           />
 
@@ -152,6 +160,7 @@ export default function ProfileScreen() {
 
           <PersonalInformation
             user={user}
+            ninLast4={identity?.ninLast4 ?? null}
             hasApplication={Boolean(application)}
             editing={editing}
             setEditing={setEditing}
@@ -381,11 +390,14 @@ type EditableKey = 'name' | 'phone';
 
 function PersonalInformation({
   user,
+  ninLast4,
   hasApplication,
   editing,
   setEditing,
 }: {
   user: { name: string; email: string | null; phone: string };
+  /** Last four digits. The full NIN never leaves the server — see `identity.ts`. */
+  ninLast4: string | null;
   hasApplication: boolean;
   editing: EditableKey | null;
   setEditing: (
@@ -525,6 +537,27 @@ function PersonalInformation({
           }
         />
       )}
+
+      {/*
+        ⚠ Four digits, and never more.
+
+          The full NIN is sensitive personal data under the NDPA and is held
+          server-side; `sender_identity` returns only the last four so the app
+          physically cannot render the rest. That is enough for somebody to
+          confirm which of their numbers is on file, which is the only thing
+          this row is for. It has no chevron because changing a verified NIN is
+          a re-verification, not an edit.
+      */}
+      <Row
+        icon={<Fingerprint color={theme.textMuted} size={16} />}
+        label="NIN"
+        value={ninLast4 ? `•••• •••• ${ninLast4}` : 'Not provided yet'}
+        hint={
+          ninLast4
+            ? 'Only the last four digits are held on this device'
+            : 'Added when you verify your identity'
+        }
+      />
     </Section>
   );
 }

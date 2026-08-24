@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { Check, LogOut, PackagePlus, Truck, UserRound, X } from 'lucide-react-native';
+import { Check, ChevronRight, LogOut, PackagePlus, Truck, UserRound, X } from 'lucide-react-native';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Badge } from '@/components/ui/badge';
@@ -74,9 +74,19 @@ export function SettingsMenu({ open, onClose }: { open: boolean; onClose: () => 
           <View style={styles.header}>
             <View style={styles.headerText}>
               <Text style={[styles.title, { color: theme.text }]}>Settings</Text>
-              <Text style={[styles.subtitle, { color: theme.textMuted }]} numberOfLines={1}>
-                {isAuthenticated ? (user?.email ?? user?.name ?? 'Signed in') : 'Not signed in'}
-              </Text>
+              {/*
+                ⚠ Nothing here when signed in.
+
+                  This used to print the email address, which the account card
+                  below then printed again a few pixels later. Signed *out* is
+                  different: there is no card, and "Not signed in" is the one
+                  thing somebody wondering why the menu looks empty needs.
+              */}
+              {!isAuthenticated && (
+                <Text style={[styles.subtitle, { color: theme.textMuted }]} numberOfLines={1}>
+                  Not signed in
+                </Text>
+              )}
             </View>
             <Pressable
               onPress={onClose}
@@ -131,18 +141,23 @@ export function SettingsMenu({ open, onClose }: { open: boolean; onClose: () => 
               <>
                 <Text style={[styles.label, { color: theme.textSecondary }]}>Account</Text>
 
-                <Row
-                  icon={<UserRound color={theme.textSecondary} size={18} />}
-                  label={user?.name ?? 'Your account'}
-                  value={user?.email ?? undefined}
-                  badge={isAdmin ? 'Admin' : isApprovedDriver ? 'Approved driver' : undefined}
-                />
-
                 {/*
-                  The way into the profile screen. Without an entry here it is
-                  a route with no door — reachable only by typing the URL,
-                  which is the orphan-route failure `verify-navigation` exists
-                  to catch.
+                  ⚠ One card, where there were two rows saying the same thing.
+
+                    An identity row printed the name over the email, and a
+                    separate link underneath said "Profile & account details".
+                    Between them and the header they stated the email twice and
+                    gave the reader two targets for one destination. Merged, the
+                    identity *is* the button — which is also what makes the
+                    whole thing one tap rather than a small one.
+
+                  ⚠ The helper text names what is actually on that screen.
+
+                    The wording asked for was "personal info, NIN &
+                    preferences". There are no preferences in LOCI, and the
+                    NIN was not on the profile screen until this change put it
+                    there. Copy is a promise about where a tap leads, and the
+                    cheapest way to keep it was to add the row.
                 */}
                 <Pressable
                   onPress={() => {
@@ -150,37 +165,70 @@ export function SettingsMenu({ open, onClose }: { open: boolean; onClose: () => 
                     router.push('/profile');
                   }}
                   accessibilityRole="link"
-                  accessibilityLabel="Profile and settings"
+                  accessibilityLabel={`${user?.name ?? 'Your account'} — open your profile`}
                   style={({ pressed }) => [
-                    styles.option,
+                    styles.accountCard,
                     { borderColor: theme.border },
                     pressed && { backgroundColor: theme.surfaceMuted },
                   ]}>
-                  <UserRound color={theme.primary} size={18} />
-                  <Text style={[styles.optionLabel, { color: theme.text }]}>
-                    Profile &amp; account details
-                  </Text>
+                  <View style={[styles.avatar, { backgroundColor: theme.primarySoft }]}>
+                    <UserRound color={theme.primaryOnSoft} size={20} />
+                  </View>
+
+                  <View style={styles.optionText}>
+                    <Text style={[styles.optionLabel, { color: theme.text }]} numberOfLines={1}>
+                      {user?.name ?? 'Your account'}
+                    </Text>
+                    <Text
+                      style={[styles.optionDescription, { color: theme.textMuted }]}
+                      numberOfLines={1}>
+                      View personal info, NIN and verification
+                    </Text>
+                  </View>
+
+                  {/*
+                    Kept from the row this replaced. "Admin" and "Approved
+                    driver" are the fastest way for somebody to confirm which
+                    account they are signed in as on a shared device.
+                  */}
+                  {(isAdmin || isApprovedDriver) && (
+                    <Badge
+                      label={isAdmin ? 'Admin' : 'Approved driver'}
+                      tone="primary"
+                      uppercase={false}
+                    />
+                  )}
+
+                  <ChevronRight color={theme.textMuted} size={18} />
                 </Pressable>
 
-                <Pressable
-                  onPress={() => {
-                    onClose();
-                    void signOut();
-                    showToast('Signed out', {
-                      message: 'You can browse LOCI without an account.',
-                    });
-                    router.replace('/');
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Sign out"
-                  style={({ pressed }) => [
-                    styles.option,
-                    { borderColor: theme.border },
-                    pressed && { backgroundColor: theme.surfaceMuted },
-                  ]}>
-                  <LogOut color={theme.danger} size={18} />
-                  <Text style={[styles.optionLabel, { color: theme.danger }]}>Sign out</Text>
-                </Pressable>
+                {/*
+                  Its own block, with air above it. Sign Out sitting flush
+                  under the account card reads as part of it, and the one
+                  irreversible action in this menu should not be a neighbour of
+                  the one people open it for.
+                */}
+                <View style={styles.signOutBlock}>
+                  <Pressable
+                    onPress={() => {
+                      onClose();
+                      void signOut();
+                      showToast('Signed out', {
+                        message: 'You can browse LOCI without an account.',
+                      });
+                      router.replace('/');
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Sign out"
+                    style={({ pressed }) => [
+                      styles.option,
+                      { borderColor: theme.border },
+                      pressed && { backgroundColor: theme.surfaceMuted },
+                    ]}>
+                    <LogOut color={theme.danger} size={18} />
+                    <Text style={[styles.optionLabel, { color: theme.danger }]}>Sign out</Text>
+                  </Pressable>
+                </View>
               </>
             )}
 
@@ -272,36 +320,32 @@ function ViewOption({
   );
 }
 
-function Row({
-  icon,
-  label,
-  value,
-  badge,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value?: string;
-  badge?: string;
-}) {
-  const theme = useTheme();
-
-  return (
-    <View style={[styles.option, { borderColor: theme.border }]}>
-      {icon}
-      <View style={styles.optionText}>
-        <Text style={[styles.optionLabel, { color: theme.text }]}>{label}</Text>
-        {!!value && (
-          <Text style={[styles.optionDescription, { color: theme.textMuted }]} numberOfLines={1}>
-            {value}
-          </Text>
-        )}
-      </View>
-      {!!badge && <Badge label={badge} tone="primary" uppercase={false} />}
-    </View>
-  );
-}
+/*
+ * `Row` lived here: a non-interactive name-over-email line above a separate
+ * "Profile & account details" link. The account card replaced both — it shows
+ * the identity *and* is the way in, so a passive row displaying the same
+ * fields had nothing left to do.
+ */
 
 const styles = StyleSheet.create({
+  accountCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    padding: Spacing.three,
+    borderRadius: Radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  signOutBlock: {
+    marginTop: Spacing.three,
+  },
   backdrop: {
     flex: 1,
     alignItems: 'center',
