@@ -24,12 +24,18 @@ import { ToggleRow } from '@/components/ui/dropdown';
 import { Field } from '@/components/ui/field';
 import { screenPadding, ScreenHeader } from '@/components/ui/screen';
 import { SignedOutState } from '@/components/ui/signed-out-state';
+import { VerifyIdentityCard } from '@/components/ui/verify-identity-card';
 import { showToast } from '@/components/ui/toast';
 import { MaxContentWidth, Radius, Spacing, Typography, font } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { formatNaira, isFinished, parcelsForUser, useBookings } from '@/store/bookings';
 import { useHubs } from '@/store/hubs';
-import { fetchSenderIdentity, type IdentityStatus, type SenderIdentity } from '@/store/identity';
+import {
+  fetchSenderIdentity,
+  verificationPath,
+  type IdentityStatus,
+  type SenderIdentity,
+} from '@/store/identity';
 import { memberSince, saveOwnDetails } from '@/store/own-details';
 import { useSession } from '@/store/session';
 import { fetchBalance, type Balance } from '@/store/wallet';
@@ -84,6 +90,10 @@ export default function ProfileScreen() {
     if (!viewerId) return 0;
     return parcelsForUser(bookings, viewerId).filter((booking) => !isFinished(booking)).length;
   }, [bookings, viewerId]);
+
+  const reloadIdentity = useCallback(() => {
+    void fetchSenderIdentity().then(setIdentity);
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -185,6 +195,22 @@ export default function ProfileScreen() {
             editing={editing}
             setEditing={setEditing}
           />
+
+          {/*
+            ⚠ Renders nothing once there is nothing to do.
+
+              `VerifyIdentityCard` returns null for anyone already verified, so
+              the divider and heading would otherwise be a section title with
+              empty space under it for most of the people who see this screen.
+          */}
+          {verificationPath(identity) === 'onboarding' && (
+            <>
+              <Divider />
+              <Section title="Verify your identity">
+                <VerifyIdentityCard identity={identity} onVerified={reloadIdentity} />
+              </Section>
+            </>
+          )}
 
           <Divider />
 

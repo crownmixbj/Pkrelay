@@ -53,18 +53,10 @@ import { findHub, hubLabel, hubsForCity, type Hub } from '@/constants/hubs';
 import { useHubs } from '@/store/hubs';
 import { useTheme } from '@/hooks/use-theme';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import { IdentityOnboarding } from '@/components/ui/identity-onboarding';
 import { consumeCaptureSession } from '@/store/capture-session';
 import { uploadParcelPhoto } from '@/store/parcel-photos';
 import { showToast } from '@/components/ui/toast';
-import {
-  fetchSenderIdentity,
-  ninError,
-  runIdentityCheck,
-  submitOnboarding,
-  verificationPath,
-  type SenderIdentity,
-} from '@/store/identity';
+import { runIdentityCheck } from '@/store/identity';
 import { isValidNigerianPhone, nigerianPhoneError } from '@/utils/validation';
 import { AddressLookup } from '@/components/ui/address-lookup';
 import { distanceLabel, type Distance, type Point } from '@/lib/distance';
@@ -456,22 +448,15 @@ export default function BookScreen() {
    *   Identity also belongs to the *account*, not to the parcel. A second
    *   shipment does not re-ask for it, so it was never form state.
    */
-  const [identity, setIdentity] = useState<SenderIdentity | null>(null);
-  const [nin, setNin] = useState('');
-  const [slipUri, setSlipUri] = useState('');
-  const [identityErrors, setIdentityErrors] = useState<{ nin?: string; slip?: string }>({});
-
-  const identityPath = verificationPath(identity);
-
-  useEffect(() => {
-    let cancelled = false;
-    void fetchSenderIdentity().then((found) => {
-      if (!cancelled) setIdentity(found);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  /*
+   * ⚠ The identity record is not read here any more.
+   *
+   *   It was fetched to choose between the onboarding form and the selfie. With
+   *   the form gone there is nothing to choose: every parcel takes a selfie and
+   *   `runIdentityCheck` matches it against the account's reference if there is
+   *   one, or records it if there is not. One fewer request on every visit to
+   *   this screen, and one fewer thing that can fail before somebody can type.
+   */
 
   const scrollRef = useRef<ScrollView>(null);
   /*
@@ -788,15 +773,7 @@ export default function BookScreen() {
     const all = validate(form, allHubs);
     const mine = errorsForStep(step, all);
 
-    let identityBad: { nin?: string; slip?: string } = {};
-    if (step === 1 && identityPath === 'onboarding') {
-      const badNin = ninError(nin);
-      if (badNin) identityBad.nin = badNin;
-      if (!slipUri) identityBad.slip = 'Add a photo of your NIN slip.';
-      setIdentityErrors(identityBad);
-    }
-
-    if (Object.keys(mine).length + Object.keys(identityBad).length > 0) {
+    if (Object.keys(mine).length > 0) {
       setErrors((previous) => ({ ...previous, ...mine }));
       return;
     }
@@ -830,17 +807,7 @@ export default function BookScreen() {
      * a pure function about parcels had to know about NINs. It also only
      * applies on the first parcel, which `validate` has no way to know.
      */
-    const nextIdentityErrors: { nin?: string; slip?: string } = {};
-
-    if (identityPath === 'onboarding') {
-      const badNin = ninError(nin);
-      if (badNin) nextIdentityErrors.nin = badNin;
-      if (!slipUri) nextIdentityErrors.slip = 'Add a photo of your NIN slip.';
-    }
-
-    setIdentityErrors(nextIdentityErrors);
-
-    if (Object.keys(nextErrors).length + Object.keys(nextIdentityErrors).length > 0) {
+    if (Object.keys(nextErrors).length > 0) {
       /*
        * ⚠ Sent to the step that has the problem, not just told there is one.
        *
@@ -850,10 +817,13 @@ export default function BookScreen() {
        *   nothing says so. The dialog now names the step and the form goes
        *   there.
        */
-      const firstBad =
-        Object.keys(nextIdentityErrors).length > 0
-          ? 1
-          : STEPS.findIndex((_, index) => Object.keys(errorsForStep(index, nextErrors)).length > 0);
+      /*
+       * Only booking fields can be wrong now. The identity errors that used to
+       * pin this to step one went with the card.
+       */
+      const firstBad = STEPS.findIndex(
+        (_, index) => Object.keys(errorsForStep(index, nextErrors)).length > 0,
+      );
 
       if (firstBad >= 0) setStep(firstBad);
 
@@ -933,10 +903,16 @@ export default function BookScreen() {
      */
     setPhotoSession(sessionId);
 
-    const outcome =
-      identityPath === 'onboarding'
-        ? await submitOnboarding({ nin, slipUri, sessionId })
-        : await runIdentityCheck(sessionId);
+    /*
+     * ⚠ One path now, where there were two.
+     *
+     *   The onboarding branch uploaded a NIN and slip collected on step two.
+     *   Those are gathered on the profile instead, so this is always the plain
+     *   check: matched against the account's reference photo when there is one,
+     *   recorded when there is not. An unverified sender is never stopped —
+     *   that was true before this change and is the reason it is safe.
+     */
+    const outcome = await runIdentityCheck(sessionId);
 
     if (!outcome.ok) {
       setIdentityNote('Your NIN details could not be saved. Your parcel is not held up.');
@@ -1362,33 +1338,28 @@ export default function BookScreen() {
                 />
 
                 {/*
-              ---------- Identity ----------
+                  ---------- Identity ----------
 
-              ⚠ Placed under Pickup, directly after the phone, because that is
-                where it was asked for. Worth knowing what sits either side of
-                it, though:
+                  ⚠ Nothing here any more, and the absence is the change.
 
-                The field above is `pickupContactName` — "who hands over the
-                parcel" — which is often a shop assistant or a relative rather
-                than the account holder. The NIN below belongs to the *account*:
-                it is checked against the signed-in user's selfie and stored
-                against their account, not against whoever is standing at the
-                door. The labels say so explicitly, because a NIN field sitting
-                under a box that says "Contact person" otherwise invites the
-                wrong person's number.
+                    A NIN and a photo of the NIN slip used to sit directly under
+                    the phone number, asked of everybody posting their first
+                    parcel. That put a government ID check in the middle of
+                    somebody trying to send a package — the highest-intent
+                    moment in the app and the worst place to interrupt.
 
-              Shows the full form on the first parcel and one line after that.
-            */}
-                <IdentityOnboarding
-                  path={identityPath}
-                  identity={identity}
-                  nin={nin}
-                  onNin={setNin}
-                  ninError={identityErrors.nin}
-                  slipUri={slipUri}
-                  onSlip={setSlipUri}
-                  slipError={identityErrors.slip}
-                />
+                    It is on the profile screen now, where it belongs: the check
+                    is about the *account*, and a second parcel never re-asked
+                    for it anyway. Verifying is no longer a step on the way to
+                    sending; it is something an account either has done or has
+                    not.
+
+                    The per-parcel selfie is untouched and still on step three.
+                    That one really is about this parcel — it is the record of
+                    who handed it over — and it is what makes the NIN check
+                    worth anything, because it is compared against the reference
+                    photo verification produces.
+                */}
               </Card>
             </>
           )}

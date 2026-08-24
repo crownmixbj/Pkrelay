@@ -533,42 +533,75 @@ check(
   'this extends biometric processing from a few vetted drivers to every customer, and nothing deletes a reference photo',
 );
 
-// ------------------------------------------ where it sits on the form ------
+// -------------------------------- where it sits, now that it has moved ------
 
 const bookScreen = read('src/app/(tabs)/book.tsx');
 const bookCode = code(bookScreen);
+const profileScreen = read('src/app/(tabs)/profile.tsx');
+const profileCode = code(profileScreen);
+const verifyCard = code(read('src/components/ui/verify-identity-card.tsx'));
 
-check('the identity block is on Post a Parcel', bookCode.includes('<IdentityOnboarding'));
+/*
+ * ⚠ Five assertions here used to pin the NIN card to the booking form, and
+ *   they failed the moment it moved. They were right when written and are
+ *   repointed rather than deleted, because the thing they were protecting is
+ *   still worth protecting — it just lives somewhere else now.
+ *
+ *   The card was step two of Post a Parcel: a government ID check in the middle
+ *   of somebody trying to send a package. It is account-level data, a second
+ *   parcel never re-asked for it, and it is now on the profile.
+ */
 check(
-  'directly after the pickup phone, inside the same card',
-  (() => {
-    /*
-     * The JSX element, not the import.
-     *
-     * `indexOf('ValidatedPhoneInput')` finds the import at the top of the file,
-     * so the slice below spanned half the form and always contained a card
-     * boundary — the assertion failed on correct code. Third time this exact
-     * trap has bitten in this project; the fix is always to anchor on `<`.
-     */
-    // The *first* JSX usage: the pickup phone. `lastIndexOf` finds the dropoff
-    // one further down the form, which sits after the block being located.
-    const phone = bookCode.indexOf('<ValidatedPhoneInput');
-    const block = bookCode.indexOf('<IdentityOnboarding');
-    if (phone === -1 || block === -1 || phone > block) return false;
-
-    /*
-     * No card boundary between the two.
-     *
-     * My first version only checked the block fell before the Dropoff heading,
-     * which a version sitting *outside* the pickup card still satisfies — the
-     * mutation moved it and the assertion passed. Where it sits relative to the
-     * card is the thing that was asked for.
-     */
-    return !bookCode.slice(phone, block).includes('</Card>');
-  })(),
-  'asked for there specifically: between the phone and the end of the pickup section',
+  'the booking form asks for no NIN',
+  !bookCode.includes('<IdentityOnboarding') && !/\bninError\(/.test(bookCode),
+  'the whole point of the move is that sending a parcel no longer requires a government ID check first',
+);
+check(
+  'and holds no NIN or slip state',
+  !/const \[nin,/.test(bookCode) && !/const \[slipUri,/.test(bookCode),
+  'state left behind is a field somebody re-renders later',
 );
 
+/*
+ * ⚠ The strongest one: the form must not have gained a *gate* in exchange.
+ *
+ *   Removing the fields and then refusing to post for an unverified sender
+ *   would be worse than what was there before — at least the old form let them
+ *   fix it on the spot. An unverified sender posts, and their selfie is
+ *   recorded rather than matched.
+ */
+check(
+  'an unverified sender is not blocked from posting',
+  !/identityPath/.test(bookCode) && !/verificationPath/.test(bookCode),
+  'the form must not branch on verification at all, or it will eventually branch into a refusal',
+);
+check(
+  'the per-parcel selfie survived the removal',
+  bookCode.includes('<LiveSelfieCard') && bookCode.includes('runIdentityCheck(sessionId)'),
+  'the selfie is about *this* parcel — who handed it over — and was never the thing being moved',
+);
+check(
+  'and it runs one check rather than branching',
+  !bookCode.includes('submitOnboarding'),
+  'the onboarding branch depended on fields this form no longer collects',
+);
+
+/*
+ * ⚠ Moved, not deleted. `submitOnboarding` was dead code once before in this
+ *   project — collected and discarded — and removing its last caller without
+ *   adding a new one would put it straight back there, with the profile
+ *   screen's "Added when you verify your identity" pointing at nothing.
+ */
+check(
+  'the profile can submit a NIN',
+  verifyCard.includes('submitOnboarding({ nin, slipUri, sessionId })'),
+  'without a caller the NIN check is dead code and no sender can ever be verified',
+);
+check(
+  'the profile renders the card',
+  profileCode.includes('<VerifyIdentityCard'),
+  'a component nobody mounts is the same as no component',
+);
 check(
   'the NIN never enters the booking form state',
   !/nin/i.test(
@@ -577,31 +610,38 @@ check(
   'everything in `form` is written to an on-device draft on every keystroke; a NIN there is a government identifier sitting unencrypted in AsyncStorage on a phone that may be shared or resold',
 );
 check(
-  'and is held in its own state instead',
-  bookCode.includes("const [nin, setNin] = useState('')") &&
-    bookCode.includes("const [slipUri, setSlipUri] = useState('')"),
+  'and does not enter a draft on the profile either',
+  !/saveDraft/.test(verifyCard),
+  'the reason a NIN was kept out of the booking draft applies wherever it is typed',
 );
 check(
   'the draft is saved from the form only',
   bookCode.includes('saveDraft(form);') && !/saveDraft\([^)]*nin/i.test(bookCode),
 );
 
+/*
+ * ⚠ The selfie is still required *with* the NIN, wherever they are asked.
+ *
+ *   `submitOnboarding` matches the slip against a live photograph and promotes
+ *   it to the account's master reference. A NIN accepted without one is a
+ *   number nobody has confirmed belongs to the person who typed it, and it
+ *   would leave every later parcel with nothing to compare against.
+ */
 check(
-  'onboarding fields are required on the first parcel',
-  bookCode.includes("if (identityPath === 'onboarding') {") &&
-    bookCode.includes('const badNin = ninError(nin);') &&
-    bookCode.includes("nextIdentityErrors.slip = 'Add a photo of your NIN slip.'"),
+  'the profile takes a selfie alongside the NIN',
+  verifyCard.includes('<LiveSelfieCard'),
+  'without it there is nothing to match the slip against and no reference for later parcels',
 );
 check(
-  'and are not required on any parcel after it',
-  (() => {
-    const from = bookCode.indexOf('const nextIdentityErrors');
-    const to = bookCode.indexOf('setIdentityErrors(nextIdentityErrors)');
-    const block = bookCode.slice(from, to);
-    // Every check inside the guard, nothing outside it.
-    return block.indexOf("identityPath === 'onboarding'") < block.indexOf('ninError(nin)');
-  })(),
-  'the whole feature is that a returning sender is asked for a selfie and nothing else',
+  'and refuses the camera until the NIN and slip are there',
+  /const gate = \(proceed[\s\S]{0,400}ninError\(nin\)/.test(verifyCard) &&
+    verifyCard.includes('gate={gate}'),
+  'validating after the photo throws away work for an error that was knowable before it',
+);
+check(
+  'a verified sender is not asked again',
+  verifyCard.includes("if (path !== 'onboarding') return null;"),
+  'the card is the way to become verified, not a permanent fixture of the profile',
 );
 
 check(

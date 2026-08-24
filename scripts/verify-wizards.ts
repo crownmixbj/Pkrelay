@@ -207,10 +207,19 @@ check(
   'it changes the price of every question below it, so it belongs above all three steps',
 );
 
+/*
+ * ⚠ This asserted that the NIN was validated on the step that asked for it.
+ *
+ *   No step asks for it now — it moved to the profile, so a sender is never
+ *   interrupted mid-booking by a government ID check. The guard the old
+ *   assertion protected (reaching the last page and being sent back two) is
+ *   preserved by there being nothing to be sent back *for*, which is what is
+ *   asserted instead. `verify-liveness` covers where the check went.
+ */
 check(
-  'sender identity is checked on the step that asks for it',
-  /if \(step === 1 && identityPath === 'onboarding'\)/.test(code(book)),
-  'leaving it to submit lets somebody reach the last page and be sent back two',
+  'no step gates on identity any more',
+  !/identityPath/.test(code(book)),
+  'a booking form that branches on verification will eventually branch into a refusal',
 );
 
 // -------------------------------------------- the rendered steps, not the list --
