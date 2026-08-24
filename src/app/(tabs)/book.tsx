@@ -74,6 +74,7 @@ import {
   CATEGORIES,
   cityHubLabel,
   CITIES,
+  declaredValueError,
   DEFAULT_CITY,
   DELIVERY_TYPES,
   estimateFee,
@@ -308,14 +309,13 @@ function validate(form: BookingForm, hubs: Hub[]): FieldErrors {
     errors.weight = 'Cannot exceed 100 kg';
   }
 
-  if (form.declaredValue.trim()) {
-    const declared = parseAmountInput(form.declaredValue);
-    if (Number.isNaN(declared) || declared < 0) {
-      errors.declaredValue = 'Enter a valid amount';
-    } else if (declared > 10_000_000) {
-      errors.declaredValue = 'Contact support for high-value items';
-    }
-  }
+  /*
+   * Required since August 2026, and the reasoning is with the rule itself —
+   * see `declaredValueError`. `declaredValue` is in step one of `STEP_FIELDS`,
+   * so returning an error here is what stops Next.
+   */
+  const badValue = declaredValueError(form.declaredValue);
+  if (badValue) errors.declaredValue = badValue;
 
   // --- Locations ---
   const pickupArea = resolveArea(form.pickupAreaSelection, form.pickupAreaCustom);
@@ -1205,7 +1205,17 @@ export default function BookScreen() {
                       value={form.declaredValue}
                       onChangeText={(text) => setField('declaredValue', formatAmountInput(text))}
                       error={errors.declaredValue}
-                      hint={errors.declaredValue ? undefined : 'For insurance'}
+                      /*
+                        "For insurance" read as an explanation of an optional
+                        extra. It is what the cover and any payout are based
+                        on, and saying so is what makes the 1% line on the
+                        fare make sense.
+                      */
+                      hint={
+                        errors.declaredValue
+                          ? undefined
+                          : 'What the parcel is worth — sets the cover and the payout'
+                      }
                       keyboardType="number-pad"
                     />
                   </View>

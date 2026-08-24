@@ -608,6 +608,49 @@ export function parseAmountInput(value: string): number {
 }
 
 /**
+ * Above this, a parcel is somebody's phone call rather than a form submission.
+ *
+ * Not a technical limit — an underwriting one. A ₦10m parcel is worth ₦100,000
+ * in cover at 1%, which is not a thing to accept from a stranger unattended.
+ */
+export const DECLARED_VALUE_CEILING = 10_000_000;
+
+/**
+ * Why a declared value cannot be accepted, or null when it can.
+ *
+ * ⚠ Required, where it was optional until August 2026.
+ *
+ *   Insurance is 1% of this number. Left blank it parsed to zero, so the parcel
+ *   travelled with no cover and the fare was 1% lower. Nobody chose that: the
+ *   field looked optional, most people skipped it, and the first anyone learned
+ *   of the gap was a loss with no declared value to pay out against.
+ *
+ *   Every booking now carries an insurance line, so a ₦45,000 parcel costs ₦450
+ *   more than it did. That is the trade, made deliberately.
+ *
+ * ⚠ Above zero, with no floor invented above it.
+ *
+ *   A ₦1,000 minimum would overstate parcels genuinely worth less — documents,
+ *   a returned charger. Under-declaring to dodge the 1% is the obvious gap, and
+ *   the honest deterrent is that a payout is capped at the declared value:
+ *   declare a phone at ₦500 and ₦500 is what losing it is worth. That belongs
+ *   in the compensation terms, not in a refusal here.
+ *
+ * Lives beside the pricing rather than in the screen so it can be tested as
+ * behaviour — a rule about money asserted only by grepping the JSX is a rule
+ * that passes while it is broken.
+ */
+export function declaredValueError(raw: string): string | null {
+  if (!raw.trim()) return 'Declared value is required';
+
+  const declared = parseAmountInput(raw);
+  if (Number.isNaN(declared) || declared <= 0) return 'Enter what the parcel is worth';
+  if (declared > DECLARED_VALUE_CEILING) return 'Contact support for high-value items';
+
+  return null;
+}
+
+/**
  * What the user sees on a status badge. A parcel sitting at "Booked" with no
  * driver reads as "Pending Driver Pickup" — clearer than the raw stage name.
  */

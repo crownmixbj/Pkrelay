@@ -88,6 +88,18 @@ export function QuickQuote({ onBook }: QuickQuoteProps) {
       estimateFee({
         deliveryType,
         weight: parsedWeight,
+        /*
+         * ⚠ Zero here, and the booking form will add to it.
+         *
+         *   Declaring a value is now required to post a parcel, and insurance
+         *   is 1% of it. This form asks three questions and adding a fourth
+         *   would defeat the point, so the quote is quoted without cover — and
+         *   is therefore always a little *under* what the booking will charge.
+         *
+         *   A quote that is quietly low is the kind of thing people notice at
+         *   the moment they are asked to pay, so the line below says so rather
+         *   than leaving them to find it.
+         */
         declaredValue: 0,
         distanceKm: distance?.km,
       }),
@@ -173,6 +185,16 @@ export function QuickQuote({ onBook }: QuickQuoteProps) {
           {hasWeight ? `Est. ${formatNaira(fee.total)}` : '—'}
         </Text>
       </View>
+
+      {/*
+        Says where the quote is knowingly short, rather than letting somebody
+        discover it at the point of paying.
+      */}
+      {hasWeight && (
+        <Text style={[styles.footnote, { color: theme.textMuted }]}>
+          Before insurance — 1% of the value you declare when booking.
+        </Text>
+      )}
 
       <Button
         label="Book this delivery"
@@ -263,6 +285,10 @@ const styles = StyleSheet.create({
     flex: 1,
     ...Typography.meta,
     ...font(600),
+  },
+  footnote: {
+    ...Typography.caption,
+    marginTop: Spacing.one,
   },
   price: {
     ...Typography.cardTitle,
