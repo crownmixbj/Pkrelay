@@ -66,6 +66,9 @@ import {
   type SenderIdentity,
 } from '@/store/identity';
 import { isValidNigerianPhone, nigerianPhoneError } from '@/utils/validation';
+import { AddressLookup } from '@/components/ui/address-lookup';
+import { distanceLabel, type Distance, type Point } from '@/lib/distance';
+import { measureDistance } from '@/store/places';
 import {
   areasForCity,
   CATEGORIES,
@@ -577,6 +580,50 @@ export default function BookScreen() {
     ? `${destinationArea}, ${isLocal ? form.originCity : form.destinationCity}`
     : cityHubLabel(isLocal ? form.originCity : form.destinationCity);
 
+  /*
+   * ⚠ Coordinates live outside the form, deliberately.
+   *
+   *   `BookingForm` is validated field by field, serialised into the draft and
+   *   posted to the server. A coordinate belongs to none of that: it is not
+   *   required, not validated, and not stored on the parcel. Keeping it here
+   *   means the draft that a sender resumes tomorrow has an address and no
+   *   stale point, which is the honest state — the address is what a driver
+   *   reads, and re-measuring costs nothing.
+   */
+  const [pickupPoint, setPickupPoint] = useState<Point | null>(null);
+  const [dropoffPoint, setDropoffPoint] = useState<Point | null>(null);
+  const [distance, setDistance] = useState<Distance | null>(null);
+
+  /*
+   * ⚠ The booking and the quick quote have to agree about the same journey.
+   *
+   *   The quote on the landing page prices on the measured distance. Until
+   *   this ran, the booking form did not — so a sender quoted ₦18,500 for
+   *   Abuja→Lagos reached the booking form and was charged ₦5,400 for the
+   *   identical parcel. Whichever number is right, two different numbers for
+   *   one journey is the kind of thing people screenshot.
+   *
+   *   Only doorstep addresses have coordinates. A hub pickup or collection
+   *   measures nothing and falls back to the flat band, exactly as before —
+   *   `estimateFee` treats an absent distance as zero, which `verify-pricing`
+   *   pins to the naira.
+   */
+  useEffect(() => {
+    if (!pickupPoint || !dropoffPoint) {
+      setDistance(null);
+      return;
+    }
+
+    let cancelled = false;
+    void measureDistance(pickupPoint, dropoffPoint).then((measured) => {
+      if (!cancelled) setDistance(measured);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pickupPoint, dropoffPoint]);
+
   // Live quote — recalculates as the sender types or flips any of the toggles.
   const fee = useMemo(
     () =>
@@ -586,8 +633,16 @@ export default function BookScreen() {
         declaredValue: parseAmountInput(form.declaredValue),
         pickupMode: form.pickupMode,
         dropoffMode: form.dropoffMode,
+        distanceKm: distance?.km,
       }),
-    [form.deliveryType, form.weight, form.declaredValue, form.pickupMode, form.dropoffMode],
+    [
+      form.deliveryType,
+      form.weight,
+      form.declaredValue,
+      form.pickupMode,
+      form.dropoffMode,
+      distance?.km,
+    ],
   );
 
   const { hubs: allHubs } = useHubs();
@@ -1259,13 +1314,17 @@ export default function BookScreen() {
 
                 {/* A hub drop-off has no street address to collect from. */}
                 {form.pickupMode === 'doorstep' && (
-                  <Field
+                  <AddressLookup
                     label="Pickup address"
                     icon={(color, size) => <MapPin color={color} size={size} />}
                     placeholder="12 Awolowo Avenue"
                     value={form.pickupAddress}
-                    onChangeText={(text) => setField('pickupAddress', text)}
+                    onChange={(next) => {
+                      setField('pickupAddress', next.address);
+                      setPickupPoint(next.point);
+                    }}
                     error={errors.pickupAddress}
+                    hint="Search for the address, or write it out in full."
                     multiline
                   />
                 )}
@@ -1413,7 +1472,7 @@ export default function BookScreen() {
               selected state rather than the upgrade switch.
             */}
                 {form.dropoffMode !== 'hub' && (
-                  <Field
+                  <AddressLookup
                     label={form.dropoffMode === 'doorstep' ? 'Dropoff address' : 'Meeting point'}
                     icon={(color, size) => <Navigation color={color} size={size} />}
                     placeholder={
@@ -1422,8 +1481,16 @@ export default function BookScreen() {
                         : 'Total filling station, Allen Avenue'
                     }
                     value={form.dropoffAddress}
-                    onChangeText={(text) => setField('dropoffAddress', text)}
+                    onChange={(next) => {
+                      setField('dropoffAddress', next.address);
+                      setDropoffPoint(next.point);
+                    }}
                     error={errors.dropoffAddress}
+                    hint={
+                      form.dropoffMode === 'doorstep'
+                        ? 'Search for the address, or write it out in full.'
+                        : 'Search for the landmark, or describe where to meet.'
+                    }
                     multiline
                   />
                 )}
@@ -1563,6 +1630,20 @@ export default function BookScreen() {
                   label={`Weight · ${form.weight.trim() || 0} kg × ${formatNaira(PRICING.perKg[form.deliveryType])}`}
                   value={fee.weight}
                 />
+                {/*
+              ⚠ Shown only when something was actually measured.
+
+                A distance row reading ₦0 would tell a sender their journey has
+                no length, when the truth is that nobody measured it — a hub
+                pickup has no address to measure from. Silence is the accurate
+                account of that.
+            */}
+                {fee.distance > 0 && (
+                  <CostRow
+                    label={`Distance · ${distanceLabel(distance)} × ${formatNaira(PRICING.perKm[form.deliveryType])}`}
+                    value={fee.distance}
+                  />
+                )}
                 {fee.insurance > 0 && (
                   <CostRow label="Insurance · 1% of declared value" value={fee.insurance} />
                 )}

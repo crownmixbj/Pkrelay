@@ -63,6 +63,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ChipGroup } from '@/components/ui/chip';
 import { Dropdown } from '@/components/ui/dropdown';
+import { AddressLookup } from '@/components/ui/address-lookup';
 import { Field } from '@/components/ui/field';
 import { ValidatedEmailInput } from '@/components/ValidatedEmailInput';
 import { ValidatedPhoneInput } from '@/components/ValidatedPhoneInput';
@@ -1289,12 +1290,12 @@ export default function DriverSignupScreen() {
                   maxLength={NIN_LENGTH}
                 />
 
-                <Field
+                <AddressLookup
                   label="Residential or office address"
                   icon={(color, size) => <MapPin color={color} size={size} />}
                   placeholder="14 Awolowo Road, Ikoyi, Lagos"
                   value={form.address}
-                  onChangeText={(text) => setField('address', text)}
+                  onChange={(next) => setField('address', next.address)}
                   onBlur={() => validateField('address')}
                   error={errors.address}
                   hint="Where we can reach you, and where your jobs are matched from"
@@ -1403,12 +1404,12 @@ export default function DriverSignupScreen() {
                   icon={(color, size) => <UserCheck color={color} size={size} />}
                 />
 
-                <Field
+                <AddressLookup
                   label="Residential or office address"
                   icon={(color, size) => <MapPin color={color} size={size} />}
                   placeholder="14 Awolowo Road, Ikoyi, Lagos"
                   value={form.guarantorAddress}
-                  onChangeText={(text) => setField('guarantorAddress', text)}
+                  onChange={(next) => setField('guarantorAddress', next.address)}
                   onBlur={() => validateField('guarantorAddress')}
                   error={errors.guarantorAddress}
                   multiline

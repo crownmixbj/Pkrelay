@@ -155,6 +155,15 @@ check(
 
 const fn = read('supabase/functions/places-lookup/index.ts');
 const field = code(read('src/components/ui/address-field.tsx'));
+/*
+ * ⚠ The debounce, the session token and the three failure modes moved out.
+ *
+ *   They now live in `useAddressSuggestions`, shared with the plain address
+ *   field that every other form uses, so that the two cannot bill Google
+ *   differently. Seven assertions below were reading them out of the field and
+ *   started failing on correct code — repointed rather than relaxed.
+ */
+const hook = code(read('src/hooks/use-address-suggestions.ts'));
 const store = code(read('src/store/places.ts'));
 
 /*
@@ -165,7 +174,15 @@ const store = code(read('src/store/places.ts'));
  *   failure mode is a bill nobody notices for a month rather than an outage
  *   somebody reports in an hour.
  */
-const clientFiles = ['src/store/places.ts', 'src/components/ui/address-field.tsx'];
+const clientFiles = [
+  'src/store/places.ts',
+  'src/components/ui/address-field.tsx',
+  /* Added when lookup spread to every address input — each new file is another
+     place a key could be pasted "just to test it". */
+  'src/components/ui/address-lookup.tsx',
+  'src/hooks/use-address-suggestions.ts',
+  'src/components/ui/hub-editor.tsx',
+];
 
 for (const path of clientFiles) {
   check(
@@ -189,7 +206,7 @@ check(
 );
 check(
   'and the token is replaced once a lookup completes',
-  field.includes('session.current = newSessionToken()'),
+  hook.includes('session.current = newSessionToken()'),
   'reusing a closed session is something Google is entitled to treat as abuse',
 );
 check(
@@ -226,15 +243,14 @@ check(
 );
 check(
   'and the field says which, whenever it swaps itself',
-  /if \(result\.unavailable\) \{[\s\S]{0,200}setNote\(unavailableReason\(result\.unavailable\)\)/.test(
-    field,
-  ),
+  /if \(!unavailable\) return;[\s\S]{0,120}setNote\(unavailableReason\(unavailable\)\)/.test(field),
   'a control that changes underneath somebody without explanation reads as their mistake',
 );
 check(
   'no matches is not treated as a failure',
-  /result\.suggestions\.length === 0[\s\S]{0,160}setNote/.test(field) &&
-    !/result\.suggestions\.length === 0[\s\S]{0,160}setUnavailable/.test(field),
+  hook.includes('setEmptyResult(!result.unavailable && result.suggestions.length === 0)') &&
+    /if \(emptyResult\) setNote\(/.test(field) &&
+    !/if \(emptyResult\)[\s\S]{0,120}setShowPicker/.test(field),
   '"24 Abayomi" with no results usually means one more word, not a broken feature',
 );
 
@@ -272,12 +288,12 @@ check(
 );
 check(
   'the picker is what appears when lookup cannot work',
-  /if \(unavailable\)[\s\S]{0,400}<Dropdown/.test(field),
+  /if \(showPicker\)[\s\S]{0,400}<Dropdown/.test(field),
   'a quote form made unusable by a third party having a bad afternoon is worse than one without autocomplete',
 );
 check(
   'an address outside the network falls back too',
-  /resolution\.kind !== 'served'[\s\S]{0,200}setUnavailable\(true\)/.test(field),
+  /resolution\.kind !== 'served'[\s\S]{0,200}setShowPicker\(true\)/.test(field),
   'there is nothing to argue with; they need a city they can actually pick',
 );
 check(
@@ -287,12 +303,12 @@ check(
 );
 check(
   'typing is debounced',
-  field.includes('DEBOUNCE_MS') && field.includes('setTimeout'),
-  'a request per keystroke is a session per keystroke',
+  /\},\s*DEBOUNCE_MS\s*\)/.test(hook),
+  'mentioning the constant is not passing it to setTimeout — a request per keystroke is a session per keystroke',
 );
 check(
   'and a single letter is never sent',
-  fn.includes('input.length < 2') && field.includes('term.length < 2'),
+  fn.includes('input.length < 2') && hook.includes('term.length < 2'),
   'one letter matches most of Nigeria and bills for a result nobody can use',
 );
 

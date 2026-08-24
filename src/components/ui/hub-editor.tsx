@@ -1,4 +1,4 @@
-import { X } from 'lucide-react-native';
+import { MapPin, X } from 'lucide-react-native';
 import { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -8,7 +8,9 @@ import { showToast } from '@/components/ui/toast';
 import { ToggleRow } from '@/components/ui/dropdown';
 import type { Hub } from '@/constants/hubs';
 import { Elevation, Radius, Spacing, Typography, font } from '@/constants/theme';
+import { useAddressSuggestions } from '@/hooks/use-address-suggestions';
 import { useTheme } from '@/hooks/use-theme';
+import type { Suggestion } from '@/store/places';
 import { ChipGroup } from '@/components/ui/chip';
 import { CITIES, DEFAULT_CITY, type City } from '@/store/bookings';
 import { nextHubId, useHubs, validateHubEdit, type HubEdit } from '@/store/hubs';
@@ -203,11 +205,19 @@ export function HubEditor({
               onChange={(v) => set('area', v)}
               hint="Shown as the neighbourhood, and copied onto a booking when a sender picks this hub."
             />
-            <Field
+            {/*
+              ⚠ The one address in the app that a stranger navigates to.
+
+                Get Directions hands this string to a maps app. A hub address
+                that Google cannot resolve fails silently for every sender who
+                taps it, and nobody in the office finds out. Picking from the
+                suggestions guarantees the string round-trips — but it stays
+                typeable, because a new hub may not be on the map yet.
+            */}
+            <AddressSearchField
               label="Address"
               value={edit.address}
               onChange={(v) => set('address', v)}
-              multiline
               hint="This is what Get Directions searches for, so write it as you would to a taxi driver."
             />
             <Field
@@ -320,6 +330,82 @@ function Field({
   );
 }
 
+/**
+ * The address field, with Google's suggestions under it.
+ *
+ * ⚠ Built on the local `Field` rather than the app's `AddressLookup`.
+ *
+ *   `AddressLookup` renders the shared, rounded, icon-led input used on the
+ *   public forms. This sheet is an admin panel with its own flatter styling,
+ *   and dropping one foreign-looking control into the middle of eight matching
+ *   ones reads as a bug. The lookup *logic* is shared through the hook, which
+ *   is the part that must not diverge — the presentation is allowed to.
+ */
+function AddressSearchField({
+  label,
+  value,
+  onChange,
+  hint,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  hint?: string;
+}) {
+  const theme = useTheme();
+  const { suggestions, searching, unavailable, resolve, reopen } = useAddressSuggestions(value);
+
+  const choose = async (suggestion: Suggestion) => {
+    onChange(suggestion.description);
+    const result = await resolve(suggestion);
+    if (result.ok && result.details.formattedAddress) {
+      onChange(result.details.formattedAddress);
+    }
+  };
+
+  return (
+    <View>
+      <Field
+        label={label}
+        value={value}
+        onChange={(next) => {
+          reopen();
+          onChange(next);
+        }}
+        multiline
+        hint={
+          unavailable
+            ? 'Address search is unavailable right now — type the address in full.'
+            : searching
+              ? 'Searching…'
+              : hint
+        }
+      />
+
+      {suggestions.length > 0 && (
+        <View
+          style={[
+            styles.suggestions,
+            { backgroundColor: theme.surface, borderColor: theme.border },
+          ]}>
+          {suggestions.map((suggestion) => (
+            <Pressable
+              key={suggestion.placeId}
+              onPress={() => void choose(suggestion)}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.suggestion, pressed && { opacity: 0.6 }]}>
+              <MapPin color={theme.textMuted} size={13} />
+              <Text style={[styles.suggestionText, { color: theme.text }]} numberOfLines={1}>
+                {suggestion.description}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
@@ -365,6 +451,24 @@ const styles = StyleSheet.create({
   field: {
     gap: Spacing.one,
     marginBottom: Spacing.three,
+  },
+  suggestions: {
+    borderRadius: Radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+    marginTop: -Spacing.two,
+    marginBottom: Spacing.three,
+  },
+  suggestion: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.two + 2,
+  },
+  suggestionText: {
+    ...Typography.caption,
+    flex: 1,
   },
   label: {
     ...Typography.caption,

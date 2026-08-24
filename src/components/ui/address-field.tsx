@@ -1,24 +1,16 @@
 import { MapPin, Search } from 'lucide-react-native';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Dropdown } from '@/components/ui/dropdown';
 import { Field } from '@/components/ui/field';
 import { Radius, Spacing, Typography, font } from '@/constants/theme';
+import { useAddressSuggestions } from '@/hooks/use-address-suggestions';
 import { useTheme } from '@/hooks/use-theme';
 import { resolutionSummary } from '@/lib/place-to-city';
 import type { Point } from '@/lib/distance';
-import {
-  fetchPlaceDetails,
-  fetchSuggestions,
-  newSessionToken,
-  unavailableReason,
-  type Suggestion,
-} from '@/store/places';
+import { unavailableReason, type Suggestion } from '@/store/places';
 import { CITIES, cityHubLabel, type City } from '@/store/bookings';
-
-/** Long enough that a typist does not spend a session per letter. */
-const DEBOUNCE_MS = 300;
 
 /**
  * Type an address, get a city the pricing understands.
@@ -61,83 +53,60 @@ export function AddressField({
   const theme = useTheme();
 
   const [query, setQuery] = useState('');
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [unavailable, setUnavailable] = useState(false);
   const [note, setNote] = useState('');
-  const [picking, setPicking] = useState(false);
 
-  /** One token per address chosen, so a lookup is billed once. See `places.ts`. */
-  const session = useRef(newSessionToken());
+  /*
+   * The debounce, the session token and the three failure modes live in the
+   * hook, shared with `AddressLookup`. What is left here is the part that is
+   * specific to pricing: turning a place into one of 37 cities, and falling
+   * back to the picker when it cannot.
+   */
+  const { suggestions, searching, unavailable, emptyResult, resolve, reopen } =
+    useAddressSuggestions(query);
 
+  /*
+   * ⚠ Latched, where the hook's signal is momentary.
+   *
+   *   The hook reports what the last lookup did. This has to persist: once the
+   *   picker is on screen it must stay until the person asks for address
+   *   search again, or a single successful keystroke would snatch the control
+   *   back mid-selection. It is also set by two things the hook knows nothing
+   *   about — a details call that failed, and an address outside the network.
+   */
+  const [showPicker, setShowPicker] = useState(false);
+
+  /*
+   * ⚠ Say why, every time the control changes underneath somebody.
+   *
+   *   This used to swap in the dropdown and say nothing, so the field a person
+   *   was typing into silently became a picker. They could not tell a broken
+   *   feature from one that was never switched on from something they had done
+   *   wrong — and the most likely reading is the last one, which is both wrong
+   *   and discouraging.
+   */
   useEffect(() => {
-    const term = query.trim();
+    if (!unavailable) return;
+    setShowPicker(true);
+    setNote(unavailableReason(unavailable));
+  }, [unavailable]);
 
-    /*
-     * Nothing typed, or a suggestion already taken — no request either way.
-     * `picking` guards the moment between tapping a suggestion and the details
-     * call returning, when the field's text is the address that was just
-     * chosen and searching for it again would be pointless and billable.
-     */
-    if (term.length < 2 || picking) {
-      setSuggestions([]);
-      return;
-    }
-
-    let cancelled = false;
-    setSearching(true);
-
-    const timer = setTimeout(async () => {
-      const result = await fetchSuggestions(term, session.current);
-      if (cancelled) return;
-
-      setSearching(false);
-      setSuggestions(result.suggestions);
-
-      /*
-       * ⚠ Say why, every time the control changes underneath somebody.
-       *
-       *   This used to set `unavailable` and nothing else, so the field a
-       *   person was typing into silently became a dropdown. They could not
-       *   tell a broken feature from one that was never switched on from
-       *   something they had done wrong — and the most likely reading is the
-       *   last one, which is both wrong and discouraging.
-       */
-      if (result.unavailable) {
-        setUnavailable(true);
-        setNote(unavailableReason(result.unavailable));
-        return;
-      }
-
-      /*
-       * A working lookup that matched nothing is not a reason to swap the
-       * control. "24 Abayomi" with no results usually means one more word is
-       * needed, not that the feature is broken.
-       */
-      if (result.suggestions.length === 0) {
-        setNote('No matches yet — keep typing, or pick a city.');
-      }
-    }, DEBOUNCE_MS);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-      setSearching(false);
-    };
-  }, [query, picking]);
+  /*
+   * A working lookup that matched nothing is not a reason to swap the control.
+   * "24 Abayomi" with no results usually means one more word is needed, not
+   * that the feature is broken.
+   */
+  useEffect(() => {
+    if (emptyResult) setNote('No matches yet — keep typing, or pick a city.');
+  }, [emptyResult]);
 
   const choose = async (suggestion: Suggestion) => {
-    setPicking(true);
     setQuery(suggestion.description);
-    setSuggestions([]);
     setNote('');
 
-    const result = await fetchPlaceDetails(suggestion.placeId, session.current);
-    session.current = newSessionToken();
-    setPicking(false);
+    const result = await resolve(suggestion);
 
     if (!result.ok) {
-      setUnavailable(true);
+      setShowPicker(true);
       setNote('That address could not be checked. Pick a city instead.');
       return;
     }
@@ -151,7 +120,7 @@ export function AddressField({
         picker appears so they can choose somewhere LOCI does reach, and the
         note above says why.
       */
-      setUnavailable(true);
+      setShowPicker(true);
       return;
     }
 
@@ -159,7 +128,7 @@ export function AddressField({
   };
 
   /* ---------- the fallback, and the way back to it ---------- */
-  if (unavailable) {
+  if (showPicker) {
     return (
       <View style={styles.block}>
         <Dropdown
@@ -176,7 +145,7 @@ export function AddressField({
         {note.length > 0 && <Text style={[styles.note, { color: theme.textMuted }]}>{note}</Text>}
         <Pressable
           onPress={() => {
-            setUnavailable(false);
+            setShowPicker(false);
             setNote('');
             setQuery('');
           }}
@@ -196,7 +165,7 @@ export function AddressField({
         value={query}
         onChangeText={(next) => {
           setQuery(next);
-          setPicking(false);
+          reopen();
           setNote('');
         }}
         compact

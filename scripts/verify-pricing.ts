@@ -219,9 +219,17 @@ check(
   !field.includes('Pick a city\n'),
   'a city has no coordinates and so no distance — it is the fallback, not an option',
 );
+/*
+ * ⚠ Was `field.includes('if (unavailable)')`, which pinned a variable name.
+ *
+ *   The flag was renamed to `showPicker` when the lookup moved into a shared
+ *   hook — the guard was intact and this failed anyway. What matters is that
+ *   the dropdown sits behind *some* condition rather than being unreachable,
+ *   so that is what is asserted now.
+ */
 check(
   'but the picker still exists for when lookup fails',
-  field.includes('<Dropdown') && field.includes('if (unavailable)'),
+  /if \(\w+\)[\s\S]{0,400}<Dropdown/.test(field),
   'a Google outage must not cost every quote that day',
 );
 
