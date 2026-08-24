@@ -278,14 +278,19 @@ check(
     !nav.includes('styles.segmented'),
   'the old segmented control moved into the sheet; two controls drift apart',
 );
+/*
+ * ⚠ This asserted a settings gear opened the sheet. There is no gear now.
+ *
+ *   It sat beside the avatar and opened the same panel. Two controls onto one
+ *   destination is a choice the reader has to make for no benefit, so the
+ *   avatar is the only way in — and when signed out it goes straight to
+ *   sign-in, which is all that sheet offers a stranger anyway.
+ */
 check(
-  'the gear opens it',
-  nav.includes('setSettingsOpen(true)') && nav.includes('<Settings color'),
-);
-check(
-  'and so does the avatar, rather than raising a second panel',
-  nav.includes('const openAccountMenu = () => setSettingsOpen(true)'),
-  'the old avatar dialog was three quarters of this sheet',
+  'the avatar opens it, and is the only thing that does',
+  nav.includes('const openAccountMenu = () => setSettingsOpen(true)') &&
+    !nav.includes('<Settings color'),
+  'the old avatar dialog was three quarters of this sheet; a second control beside it was the rest',
 );
 check(
   'only an approved driver is offered the choice',

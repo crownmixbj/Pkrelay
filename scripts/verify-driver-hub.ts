@@ -390,6 +390,38 @@ check(
   notifyFaq?.answer ?? 'missing',
 );
 
+// --------------------------------------------------- the address asked for --
+
+/*
+ * ⚠ Residential, and the word "office" must not creep back.
+ *
+ *   The field read "Residential or office address". A workplace is the one
+ *   address that does not do what this field is for: it is what a background
+ *   check runs against, and where somebody would be traced to if a parcel went
+ *   missing. An office an applicant left last month verifies nothing, and a
+ *   guarantor reachable only at work is a guarantor who cannot be found.
+ */
+const signupJsx = readFileSync(join(ROOT, 'src/app/(tabs)/driver-signup.tsx'), 'utf8')
+  .replace(/(^|[\s{(=,;])\/\*[\s\S]*?\*\//g, '$1')
+  .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, '')
+  .replace(/^\s*\/\/.*$/gm, '');
+
+check(
+  'neither address field offers an office',
+  !/or office address/.test(signupJsx),
+  'a workplace is the address least likely to still reach the person it is meant to identify',
+);
+check(
+  'and both are labelled residential',
+  (signupJsx.match(/label="Residential address"/g) ?? []).length === 2,
+  "the applicant's and the guarantor's — changing one and not the other is the drift nobody notices until the address has to be a home",
+);
+check(
+  'the hint describes the field it is under',
+  signupJsx.includes('Where you live.'),
+  'a renamed label over a hint still describing the old field is half a change',
+);
+
 if (failures > 0) {
   console.error(`\n${failures} assertion(s) failed.`);
   process.exit(1);

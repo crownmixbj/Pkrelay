@@ -19,7 +19,6 @@ import {
   Radar,
   Scale,
   UsersRound,
-  Settings,
   ShieldCheck,
   Truck,
   LogOut,
@@ -654,26 +653,19 @@ export function AppNavBar() {
               they end up disagreeing.
             */}
             {/*
-              ⚠ Hidden on the profile screen, and only there.
+              ⚠ The settings gear was here, and is gone.
 
-                Everything behind this gear — the account, the Sender/Driver
-                switch, sign out — is on that page already, so the icon offers a
-                sheet that says what the screen underneath is saying. It is not
-                removed outright because every *other* screen reaches role
-                switching and sign out through it, and dropping it globally
-                would strip that from the whole app to tidy one header.
+                It opened the account sheet. So does the avatar below, when
+                signed in — and when signed out the avatar goes straight to
+                sign-in, which is the only thing that sheet offers a stranger.
+                Two controls onto one destination, sitting side by side, is a
+                choice the reader has to make for no benefit.
+
+                A previous pass hid it on the profile screen only, on the
+                reasoning that removing it globally would strip role switching
+                and sign out from everywhere else. That was wrong: the avatar
+                already reaches both, so nothing was ever behind the gear alone.
             */}
-            {!matchesHref(pathname, '/profile') && (
-              <Pressable
-                onPress={() => setSettingsOpen(true)}
-                accessibilityRole="button"
-                accessibilityLabel="Settings"
-                hitSlop={6}
-                style={({ pressed }) => [styles.actionIcon, pressed && styles.pressed]}>
-                <Settings color={theme.text} size={20} />
-              </Pressable>
-            )}
-
             {/*
               The account control. It used to push /sign-in unconditionally,
               which meant a signed-in person tapping their own avatar was handed

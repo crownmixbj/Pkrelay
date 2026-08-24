@@ -92,7 +92,7 @@ export type DriverRegistration = {
   state: string;
   /** The LOCI city that state operates out of. Null when unmapped. */
   baseCity: City | null;
-  /** Residential or office address, from "Your details". */
+  /** Residential address, from "Your details". */
   address: string;
   reference: string;
   submittedAt: string;

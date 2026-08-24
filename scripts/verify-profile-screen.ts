@@ -352,21 +352,30 @@ const nav = read('src/components/ui/app-nav-bar.tsx');
 const header = read('src/components/ui/screen.tsx');
 
 /*
- * ⚠ The gear goes on this screen, and stays on every other one.
+ * ⚠ The gear is gone from every screen, not hidden on this one.
  *
- *   It is in the global nav bar, not in the profile's own header. Deleting it
- *   would remove the only route to role switching and sign out from around
- *   twenty screens in order to tidy one — so it is conditioned on the route.
+ *   A previous pass hid it on `/profile` only, on the reasoning that removing
+ *   it globally would strip role switching and sign out from twenty other
+ *   screens. That reasoning was wrong: the avatar sitting beside it already
+ *   opened the same sheet, so nothing was ever reachable through the gear
+ *   alone. Two controls onto one destination is a choice the reader has to
+ *   make for no benefit.
  */
 check(
-  'the settings gear is hidden on the profile screen',
-  nav.includes("!matchesHref(pathname, '/profile')"),
-  'the gear opens a sheet saying what the page underneath already says',
+  'there is no settings gear anywhere in the nav bar',
+  !nav.includes('<Settings color'),
+  'it opened the same sheet as the avatar next to it',
 );
 check(
-  'and still rendered everywhere else',
-  nav.includes('<Settings color={theme.text}') && nav.includes('setSettingsOpen(true)'),
-  'removing it globally would strip role switching and sign out from every other screen',
+  'and the avatar is the way in',
+  nav.includes('const openAccountMenu = () => setSettingsOpen(true)') &&
+    nav.includes('onPress={isAuthenticated ? openAccountMenu : goToSignIn}'),
+  'removing the gear is only safe because the avatar reaches the same place — and sends a signed-out visitor straight to sign-in, which is all that sheet offers them',
+);
+check(
+  'the route-specific hiding went with it',
+  !nav.includes("matchesHref(pathname, '/profile')"),
+  'a condition guarding a control that no longer exists reads as live code and is not',
 );
 
 check('the screen is titled My Profile', code.includes('title="My Profile"'), '');

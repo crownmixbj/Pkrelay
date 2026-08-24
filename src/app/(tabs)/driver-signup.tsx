@@ -236,7 +236,7 @@ type SignupForm = {
   email: string;
   /** Required — pairs with the Government ID upload. */
   nin: string;
-  /** The applicant's own residential or office address. */
+  /** The applicant's own residential address. */
   address: string;
   /** One of the 37, from `NIGERIA_STATES`. */
   state: NigeriaState;
@@ -437,7 +437,7 @@ function validate(
   if (!form.address.trim()) {
     errors.address = 'Address is required';
   } else if (form.address.trim().length < 10) {
-    errors.address = 'Enter a full residential or office address';
+    errors.address = 'Enter your full residential address';
   }
 
   const plate = form.plateNumber.trim();
@@ -475,7 +475,7 @@ function validate(
   }
 
   if (form.guarantorAddress.trim().length < 10) {
-    errors.guarantorAddress = 'Enter a full residential or office address';
+    errors.guarantorAddress = 'Enter their full residential address';
   }
 
   // Payout account
@@ -1290,15 +1290,25 @@ export default function DriverSignupScreen() {
                   maxLength={NIN_LENGTH}
                 />
 
+                {/*
+                  ⚠ Residential, not "residential or office".
+
+                    Offering the choice meant an applicant could give a
+                    workplace, and a workplace is the one address that does not
+                    do what this field is for: it is what a background check is
+                    run against, and where somebody would be traced to if a
+                    parcel went missing. An office they left last month
+                    verifies nothing.
+                */}
                 <AddressLookup
-                  label="Residential or office address"
+                  label="Residential address"
                   icon={(color, size) => <MapPin color={color} size={size} />}
                   placeholder="14 Awolowo Road, Ikoyi, Lagos"
                   value={form.address}
                   onChange={(next) => setField('address', next.address)}
                   onBlur={() => validateField('address')}
                   error={errors.address}
-                  hint="Where we can reach you, and where your jobs are matched from"
+                  hint="Where you live. Used to verify you, and to match you with nearby jobs."
                   multiline
                 />
               </Card>
@@ -1404,8 +1414,17 @@ export default function DriverSignupScreen() {
                   icon={(color, size) => <UserCheck color={color} size={size} />}
                 />
 
+                {/*
+                  ⚠ Changed with the applicant's, for the same reason.
+
+                    A guarantor exists so there is somebody findable when the
+                    driver cannot be found. A place of work is the address least
+                    likely to still reach them — and leaving one field saying
+                    "or office" while the other did not is the kind of drift
+                    nobody notices until they need the address to be a home.
+                */}
                 <AddressLookup
-                  label="Residential or office address"
+                  label="Residential address"
                   icon={(color, size) => <MapPin color={color} size={size} />}
                   placeholder="14 Awolowo Road, Ikoyi, Lagos"
                   value={form.guarantorAddress}
