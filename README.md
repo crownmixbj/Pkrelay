@@ -159,3 +159,30 @@ at sign-up, and two behaviours depend on it: offering a resend to the right
 address when a token has expired, and noticing that the link belongs to somebody
 other than the account already signed in on that device. See
 `src/lib/email-confirmation.ts`.
+
+### Address suggestions on the quote form
+
+`Get a Quick Quote` accepts a typed address and resolves it to one of the 37
+cities the pricing knows. Suggestions come from Google Places through the
+`places-lookup` edge function:
+
+```
+supabase secrets set GOOGLE_PLACES_KEY=…
+supabase functions deploy places-lookup
+```
+
+⚠ The key stays server-side, as the Dojah secret does. A Places key in the
+client bundle is one anybody can spend, and on a phone it cannot be
+referrer-restricted — Autocomplete bills per session, so the failure mode is a
+bill nobody notices for a month rather than an outage somebody reports in an
+hour.
+
+Without the secret the function answers `{ configured: false }` and the form
+shows the city picker instead, so a deployment with no key still quotes. The
+same fallback covers a network failure, Google rate-limiting, and an address in
+a state LOCI does not serve.
+
+⚠ The address does not change the price. `estimateFee` charges by band — same
+city or not — with no distance term, so the address chooses the city and then
+travels to the booking form as something a driver can find. If you want distance
+to affect the fare, that is a pricing change, not a form change.

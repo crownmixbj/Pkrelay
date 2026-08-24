@@ -4,18 +4,11 @@ import { Platform, StyleSheet, Text, View } from 'react-native';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Dropdown } from '@/components/ui/dropdown';
+import { AddressField } from '@/components/ui/address-field';
 import { Field } from '@/components/ui/field';
 import { Radius, Spacing, Typography, font } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import {
-  CITIES,
-  cityHubLabel,
-  DEFAULT_CITY,
-  estimateFee,
-  formatNaira,
-  type City,
-} from '@/store/bookings';
+import { DEFAULT_CITY, estimateFee, formatNaira, type City } from '@/store/bookings';
 
 export type QuickQuoteProps = {
   /** Hands the chosen route and weight to the booking form. */
@@ -33,6 +26,20 @@ export function QuickQuote({ onBook }: QuickQuoteProps) {
   const [origin, setOrigin] = useState<City>(DEFAULT_CITY);
   const [destination, setDestination] = useState<City>('Lagos');
   const [weight, setWeight] = useState('2');
+
+  /*
+   * The addresses behind the two cities, when they were typed rather than
+   * picked.
+   *
+   * ⚠ Not used in the estimate, and that is not an oversight.
+   *
+   *   `estimateFee` prices by band — same city or not — with no distance term,
+   *   so a street address cannot make this number more accurate. What it does
+   *   is travel to the booking form, where it becomes an address a driver can
+   *   actually find, instead of a city and an area.
+   */
+  const [originAddress, setOriginAddress] = useState<string | null>(null);
+  const [destinationAddress, setDestinationAddress] = useState<string | null>(null);
 
   const deliveryType = origin === destination ? 'local' : 'interstate';
   const parsedWeight = Number(weight);
@@ -73,28 +80,24 @@ export function QuickQuote({ onBook }: QuickQuoteProps) {
 
       <View style={styles.controls}>
         <View style={styles.control}>
-          <Dropdown
-            label="Origin city"
-            options={CITIES}
-            searchable
-            searchPlaceholder="Search city or state"
-            selected={origin}
-            onSelect={setOrigin}
-            renderLabel={cityHubLabel}
-            compact
+          <AddressField
+            label="Collect from"
+            city={origin}
+            onSelect={({ city, address }) => {
+              setOrigin(city);
+              setOriginAddress(address);
+            }}
             icon={(color, size) => <Building2 color={color} size={size} />}
           />
         </View>
         <View style={styles.control}>
-          <Dropdown
-            label="Destination city"
-            options={CITIES}
-            searchable
-            searchPlaceholder="Search city or state"
-            selected={destination}
-            onSelect={setDestination}
-            renderLabel={cityHubLabel}
-            compact
+          <AddressField
+            label="Deliver to"
+            city={destination}
+            onSelect={({ city, address }) => {
+              setDestination(city);
+              setDestinationAddress(address);
+            }}
             icon={(color, size) => <Navigation color={color} size={size} />}
           />
         </View>
@@ -132,6 +135,14 @@ export function QuickQuote({ onBook }: QuickQuoteProps) {
             originCity: origin,
             destinationCity: destination,
             weight: hasWeight ? String(parsedWeight) : '',
+            /*
+              Carried through only when an address was actually typed. The
+              booking form treats an empty string as "nothing chosen", so
+              sending one for a city picked from the list would look like a
+              door address the sender never gave.
+            */
+            ...(originAddress ? { pickupAddress: originAddress } : {}),
+            ...(destinationAddress ? { dropoffAddress: destinationAddress } : {}),
           })
         }
       />
