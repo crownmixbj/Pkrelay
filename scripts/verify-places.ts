@@ -277,7 +277,9 @@ check(
 );
 check(
   'and that probe costs nothing',
-  store.includes("fetchSuggestions('a', 'probe')") && fn.includes('input.length < 2'),
+  /* The third argument is the cooldown bypass, added with the circuit
+     breaker — asserted in verify-cors, matched loosely here. */
+  /fetchSuggestions\('a', 'probe'/.test(store) && fn.includes('input.length < 2'),
   'the function refuses a one-character input before it builds a Google request',
 );
 check(

@@ -49,11 +49,52 @@ export type SuggestionResult = {
   unavailable: Unavailable | null;
 };
 
+/**
+ * How long a known outage is believed before trying again.
+ *
+ * ⚠ Long enough to stop a storm, short enough to notice a fix.
+ *
+ *   A minute means somebody who deploys the function waits at most a minute
+ *   before the app picks it up, without a reload. Making it permanent for the
+ *   session would be tidier for us and worse for them.
+ */
+const OUTAGE_COOLDOWN_MS = 60_000;
+
+let outage: { reason: Unavailable; until: number } | null = null;
+
+function knownOutage(): Unavailable | null {
+  if (!outage) return null;
+  if (Date.now() >= outage.until) {
+    outage = null;
+    return null;
+  }
+  return outage.reason;
+}
+
 export async function fetchSuggestions(
   input: string,
   sessionToken: string,
+  /** The deployment panel needs the real state, not a remembered one. */
+  options: { ignoreCooldown?: boolean } = {},
 ): Promise<SuggestionResult> {
   if (!isSupabaseConfigured) return { suggestions: [], unavailable: 'not-configured' };
+
+  /*
+   * ⚠ Stop asking something that has already said no.
+   *
+   *   Without this, a deployment where lookup is broken — no key, function not
+   *   deployed, CORS refusing the preflight — gets one failed request per
+   *   keystroke per field, forever. That is a console full of red for anybody
+   *   debugging something else, a delay on every character while the failure
+   *   round-trips, and on a metered connection somebody else's data.
+   *
+   *   The field's behaviour is identical either way: it already treats an
+   *   unavailable lookup as "carry on typing". This only stops the asking.
+   */
+  if (!options.ignoreCooldown) {
+    const remembered = knownOutage();
+    if (remembered) return { suggestions: [], unavailable: remembered };
+  }
 
   try {
     const { data, error } = await supabase.functions.invoke('places-lookup', {
@@ -69,7 +110,7 @@ export async function fetchSuggestions(
      *   the deployment panel — which probes the function directly — is where
      *   the difference is resolved.
      */
-    if (error) return { suggestions: [], unavailable: 'unreachable' };
+    if (error) return remember('unreachable');
 
     const payload = (data ?? {}) as {
       configured?: boolean;
@@ -77,25 +118,33 @@ export async function fetchSuggestions(
       error?: string;
     };
 
-    if (payload.configured === false) {
-      return { suggestions: [], unavailable: 'not-configured' };
-    }
+    if (payload.configured === false) return remember('not-configured');
 
     /*
      * Google refused: out of quota, key restricted, billing lapsed. Separated
      * from the two above because it is the one that is nobody's fault here and
      * usually fixes itself.
      */
-    if (payload.error) return { suggestions: [], unavailable: 'refused' };
+    if (payload.error) return remember('refused');
 
     /*
      * An empty list from a working lookup is available — it means "nowhere
      * matched", which is worth saying rather than hiding the field for.
+     *
+     * It answered, so whatever was wrong before is not wrong now: any
+     * remembered outage is cleared rather than left to time out.
      */
+    outage = null;
     return { suggestions: payload.suggestions ?? [], unavailable: null };
   } catch {
-    return { suggestions: [], unavailable: 'unreachable' };
+    return remember('unreachable');
   }
+}
+
+/** Records the outage and answers with it, so callers read one shape. */
+function remember(reason: Unavailable): SuggestionResult {
+  outage = { reason, until: Date.now() + OUTAGE_COOLDOWN_MS };
+  return { suggestions: [], unavailable: reason };
 }
 
 /** What to tell somebody whose address field just turned into a dropdown. */
@@ -119,7 +168,7 @@ export function unavailableReason(reason: Unavailable): string {
  *   That is what makes it safe to run from a diagnostics panel on every load.
  */
 export async function probePlacesLookup(): Promise<Unavailable | null> {
-  const { unavailable } = await fetchSuggestions('a', 'probe');
+  const { unavailable } = await fetchSuggestions('a', 'probe', { ignoreCooldown: true });
   return unavailable;
 }
 
@@ -135,6 +184,13 @@ export async function probePlacesLookup(): Promise<Unavailable | null> {
  */
 export async function measureDistance(from: Point, to: Point): Promise<Distance> {
   const estimated: Distance = { km: estimateRoadKm(from, to), source: 'estimated' };
+
+  /*
+   * The same endpoint that suggestions use. If it is known to be down, the
+   * straight-line estimate is what this would return anyway — so return it now
+   * rather than after a failed round trip on every address change.
+   */
+  if (knownOutage()) return estimated;
 
   try {
     const { data, error } = await supabase.functions.invoke('places-lookup', {

@@ -26,15 +26,11 @@
  *   supabase functions deploy places-lookup
  */
 
+import { json, preflight } from '../_shared/cors.ts';
+
 const env = (key: string) => Deno.env.get(key) ?? null;
 
 const PLACES_KEY = env('GOOGLE_PLACES_KEY') ?? '';
-
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  });
 
 type Suggestion = {
   placeId: string;
@@ -44,6 +40,17 @@ type Suggestion = {
 };
 
 Deno.serve(async (request: Request) => {
+  /*
+   * ⚠ Before the method check, not after.
+   *
+   *   This function used to answer `OPTIONS` with the 405 below, which is a
+   *   refusal the browser reads as "this origin may not call you". Every
+   *   suggestion request from the web build was blocked before it was sent,
+   *   and the function logged nothing because nothing arrived.
+   */
+  const options = preflight(request);
+  if (options) return options;
+
   if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
   /*

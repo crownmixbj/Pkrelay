@@ -35,6 +35,8 @@
  * It reuses the same DOJAH_* secrets as `verify-liveness`.
  */
 
+import { json, preflight } from '../_shared/cors.ts';
+
 import { readCredentials, verifyNinSelfie } from '../verify-liveness/dojah.ts';
 
 const env = (key: string) => Deno.env.get(key) ?? null;
@@ -42,11 +44,6 @@ const env = (key: string) => Deno.env.get(key) ?? null;
 const SUPABASE_URL = env('SUPABASE_URL') ?? '';
 const SERVICE_KEY = env('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  });
 
 async function callerId(authHeader: string | null): Promise<string | null> {
   if (!authHeader) return null;
@@ -80,6 +77,14 @@ function toBase64(bytes: Uint8Array): string {
 }
 
 Deno.serve(async (request: Request) => {
+  /*
+   * ⚠ The preflight is answered before anything else, including the method
+   *   check — which would otherwise refuse it with a 405 and leave the browser
+   *   reporting a CORS block for a function that is deployed and healthy.
+   */
+  const options = preflight(request);
+  if (options) return options;
+
   if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
   const userId = await callerId(request.headers.get('Authorization'));

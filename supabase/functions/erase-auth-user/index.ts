@@ -30,19 +30,19 @@
  *   rather than trusting the deployment order.
  */
 
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, content-type',
-};
-
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { ...CORS, 'Content-Type': 'application/json' },
-  });
+/*
+ * ⚠ This function had CORS and was still blocked on web.
+ *
+ *   It allowed `authorization, content-type`. supabase-js also sends `apikey`
+ *   and `x-client-info`, and a preflight is refused if *any* requested header
+ *   is missing from the list — so the partial list failed exactly as no list
+ *   would have. The shared module is now the single place that stays correct.
+ */
+import { json, preflight } from '../_shared/cors.ts';
 
 Deno.serve(async (request: Request) => {
-  if (request.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+  const options = preflight(request);
+  if (options) return options;
 
   const url = Deno.env.get('SUPABASE_URL');
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
