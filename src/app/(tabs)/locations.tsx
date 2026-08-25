@@ -313,7 +313,7 @@ function HubHours({ hubs }: { hubs: Hub[] }) {
               right now; guessing one from a string we could not read would be
               worse than staying quiet.
             */}
-            {label && (
+            {!!label && (
               <Badge
                 label={label}
                 tone={state.known && state.open ? 'success' : 'neutral'}

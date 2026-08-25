@@ -583,6 +583,112 @@ check(
   'including the children, which were only ever reachable from a submenu',
 );
 
+// ------------------------------- no empty string can reach a <View> --------
+
+/*
+ * ⚠ `cond && <JSX/>` renders the *value* of `cond` when it is falsy-but-not-false.
+ *
+ *   `'' && <Text/>` is `''`, not `false`. React renders that as a text node,
+ *   and react-native-web refuses a text node inside a `<View>`:
+ *
+ *     Unexpected text node: . A text node cannot be a child of a <View>.
+ *
+ *   The reported node is the empty string, so the error names the offending
+ *   text and the offending text is nothing — which is what made it hard to
+ *   place. It appeared on the selfie card in the window between the photo
+ *   being banked and the check answering, when `note` was `''`.
+ *
+ *   The rule below is textual and therefore blunt: these are the names this
+ *   codebase gives to strings, and a bare `&&` guard on one of them is the
+ *   shape of the bug. A boolean guard — `!!x`, `Boolean(x)`, `x.length > 0`,
+ *   `x !== null` — is always available and always correct.
+ */
+const STRINGY = [
+  'note',
+  'error',
+  'notice',
+  'label',
+  'joined',
+  'hint',
+  'message',
+  'reason',
+  'detail',
+  'subtitle',
+  'value',
+  'query',
+  'address',
+];
+
+/*
+ * Walked explicitly rather than with `readdirSync(..., { recursive: true })` —
+ * this project's Node types do not carry that option, and esbuild would have
+ * bundled it happily while `tsc` refused. The suite passed alone and the
+ * typecheck at the end of `verify` is what caught it.
+ */
+function tsxFilesUnder(dir: string): string[] {
+  const found: string[] = [];
+
+  for (const entry of readdirSync(join(ROOT, dir), { withFileTypes: true })) {
+    const path = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) found.push(...tsxFilesUnder(path));
+    else if (entry.name.endsWith('.tsx')) found.push(path);
+  }
+
+  return found;
+}
+
+const screenFiles = tsxFilesUnder('src');
+
+const offenders: string[] = [];
+
+for (const file of screenFiles) {
+  const source = code(read(file));
+  for (const name of STRINGY) {
+    /*
+     * `{name && ` opening a JSX expression. Anything already boolean-ised —
+     * `!!note`, `note.length`, `note !== null` — does not match, because the
+     * character before the name is `!`, or what follows is `.` or a comparison.
+     */
+    const pattern = new RegExp(`\\{\\s*${name}\\s*&&([\\s\\S]{0,60})`, 'g');
+
+    for (const match of source.matchAll(pattern)) {
+      /*
+       * ⚠ A ternary is safe and this rule flagged one.
+       *
+       *   `{label && next ? <A/> : <B/>}` uses the `&&` as a *condition*, so
+       *   the expression always evaluates to one branch or the other and no
+       *   string is ever rendered. Only a bare `&&` guard — where the falsy
+       *   value itself becomes the output — is the bug.
+       *
+       *   Detected by looking for a `?` before the first `<` or `(`, which is
+       *   where a ternary's question mark sits and where a guard's JSX starts.
+       *   Blunt, and deliberately so: a false negative here is a bug that
+       *   ships, a false positive is a minute spent reading one line.
+       */
+      const head = match[1].split(/[<(]/)[0];
+      if (head.includes('?')) continue;
+
+      offenders.push(`${file}: {${name} && …}`);
+    }
+  }
+}
+
+check(
+  'no JSX conditional is guarded on a bare string',
+  offenders.length === 0,
+  `${offenders.join('\n       ')}\n       an empty string is rendered, not skipped — use !!x or x.length > 0`,
+);
+
+/*
+ * And the specific one that broke, pinned so a refactor cannot quietly undo it.
+ */
+const selfieCard = code(read('src/components/ui/live-selfie-card.tsx'));
+check(
+  'the selfie note is guarded on a boolean',
+  selfieCard.includes("captured !== null && (note ?? '').length > 0"),
+  'this rendered the empty note as a text node for the moment before the check answered',
+);
+
 if (failures > 0) {
   console.error(`\n${failures} assertion(s) failed.`);
   process.exit(1);

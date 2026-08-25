@@ -159,7 +159,22 @@ export function LiveSelfieCard({
 
       {!captured && <Text style={[styles.body, { color: theme.textSecondary }]}>{copy.body}</Text>}
 
-      {captured && note && note.length > 0 && (
+      {/*
+        ⚠ `&&` on a string yields the string, not `false`.
+        
+          This read `{captured && note && note.length > 0 && (…)}`. When `note`
+          is `''` — which it is for the moment between the photo being banked
+          and the check answering — the chain short-circuits *on the empty
+          string* and returns it. React renders that as a text node, and
+          react-native-web refuses a text node inside a `<View>`:
+          "Unexpected text node: . A text node cannot be a child of a <View>".
+        
+          The reported node is empty, which is what made it hard to place: the
+          error names the offending text and the offending text is nothing.
+        
+          Every guard here is now a boolean.
+      */}
+      {captured !== null && (note ?? '').length > 0 && (
         <Text style={[styles.body, { color: theme.successOnSoft }]}>{note}</Text>
       )}
 

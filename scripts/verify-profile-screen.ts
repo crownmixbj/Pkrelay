@@ -207,7 +207,13 @@ check(
 
 check(
   'a missing join date is omitted rather than guessed',
-  details.includes('if (!createdAt) return null') && code.includes('{joined && ('),
+  /*
+   * `{joined && (` became `{!!joined && (` — a bare string guard renders the
+   * empty string as a text node, which react-native-web refuses inside a
+   * `<View>`. The rule this assertion cared about is unchanged: the row is
+   * conditional on there being a date at all.
+   */
+  details.includes('if (!createdAt) return null') && /\{!!joined && \(/.test(code),
   '"Member since January 1970" is what a silent fallback to zero produces',
 );
 check(

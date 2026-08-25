@@ -393,7 +393,7 @@ function ProfileHeader({
           {name}
         </Text>
         {/* Absent rather than guessed — see `memberSince`. */}
-        {joined && (
+        {!!joined && (
           <Text style={[styles.meta, { color: theme.textMuted }]}>Member since {joined}</Text>
         )}
         <VerificationBadge status={identity} />
@@ -644,7 +644,7 @@ function InlineEditor({
         compact
       />
       {/* Said before saving, not after — see `saveOwnDetails`. */}
-      {notice && <Text style={[styles.notice, { color: theme.warning }]}>{notice}</Text>}
+      {!!notice && <Text style={[styles.notice, { color: theme.warning }]}>{notice}</Text>}
       <View style={styles.editorActions}>
         <Button label="Cancel" variant="secondary" onPress={onCancel} />
         <Button label={saving ? 'Saving…' : 'Save'} onPress={onSave} disabled={saving} />
