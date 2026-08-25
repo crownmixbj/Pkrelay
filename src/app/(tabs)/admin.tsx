@@ -39,7 +39,9 @@ import { FontSize, MaxContentWidth, Radius, Spacing, Typography, font } from '@/
 import { useTheme } from '@/hooks/use-theme';
 import {
   fetchAllApplications,
+  isAwaitingReview,
   isOverdue,
+  subscribeToApplications,
   reviewApplication,
   REVIEW_WORKING_DAYS,
   STATUS_LABELS,
@@ -86,16 +88,47 @@ function parseAdminSection(value: unknown): Section {
   return SECTIONS.includes(value as Section) ? (value as Section) : 'overview';
 }
 
-const FILTERS = ['pending', 'under_review', 'approved', 'rejected', 'all'] as const;
+/*
+ * ⚠ The first filter is a *set*, not a status.
+ *
+ *   `pending` and `ready_for_review` both mean "an admin's to pick up" — the
+ *   first is every application submitted before guarantor verification existed,
+ *   the second is every one submitted since. A chip literally labelled
+ *   `pending` would have shown the old half of the queue and silently hidden
+ *   the new half, which grows every day. So the chip is "Awaiting review" and
+ *   it matches both, through `isAwaitingReview`.
+ *
+ * ⚠ And "Waiting on guarantor" is its own chip rather than being buried in All.
+ *
+ *   Those applications are not the queue's work, but somebody has to be able to
+ *   see them — to notice that four applications this week have been sitting on
+ *   an unopened email, which is a product problem rather than a staffing one.
+ */
+const FILTERS = [
+  'awaiting',
+  'pending_guarantor',
+  'under_review',
+  'approved',
+  'rejected',
+  'all',
+] as const;
 type Filter = (typeof FILTERS)[number];
 
 const FILTER_LABELS: Record<Filter, string> = {
-  pending: 'Pending',
+  awaiting: 'Awaiting review',
+  pending_guarantor: 'Waiting on guarantor',
   under_review: 'In review',
   approved: 'Approved',
   rejected: 'Rejected',
   all: 'All',
 };
+
+/** Which applications a chip shows. One place, so a chip cannot mean two things. */
+function matchesFilter(status: ApplicationStatus, filter: Filter): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'awaiting') return isAwaitingReview(status);
+  return status === filter;
+}
 
 /**
  * Driver application review.
@@ -124,7 +157,7 @@ export default function AdminScreen() {
   const [applications, setApplications] = useState<DriverApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<Filter>('pending');
+  const [filter, setFilter] = useState<Filter>('awaiting');
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -146,11 +179,47 @@ export default function AdminScreen() {
     void load();
   }, [isAdmin, load]);
 
+  /*
+   * ⚠ The queue keeps up with things nobody here did.
+   *
+   *   Every other change to an application is made by the admin looking at this
+   *   screen, so the list being a snapshot was fine — you saw the result of your
+   *   own click. A guarantor completing their verification is different: it
+   *   happens when a stranger opens an email, at no moment anybody here can
+   *   predict, and it moves an application into this queue. Without this, it
+   *   sits unseen for as long as the tab stays open.
+   */
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    return subscribeToApplications((changed) => {
+      setApplications((current) => {
+        const at = current.findIndex((a) => a.id === changed.id);
+        /*
+         * A brand-new application arrives as an INSERT — it belongs at the top,
+         * where the list is already sorted newest-first.
+         */
+        if (at === -1) return [changed, ...current];
+
+        const next = [...current];
+        next[at] = changed;
+        return next;
+      });
+    });
+  }, [isAdmin]);
+
   const counts = useMemo(() => {
     const by = (status: ApplicationStatus) =>
       applications.filter((a) => a.status === status).length;
     return {
-      pending: by('pending'),
+      /*
+       * ⚠ Both, added together.
+       *
+       *   Counting only `pending` would show a shrinking number while the real
+       *   queue grew — the most misleading shape a backlog metric can take.
+       */
+      awaiting: applications.filter((a) => isAwaitingReview(a.status)).length,
+      waitingOnGuarantor: by('pending_guarantor'),
       under_review: by('under_review'),
       approved: by('approved'),
       rejected: by('rejected'),
@@ -159,7 +228,7 @@ export default function AdminScreen() {
   }, [applications]);
 
   const visible = useMemo(
-    () => (filter === 'all' ? applications : applications.filter((a) => a.status === filter)),
+    () => applications.filter((a) => matchesFilter(a.status, filter)),
     [applications, filter],
   );
 
@@ -268,7 +337,15 @@ export default function AdminScreen() {
           <>
             {/* ---------- Queue health ---------- */}
             <View style={styles.stats}>
-              <Stat label="Awaiting review" value={counts.pending} tone="warning" />
+              <Stat label="Awaiting review" value={counts.awaiting} tone="warning" />
+              {/*
+                ⚠ Shown next to the backlog, and deliberately not counted in it.
+
+                  These are held on somebody outside LOCI. Adding more reviewers
+                  clears none of them, so folding them into "Awaiting review"
+                  would be a number that asks for the wrong response.
+              */}
+              <Stat label="Waiting on guarantor" value={counts.waitingOnGuarantor} tone="neutral" />
               <Stat label="In review" value={counts.under_review} tone="primary" />
               <Stat label="Approved" value={counts.approved} tone="success" />
               <Stat
@@ -302,9 +379,9 @@ export default function AdminScreen() {
               <Card style={styles.emptyCard}>
                 <EmptyState
                   icon={(color, size) => <CircleCheckBig color={color} size={size} />}
-                  title={filter === 'pending' ? 'Nothing waiting' : 'No applications here'}
+                  title={filter === 'awaiting' ? 'Nothing waiting' : 'No applications here'}
                   message={
-                    filter === 'pending'
+                    filter === 'awaiting'
                       ? 'Every application has been looked at. New ones appear here as they arrive.'
                       : 'Try another filter.'
                   }

@@ -1,4 +1,6 @@
 import {
+  isAwaitingReview,
+  isWaitingOnGuarantor,
   REVIEW_WORKING_DAYS,
   workingDaysSince,
   type DriverApplication,
@@ -50,8 +52,24 @@ export function reviewTimeline(
 ): TimelineEntry[] {
   const { status } = application;
   const decided = status === 'approved' || status === 'rejected';
+  const onGuarantor = isWaitingOnGuarantor(status);
   const waiting = workingDaysSince(application.submittedAt, now);
-  const overdue = !decided && waiting > REVIEW_WORKING_DAYS;
+
+  /*
+   * ⚠ Belt-and-braces, and honestly labelled as such.
+   *
+   *   What actually keeps "chase us" away from a driver waiting on a guarantor
+   *   is the branch order below: the guarantor case is tested before the
+   *   overdue case and returns different copy. Removing this line changes
+   *   nothing today — proved by mutating it and watching the suite stay green.
+   *
+   *   It stays because the branches below are copy, and copy gets reordered.
+   *   The claim it guards against is a real one: telling somebody LOCI is past
+   *   the seven working days it promised, when the clock has not started and
+   *   support can do nothing, points them away from the one thing that would
+   *   help. The clock starts when the queue takes it.
+   */
+  const overdue = !decided && !onGuarantor && waiting > REVIEW_WORKING_DAYS;
 
   const entries: TimelineEntry[] = [
     {
@@ -61,18 +79,51 @@ export function reviewTimeline(
       at: application.submittedAt,
       tone: 'done',
     },
-    {
-      key: 'review',
-      title: status === 'pending' ? 'Waiting for a reviewer' : 'Document review',
-      detail: decided
-        ? 'Your documents were checked.'
+  ];
+
+  /*
+   * ⚠ A step of its own, and only for applications that actually have one.
+   *
+   *   The driver asked somebody for a favour and otherwise has no way to know
+   *   whether it happened. Folding it into "Document review" would leave them
+   *   watching a bar that is not moving for a reason nothing on screen explains.
+   *
+   *   But it is skipped entirely when there is no guarantor email, because
+   *   applications submitted before guarantor verification existed never had an
+   *   invitation. Showing them "Guarantor confirmed" would be this file
+   *   inventing an event that never happened — the exact thing its own header
+   *   says makes a status page worthless.
+   */
+  if (application.guarantorEmail) {
+    entries.push({
+      key: 'guarantor',
+      title: onGuarantor ? 'Waiting on your guarantor' : 'Guarantor confirmed',
+      detail: onGuarantor
+        ? 'We have emailed them a link to confirm and verify themselves. Nothing else is needed from you — you can re-send it if they did not get it.'
+        : 'They confirmed and verified themselves.',
+      at: null,
+      tone: onGuarantor ? 'current' : 'done',
+    });
+  }
+
+  entries.push({
+    key: 'review',
+    title: onGuarantor
+      ? 'Document review'
+      : isAwaitingReview(status)
+        ? 'Waiting for a reviewer'
+        : 'Document review',
+    detail: decided
+      ? 'Your documents were checked.'
+      : onGuarantor
+        ? `Starts once your guarantor confirms. We aim to decide within ${REVIEW_WORKING_DAYS} working days after that.`
         : overdue
           ? `${waiting} working days so far — past the ${REVIEW_WORKING_DAYS} we promised. Chase us if you have not heard.`
           : `${waiting} working day${waiting === 1 ? '' : 's'} so far. We aim to decide within ${REVIEW_WORKING_DAYS}.`,
-      at: null,
-      tone: decided ? 'done' : 'current',
-    },
-  ];
+    at: null,
+    /* Not started yet while a guarantor is outstanding. */
+    tone: decided ? 'done' : onGuarantor ? 'pending' : 'current',
+  });
 
   if (decided) {
     entries.push({

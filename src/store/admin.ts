@@ -1,5 +1,6 @@
 import { errorMessage } from '@/lib/errors';
 import { supabase } from '@/lib/supabase';
+import type { ApplicationStatus } from '@/store/driver-applications';
 
 /**
  * The Admin area's data access.
@@ -216,7 +217,17 @@ export async function erasePerson(targetId: string, reason?: string): Promise<Er
  */
 export type ApplicationSummary = {
   userId: string;
-  status: 'pending' | 'under_review' | 'approved' | 'rejected';
+  /*
+   * ⚠ The shared type, not a second hand-written union.
+   *
+   *   This listed the four statuses inline, and adding two to
+   *   `ApplicationStatus` left it silently wrong — a `ready_for_review` row
+   *   would have been cast to a value this type says is impossible, and
+   *   anything switching on it would have fallen through. Two hand-written
+   *   lists of the same thing always drift; the compiler only catches it when
+   *   they are the same list.
+   */
+  status: ApplicationStatus;
   reference: string;
   submittedAt: string;
 };

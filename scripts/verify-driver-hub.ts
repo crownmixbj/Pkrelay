@@ -239,13 +239,43 @@ const NOW = new Date('2026-08-10T09:00:00Z');
 
 // --- the review steps ---
 
+/*
+ * ⚠ Looked up by key, not by index.
+ *
+ *   These read `pending[1]` and `pending[2]`, and every one of them broke when
+ *   a guarantor step was inserted at position one — six failures describing
+ *   nothing that was actually wrong. The keys are stable; the positions were
+ *   never a guarantee.
+ */
+const step = (entries: ReturnType<typeof reviewTimeline>, key: string) => {
+  const found = entries.find((entry) => entry.key === key);
+  if (!found) throw new Error(`no timeline step "${key}"`);
+  return found;
+};
+
 const pending = reviewTimeline(base, NOW);
-check('a pending application shows three steps', pending.length === 3, String(pending.length));
-check('submission is complete', pending[0].tone === 'done');
-check('the decision is pending, not claimed', pending[2].tone === 'pending');
+check('a current application shows four steps', pending.length === 4, String(pending.length));
+
+/*
+ * ⚠ And a legacy one shows three.
+ *
+ *   Applications submitted before guarantor verification existed have no
+ *   guarantor email and never had an invitation. The timeline skips that step
+ *   for them rather than claiming a confirmation that never happened — the
+ *   fabrication its own header warns against.
+ */
+const legacy = reviewTimeline({ ...base, guarantorEmail: '' }, NOW);
+check('a legacy application shows three', legacy.length === 3, String(legacy.length));
+check(
+  'and no guarantor step is invented for it',
+  !legacy.some((entry) => entry.key === 'guarantor'),
+  'there was never an invitation; showing "confirmed" would be a fabrication',
+);
+check('submission is complete', step(pending, 'submitted').tone === 'done');
+check('the decision is pending, not claimed', step(pending, 'decision').tone === 'pending');
 check(
   'the decision row has no timestamp',
-  pending[2].at === null,
+  step(pending, 'decision').at === null,
   'a date on an event that has not happened is a fabrication',
 );
 
@@ -253,8 +283,11 @@ const approved = reviewTimeline(
   { ...base, status: 'approved', reviewedAt: '2026-08-06T10:00:00Z' },
   NOW,
 );
-check('an approval is marked done', approved[2].tone === 'done');
-check('an approval carries its timestamp', approved[2].at === '2026-08-06T10:00:00Z');
+check('an approval is marked done', step(approved, 'decision').tone === 'done');
+check(
+  'an approval carries its timestamp',
+  step(approved, 'decision').at === '2026-08-06T10:00:00Z',
+);
 
 const rejected = reviewTimeline(
   {
@@ -265,11 +298,11 @@ const rejected = reviewTimeline(
   },
   NOW,
 );
-check('a rejection is not shown as success', rejected[2].tone === 'failed');
+check('a rejection is not shown as success', step(rejected, 'decision').tone === 'failed');
 check(
   "the reviewer's note is shown rather than a generic line",
-  rejected[2].detail === 'Blurry licence.',
-  rejected[2].detail,
+  step(rejected, 'decision').detail === 'Blurry licence.',
+  step(rejected, 'decision').detail,
 );
 
 /*
@@ -277,14 +310,14 @@ check(
  * working days have passed — inside the promise. Pushing the submission back to
  * Jul 20 puts it well outside.
  */
-const onTime = reviewTimeline(base, NOW)[1];
+const onTime = step(reviewTimeline(base, NOW), 'review');
 check(
   'an in-window application does not cry overdue',
   !onTime.detail.includes('past the'),
   onTime.detail,
 );
 
-const late = reviewTimeline({ ...base, submittedAt: '2026-07-20T09:00:00Z' }, NOW)[1];
+const late = step(reviewTimeline({ ...base, submittedAt: '2026-07-20T09:00:00Z' }, NOW), 'review');
 check(
   'an overdue application says so and says to chase',
   late.detail.includes(`past the ${REVIEW_WORKING_DAYS}`) && late.detail.includes('Chase'),

@@ -8,7 +8,53 @@ import { supabase } from '@/lib/supabase';
  * account whose profile has `is_admin`. The client code below is therefore a
  * convenience, not the security boundary — see `supabase/02_driver_applications.sql`.
  */
-export type ApplicationStatus = 'pending' | 'under_review' | 'approved' | 'rejected';
+export type ApplicationStatus =
+  /**
+   * ⚠ Submitted, but waiting on somebody outside LOCI.
+   *
+   *   The guarantor has been emailed a link and has not used it. No admin can
+   *   act on this and no amount of staffing clears it, which is why it is kept
+   *   apart from everything below rather than folded into `pending`.
+   */
+  | 'pending_guarantor'
+  /** The guarantor has verified. The queue owns it. */
+  | 'ready_for_review'
+  /**
+   * ⚠ Also the queue's, and only still distinct for historical reasons.
+   *
+   *   Every application submitted before guarantor verification existed is
+   *   `pending`, as is any submitted without a guarantor email. To an admin it
+   *   means exactly what `ready_for_review` means. Anything deciding whether
+   *   somebody has work to do must treat the two identically — see
+   *   `isAwaitingReview`, which exists so that decision is made once.
+   */
+  | 'pending'
+  | 'under_review'
+  | 'approved'
+  | 'rejected';
+
+/**
+ * The statuses that are an admin's to act on.
+ *
+ * ⚠ The single most important line in this file.
+ *
+ *   `pending` and `ready_for_review` are the same thing to a reviewer. A filter,
+ *   a count or a query that knows only one of them shows half the queue — and
+ *   the half it hides is the *new* half, because every application submitted
+ *   from now on arrives as `ready_for_review`. The queue would look emptier
+ *   than it is, which is the worst possible direction for that error.
+ */
+export const AWAITING_REVIEW: readonly ApplicationStatus[] = ['pending', 'ready_for_review'];
+
+/** True when the application is sitting in the review queue. */
+export function isAwaitingReview(status: ApplicationStatus): boolean {
+  return AWAITING_REVIEW.includes(status);
+}
+
+/** True when nobody at LOCI can move it — it is held on a third party. */
+export function isWaitingOnGuarantor(status: ApplicationStatus): boolean {
+  return status === 'pending_guarantor';
+}
 
 /** How long the copy promises a review takes. Used to flag overdue queues. */
 export const REVIEW_WORKING_DAYS = 7;
@@ -285,10 +331,30 @@ export function workingDaysSince(iso: string, now: Date = new Date()): number {
 
 export function isOverdue(application: DriverApplication, now: Date = new Date()): boolean {
   if (application.status === 'approved' || application.status === 'rejected') return false;
+
+  /*
+   * ⚠ An application held on a guarantor is not a backlog.
+   *
+   *   `isOverdue` feeds the "past N days" figure an ops team is judged on and
+   *   staffs against. An application nobody at LOCI is permitted to touch,
+   *   ageing because a stranger has not opened an email, would inflate that
+   *   number with work that does not exist — and hiring against it would fix
+   *   nothing. The driver's own lever for this is `reinvite_guarantor`.
+   */
+  if (isWaitingOnGuarantor(application.status)) return false;
+
   return workingDaysSince(application.submittedAt, now) > REVIEW_WORKING_DAYS;
 }
 
 export const STATUS_LABELS: Record<ApplicationStatus, string> = {
+  /*
+   * ⚠ Says who it is waiting on, because that is the only useful thing about it.
+   *
+   *   "Pending" would put it beside applications an admin can pick up, and the
+   *   first thing anybody seeing it needs to know is that they cannot.
+   */
+  pending_guarantor: 'Waiting on guarantor',
+  ready_for_review: 'Pending review',
   pending: 'Pending review',
   under_review: 'Under review',
   approved: 'Approved',
@@ -309,6 +375,45 @@ export const STATUS_LABELS: Record<ApplicationStatus, string> = {
  *
  * Returns an unsubscribe function.
  */
+/**
+ * Live updates to *every* application, for the admin queue.
+ *
+ * ⚠ Added because a guarantor completing is not something an admin does.
+ *
+ *   Every other status change on this table is made by the admin looking at
+ *   the screen, so a one-shot fetch was enough — you saw the result of your own
+ *   click. `ready_for_review` arrives from a stranger clicking a link in an
+ *   email, at no predictable moment. Without this the queue is only as current
+ *   as the last page load, and an application can sit unseen for as long as
+ *   somebody leaves the tab open.
+ *
+ * ⚠ Unfiltered, which is safe only because of who can subscribe.
+ *
+ *   Realtime respects row-level security, so this yields nothing to an account
+ *   that cannot already select the table. The admin policy is the boundary; the
+ *   absence of a filter here is not.
+ */
+export function subscribeToApplications(
+  onChange: (application: DriverApplication) => void,
+): () => void {
+  const channel = supabase
+    .channel('driver_applications:admin')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'driver_applications' },
+      (payload) => {
+        const row = payload.new as Row | null;
+        /* DELETE payloads carry no `new`; nothing to report. */
+        if (row && Object.keys(row).length > 0) onChange(rowToApplication(row));
+      },
+    )
+    .subscribe();
+
+  return () => {
+    void supabase.removeChannel(channel);
+  };
+}
+
 export function subscribeToMyApplication(
   userId: string,
   onChange: (application: DriverApplication) => void,
@@ -363,6 +468,26 @@ export function statusChangeMessage(
         message: 'Someone is looking at your application now.',
         tone: 'info',
       };
+    case 'ready_for_review':
+      /*
+       * ⚠ The one moment the driver learns their guarantor came through.
+       *
+       *   They asked somebody for a favour and then had no way of knowing
+       *   whether it happened. This is the answer, and it is the only place
+       *   they get it — the guarantor's own confirmation page is not something
+       *   the driver ever sees.
+       */
+      return {
+        title: 'Your guarantor confirmed',
+        message: 'Your application is now with our team for review.',
+        tone: 'success',
+      };
+    case 'pending_guarantor':
+      /*
+       * Not news: this is the state their application is created in, and the
+       * screen they are looking at when it happens already says so.
+       */
+      return null;
     case 'pending':
       // Going back to pending is an admin correcting themselves; not news.
       return null;
