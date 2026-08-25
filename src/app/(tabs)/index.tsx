@@ -134,6 +134,25 @@ type CategoryDef = {
   params?: Record<string, string>;
 };
 
+/**
+ * The readability floor, moved here from the card's `minWidth`.
+ *
+ * The supplied artwork has its title baked in at about 7% of the image height,
+ * so below this the title renders under ~11px and stops being legible. It now
+ * decides how many columns there are, rather than fighting the flex line after
+ * the fact.
+ */
+const MIN_CARD_WIDTH = 280;
+
+/**
+ * ⚠ One constant, used by the stylesheet *and* the column arithmetic.
+ *
+ *   Written twice, these drift — and a gap the maths disagrees with by four
+ *   pixels is a row that overflows by twelve, which reads as a mysterious
+ *   scrollbar rather than as a wrong number.
+ */
+const GRID_GAP = Spacing.three - 4;
+
 const CATEGORIES: CategoryDef[] = [
   {
     key: 'send',
@@ -185,6 +204,31 @@ export default function HomeScreen() {
   const trackY = useRef(0);
 
   const { width } = useWindowDimensions();
+
+  /*
+   * ⚠ Explicit columns, because flex-wrap cannot express a grid.
+   *
+   *   The cards were `flex: 1` inside a wrapping row. A wrapped card is alone
+   *   on its line, and `flex: 1` there means "fill the line" — which is why the
+   *   fourth service stretched across the whole second row.
+   *
+   *   CSS Grid would fix it on the web and do nothing on iOS or Android: Yoga
+   *   has no grid implementation, so the native builds would fall back to a
+   *   plain column. Computing the width instead behaves identically everywhere,
+   *   and gives exactly what was asked for — a card bound to its column, not to
+   *   whatever space is left over.
+   */
+  const [gridWidth, setGridWidth] = useState(0);
+
+  const columns = Math.max(1, Math.floor((gridWidth + GRID_GAP) / (MIN_CARD_WIDTH + GRID_GAP)));
+
+  /*
+   * ⚠ Zero until the first layout, and the card treats that as "not yet".
+   *
+   *   Rendering a 0-width card for one frame would flash an empty panel. The
+   *   card falls back to filling its line until a real measurement arrives.
+   */
+  const cardWidth = gridWidth > 0 ? (gridWidth - GRID_GAP * (columns - 1)) / columns : null;
 
   /** text-4xl on phones, text-5xl from md up. */
   const headlineSize = heroTitleSize(width);
@@ -394,10 +438,21 @@ export default function HomeScreen() {
             {/* ---------- Service categories ---------- */}
             {/* Grey-blue panel: gives the tinted cards something to lift off. */}
             <View style={styles.gridPanel}>
-              <View style={styles.grid}>
+              {/*
+                ⚠ Measured rather than guessed from the window.
+                
+                  This panel sits inside a max-width column with its own
+                  padding, so the window width is not the width the cards get.
+                  `onLayout` reports what is actually available, which is the
+                  only number the column maths can be right about.
+              */}
+              <View
+                style={styles.grid}
+                onLayout={(event) => setGridWidth(event.nativeEvent.layout.width)}>
                 {CATEGORIES.map((category) => (
                   <ServiceCategoryCard
                     key={category.key}
+                    width={cardWidth}
                     title={category.title}
                     subtitle={category.subtitle}
                     tone={category.tone}
@@ -870,7 +925,8 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: Spacing.three - 4,
+    /* Same constant the column width is derived from — see `GRID_GAP`. */
+    gap: GRID_GAP,
   },
 
   // Tracking

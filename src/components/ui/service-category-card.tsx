@@ -40,6 +40,18 @@ export type ServiceCategoryCardProps = {
    * carries its own title. Omit it and the card renders its designed layout.
    */
   artwork?: ImageSourcePropType;
+  /**
+   * The column width this card occupies, measured by the container.
+   *
+   * ⚠ Null means "not measured yet", not "no width".
+   *
+   *   The parent measures its own box on first layout, so for one frame there
+   *   is no number. Rendering a zero-width card then would flash an empty
+   *   panel, so the card fills its line until a real measurement arrives — and
+   *   with four cards that first frame looks like the old layout for about
+   *   16ms, which is invisible and correct.
+   */
+  width?: number | null;
 };
 
 /**
@@ -61,7 +73,19 @@ export function ServiceCategoryCard({
   icon,
   onPress,
   artwork,
+  width,
 }: ServiceCategoryCardProps) {
+  /*
+   * ⚠ A fixed width, or `flex: 1` — never both, and never `flex: 1` alone.
+   *
+   *   `flex: 1` inside a wrapping row is what stretched the fourth card across
+   *   the second row: a wrapped item is the only thing on its line, and
+   *   "take the remaining space" on a line of one is all of it. Once the
+   *   container has measured itself the card is pinned to its column and
+   *   `flexGrow: 0` keeps it there.
+   */
+  const size =
+    typeof width === 'number' && width > 0 ? { width, flexGrow: 0, flexShrink: 0 } : { flex: 1 };
   const colors = ServiceTones[tone];
   const Pattern = PATTERNS[tone];
 
@@ -75,6 +99,7 @@ export function ServiceCategoryCard({
         accessibilityLabel={`${title}. ${subtitle}`}
         style={({ pressed, hovered }) => [
           styles.card,
+          size,
           styles.cardArtwork,
           { shadowColor: colors.accent },
           hovered && styles.hovered,
@@ -97,6 +122,7 @@ export function ServiceCategoryCard({
       accessibilityLabel={`${title}. ${subtitle}`}
       style={({ pressed, hovered }) => [
         styles.card,
+        size,
         styles.cardLayout,
         { shadowColor: colors.accent },
         // `hovered` is web-only; on native this branch never runs.
@@ -145,14 +171,21 @@ const PATTERN_SIZE = 200;
 
 const styles = StyleSheet.create({
   card: {
-    flex: 1,
-    /**
-     * Wrap width. The supplied artwork has its title baked in at roughly 7% of
-     * the image height, so a tile narrower than this renders that title below
-     * about 11px and it stops being readable. Four across only survives on a
-     * wide desktop; narrower viewports wrap to two, then one.
+    /*
+     * ⚠ No `flex: 1`, and no `minWidth`. The container sizes these now.
+     *
+     *   `flex: 1` with `flexWrap` is what stretched the fourth card across the
+     *   whole second row: a wrapped item is alone on its line, and `flex: 1`
+     *   means "take what is left", which on a line of one is everything.
+     *
+     *   The parent computes a column width and passes it. That is what a grid
+     *   does — decide the tracks once, centrally — and unlike CSS Grid it works
+     *   on iOS and Android, where Yoga has no grid at all.
+     *
+     *   The readability floor that `minWidth: 280` protected has not gone: it
+     *   is `MIN_CARD_WIDTH` in `index.tsx`, where it now decides how many
+     *   columns there are rather than fighting the flex line afterwards.
      */
-    minWidth: 280,
     borderRadius: Radius.xl + 4,
     borderWidth: 1,
     // teal-100 (#CCFBF1) measures 1.01:1 against the canvas — invisible. This

@@ -403,6 +403,97 @@ check(
   'a notification that scrolls away with the content is one nobody reads',
 );
 
+// ------------------------------------------ the service cards are a grid --
+
+/*
+ * ⚠ `flex: 1` inside `flexWrap` is the bug, and it only shows on the last row.
+ *
+ *   A wrapped item is alone on its line. `flex: 1` means "take the remaining
+ *   space", and on a line of one that is the whole width — so the fourth
+ *   service card stretched edge to edge under a row of three. Nothing looks
+ *   wrong until the count and the viewport happen to wrap, which is why it
+ *   survived review.
+ *
+ * ⚠ Solved by measuring, not by CSS Grid.
+ *
+ *   `display: grid` would fix the web and do nothing on iOS or Android — Yoga
+ *   has no grid implementation, so the native builds would stack into a single
+ *   column. Computing a column width behaves identically on all three.
+ */
+const homeScreen = code(read('src/app/(tabs)/index.tsx'));
+const serviceCard = code(read('src/components/ui/service-category-card.tsx'));
+
+check(
+  'the card no longer claims the rest of the line',
+  !/card: \{\s*flex: 1,/.test(serviceCard),
+  'flex: 1 on a wrapped item is what stretched the fourth card across the second row',
+);
+check(
+  'and pins itself to the width it is given',
+  serviceCard.includes('{ width, flexGrow: 0, flexShrink: 0 }'),
+  'a width without flexGrow: 0 is a width the line can still grow past',
+);
+/*
+ * ⚠ And falls back to filling, rather than to zero.
+ *
+ *   The container has no measurement on the first frame. A zero-width card
+ *   there is an empty panel that flashes; filling the line for one frame is
+ *   invisible.
+ */
+check(
+  'with a fallback for the frame before measurement',
+  serviceCard.includes(': { flex: 1 }'),
+  'a 0-width card on the first frame flashes an empty panel',
+);
+
+check(
+  'the container measures itself rather than guessing from the window',
+  homeScreen.includes('onLayout={(event) => setGridWidth(event.nativeEvent.layout.width)}'),
+  'the panel sits inside a max-width column with padding, so the window width is not its width',
+);
+check(
+  'the column count comes from the readable minimum',
+  homeScreen.includes('Math.floor((gridWidth + GRID_GAP) / (MIN_CARD_WIDTH + GRID_GAP))'),
+  '',
+);
+check(
+  'and never drops below one column',
+  homeScreen.includes('Math.max(1,'),
+  'a container narrower than one card would otherwise divide by zero',
+);
+
+/*
+ * ⚠ One gap constant, because two would drift.
+ *
+ *   The stylesheet's `gap` and the arithmetic that subtracts it must be the
+ *   same number. Four pixels of disagreement across three columns is twelve
+ *   pixels of overflow, which reads as a mysterious scrollbar rather than as a
+ *   wrong constant.
+ */
+check(
+  'the gap is defined once',
+  (homeScreen.match(/const GRID_GAP =/g) ?? []).length === 1 &&
+    homeScreen.includes('gap: GRID_GAP,'),
+  'the stylesheet and the column maths must subtract the same number',
+);
+check(
+  'and the column width subtracts it for every gap but the last',
+  homeScreen.includes('(gridWidth - GRID_GAP * (columns - 1)) / columns'),
+  'subtracting one gap per column overflows by exactly one gap',
+);
+
+/*
+ * ⚠ No CSS Grid anywhere in this app.
+ *
+ *   It is tempting on the web and silently inert on native. If somebody
+ *   reaches for it later this is where they find out why not.
+ */
+check(
+  'no screen reaches for CSS Grid',
+  !/display:\s*'grid'/.test(homeScreen) && !/display:\s*'grid'/.test(serviceCard),
+  'Yoga has no grid implementation, so this would fix the web and flatten iOS and Android',
+);
+
 if (failures > 0) {
   console.error(`\n${failures} assertion(s) failed.`);
   process.exit(1);
