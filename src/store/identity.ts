@@ -173,6 +173,47 @@ export type IdentityOutcome =
  * idempotent per account — re-running it replaces the slip and clears any old
  * verdict.
  */
+/**
+ * Whether verifying is currently possible at all.
+ *
+ * ⚠ Optimistic until something proves otherwise, and it can only be proved by
+ *   somebody trying.
+ *
+ *   There is no free probe here: `verify-identity` needs a capture session, so
+ *   asking "are you up?" means running a real check on a real face. So this
+ *   starts true, and one failed submission for an infrastructure reason flips
+ *   it — meaning the first sender to hit an undeployed function is stopped
+ *   once, fails, and is then let through along with everybody after them.
+ *
+ *   That is the right way round. The alternative — assume unavailable until
+ *   proven otherwise — would leave the gate permanently open and the feature
+ *   inert on a healthy deployment.
+ */
+let verificationReachable = true;
+
+/** False once a submission has failed for reasons that are not the person's. */
+export function isVerificationAvailable(): boolean {
+  return verificationReachable;
+}
+
+/**
+ * Records that verification could not be reached.
+ *
+ * ⚠ Only for transport failures, never for a refusal.
+ *
+ *   A rejected NIN, a bad slip, an invalid number — those mean the check
+ *   worked. Treating them as an outage would open the gate for exactly the
+ *   people it exists to stop.
+ */
+export function noteVerificationUnavailable(): void {
+  verificationReachable = false;
+}
+
+/** Called when a check completes, however it went. */
+export function noteVerificationReachable(): void {
+  verificationReachable = true;
+}
+
 export async function submitOnboarding(input: OnboardingInput): Promise<IdentityOutcome> {
   const { data: auth } = await supabase.auth.getUser();
   const userId = auth.user?.id;
@@ -207,7 +248,15 @@ export async function submitOnboarding(input: OnboardingInput): Promise<Identity
     sender_nin: nin,
     sender_slip_path: slipPath,
   });
-  if (begun.error) return { ok: false, error: begun.error.message };
+  if (begun.error) {
+    /*
+     * `begin_identity_check` is the app's own database function. It failing is
+     * a deployment problem — a migration not run, a policy wrong — never
+     * something the sender did, so the gate should not hold them for it.
+     */
+    noteVerificationUnavailable();
+    return { ok: false, error: begun.error.message };
+  }
 
   return runIdentityCheck(input.sessionId);
 }
@@ -247,6 +296,8 @@ export async function runIdentityCheck(sessionId: string): Promise<IdentityOutco
    * anything again.
    */
   if (error) {
+    /* The function is not deployed, or is unreachable. Nobody can verify. */
+    noteVerificationUnavailable();
     return {
       ok: true,
       status: 'unavailable',
@@ -255,6 +306,9 @@ export async function runIdentityCheck(sessionId: string): Promise<IdentityOutco
   }
 
   const status = (data as { status?: string } | null)?.status;
+
+  /* It answered, whatever it said — so verification is working. */
+  noteVerificationReachable();
 
   if (status === 'verified') {
     return { ok: true, status: 'verified', message: 'Identity confirmed.' };

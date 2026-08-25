@@ -18,6 +18,19 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+/*
+ * ⚠ `supabase/functions` is excluded from tsconfig, and this import overrides
+ *   that — deliberately, and it needed one setting to work.
+ *
+ *   `exclude` only filters the initial glob; a file reached by an import is
+ *   compiled anyway. `templates.ts` imports `'../_shared/email.ts'` with the
+ *   extension Deno requires, which tsc refuses without
+ *   `allowImportingTsExtensions`. That option is now on.
+ *
+ *   The alternative was to make the templates self-contained, which would mean
+ *   a second copy of the HTML escaping — the exact thing `_shared/email.ts`
+ *   exists to prevent.
+ */
 import { EMAIL_KINDS, render, type Context } from '../supabase/functions/notify-events/templates';
 
 let failures = 0;
@@ -144,10 +157,19 @@ const templatesSource = stripComments(read('supabase/functions/notify-events/tem
 const migration = read('supabase/38_transactional_email.sql');
 const migrationCode = migration.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*--.*$/gm, '');
 
+/*
+ * ⚠ The *value*, not the word.
+ *
+ *   This started as `!/\bnin\b/i.test(...)`, which forbade the three letters
+ *   anywhere — and then failed on "Your NIN verification is under review",
+ *   which is the required subject of one of these emails and contains no NIN
+ *   at all. Naming the thing is fine; reading it is not. What is banned is a
+ *   payload lookup.
+ */
 check(
-  'no template reads a NIN',
-  !/\bnin\b/i.test(templatesSource),
-  'the field exists on the application row and would render happily',
+  'no template reads a NIN value',
+  !/payload\s*\.\s*nin|['"`]nin['"`]|ninLast4|nin_last4/i.test(templatesSource),
+  'the field exists on the identity row and would render happily',
 );
 check(
   'and no trigger puts one in a payload',

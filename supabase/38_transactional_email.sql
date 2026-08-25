@@ -44,6 +44,7 @@ create table if not exists public.email_outbox (
   kind text not null check (kind in (
     'driver_application_approved',
     'driver_application_rejected',
+    'sender_verification_submitted',
     'sender_verified',
     'delivery_completed',
     'parcel_cancelled',
@@ -329,6 +330,59 @@ create trigger on_application_decision
  *   is both premature and, often enough, wrong — a NIMC photo eight years old
  *   is the commonest cause.
  */
+/*
+ * A sender has just submitted their NIN and slip.
+ *
+ * ⚠ On the way *into* `pending`, which is what submission means.
+ *
+ *   `begin_identity_check` writes the NIN, the slip path and `status =
+ *   'pending'` in one statement, so this transition is the submission. Firing
+ *   on the insert instead would miss every sender who submits a second time
+ *   after being flagged — the row already exists by then.
+ *
+ * ⚠ Separate from the verdict email, not a replacement for it.
+ *
+ *   The two answer different questions. This one says "we have it"; the other
+ *   says "it passed". A sender who receives only the second learns nothing for
+ *   however long the check takes, and a sender who receives only the first is
+ *   left wondering forever.
+ */
+create or replace function public.email_on_identity_submitted()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.status is not distinct from old.status or new.status <> 'pending' then
+    return new;
+  end if;
+
+  perform public.queue_email(
+    'sender_verification_submitted',
+    /*
+     * ⚠ Keyed with the submission time, not on the user alone.
+     *
+     *   A sender who is flagged and submits again is making a second, real
+     *   submission and should be told it was received. Keyed on the user id
+     *   only, the unique constraint would swallow every attempt after the
+     *   first — and the person most in need of the reassurance is the one on
+     *   their second try.
+     */
+    new.user_id::text || ':' || to_char(now(), 'YYYYMMDDHH24MISS'),
+    public.email_for_user(new.user_id),
+    jsonb_build_object('submitted_at', now())
+  );
+
+  return new;
+end;
+$$;
+
+drop trigger if exists on_identity_submitted on public.sender_identity;
+create trigger on_identity_submitted
+  after update of status on public.sender_identity
+  for each row execute function public.email_on_identity_submitted();
+
 create or replace function public.email_on_sender_verified()
 returns trigger
 language plpgsql

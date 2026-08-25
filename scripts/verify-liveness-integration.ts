@@ -563,17 +563,23 @@ check(
 );
 
 /*
- * ⚠ The strongest one: the form must not have gained a *gate* in exchange.
+ * ⚠ Reversed, deliberately, and the old assertion is worth reading first.
  *
- *   Removing the fields and then refusing to post for an unverified sender
- *   would be worse than what was there before — at least the old form let them
- *   fix it on the spot. An unverified sender posts, and their selfie is
- *   recorded rather than matched.
+ *   This said "an unverified sender is not blocked from posting", and warned
+ *   that a form branching on verification would eventually branch into a
+ *   refusal. It has: the app now uses a just-in-time gate, and the refusal is
+ *   the point rather than an accident.
+ *
+ *   What survives is the shape of the objection. The gate must sit at the end,
+ *   so the form still fills freely; it must stop only people who have never
+ *   submitted; and it must open when verification itself is unreachable. All
+ *   three are asserted in `verify-posting-gate`, which is where this moved
+ *   rather than where it died.
  */
 check(
-  'an unverified sender is not blocked from posting',
-  !/identityPath/.test(bookCode) && !/verificationPath/.test(bookCode),
-  'the form must not branch on verification at all, or it will eventually branch into a refusal',
+  'the form still asks for no NIN, gate or no gate',
+  !/<IdentityOnboarding/.test(bookCode) && !/\bninError\(/.test(bookCode),
+  'the gate routes to the profile; it must not quietly bring the form back',
 );
 check(
   'the per-parcel selfie survived the removal',

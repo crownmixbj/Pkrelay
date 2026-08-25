@@ -333,6 +333,38 @@ await run('an approval with no address on file does not break the approval', asy
   );
 });
 
+/*
+ * ⚠ Submission and verdict are two emails, and a re-submission is a third.
+ *
+ *   Somebody flagged and trying again is the person most in need of hearing
+ *   that their documents arrived. Keyed on the user id alone the unique
+ *   constraint would swallow it.
+ */
+await run('submitting a NIN is acknowledged, every time', async () => {
+  const CHIDI = '33333333-3333-3333-3333-333333333333';
+  await q(`insert into auth.users (id, email) values ($1, 'chidi@example.test')`, [CHIDI]);
+  await q(`insert into public.sender_identity (user_id, status) values ($1, 'unverified')`, [
+    CHIDI,
+  ]);
+
+  await q(`update public.sender_identity set status = 'pending' where user_id = $1`, [CHIDI]);
+  const first = await outbox('sender_verification_submitted');
+  check('the first submission is acknowledged', first.length === 1, `${first.length} rows`);
+  check('to the right address', first[0]?.recipient === 'chidi@example.test');
+
+  /* Flagged, then they try again. */
+  await q(`update public.sender_identity set status = 'flagged' where user_id = $1`, [CHIDI]);
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+  await q(`update public.sender_identity set status = 'pending' where user_id = $1`, [CHIDI]);
+
+  const both = await outbox('sender_verification_submitted');
+  check(
+    'and so is the second',
+    both.length === 2,
+    `${both.length} rows — somebody re-submitting after a flag heard nothing`,
+  );
+});
+
 await run('a sender is emailed on verification, and not on a flag', async () => {
   await q(`insert into public.sender_identity (user_id, status) values ($1, 'pending')`, [ALICE]);
   await q(`insert into public.sender_identity (user_id, status) values ($1, 'pending')`, [DELE]);

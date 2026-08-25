@@ -30,6 +30,7 @@ import {
 } from '../_shared/email.ts';
 
 export type EmailKind =
+  | 'sender_verification_submitted'
   | 'driver_application_approved'
   | 'driver_application_rejected'
   | 'sender_verified'
@@ -155,6 +156,52 @@ function applicationRejected(payload: Payload, context: Context): Rendered {
       ].join(''),
       cta: null,
       footerNote: `You can apply again if your circumstances change. ${support(context)}`,
+    }),
+  };
+}
+
+/**
+ * ⚠ Sent when the documents arrive, not when a verdict does.
+ *
+ *   Its whole job is to close the loop on an action somebody just took: they
+ *   typed a government ID number and photographed a document, and silence
+ *   afterwards is where people start wondering whether it worked. It promises
+ *   a second email rather than a time, because how long a check takes is not
+ *   something this system can honestly commit to.
+ */
+function verificationSubmitted(payload: Payload, context: Context): Rendered {
+  const at = whenReadable(str(payload, 'submitted_at'));
+  const url = link(context, '/profile');
+
+  const text = [
+    'Hi there,',
+    '',
+    'We have your NIN and the photo of your slip. Your verification is under review.',
+    at ? `Submitted: ${at}` : '',
+    '',
+    'You do not need to do anything else. We will email you again as soon as the check is done.',
+    '',
+    'You can keep using LOCI in the meantime.',
+    '',
+    url ? `See your profile: ${url}` : '',
+    '',
+    support(context),
+    '',
+    'LOCI',
+  ]
+    .filter((line) => line !== '')
+    .join('\n');
+
+  return {
+    subject: headerSafe('Your NIN verification is under review'),
+    text,
+    html: layout({
+      heading: 'Your NIN verification is under review',
+      intro:
+        'We have your NIN and the photo of your slip. You do not need to do anything else — we will email you again as soon as the check is done.',
+      bodyHtml: at ? ROW('Submitted', at) : '',
+      cta: url ? { label: 'See your profile', url } : null,
+      footerNote: `You can keep using LOCI in the meantime. ${support(context)}`,
     }),
   };
 }
@@ -489,6 +536,7 @@ function payoutPaid(payload: Payload, context: Context): Rendered {
 }
 
 const TEMPLATES: Record<EmailKind, (payload: Payload, context: Context) => Rendered> = {
+  sender_verification_submitted: verificationSubmitted,
   driver_application_approved: applicationApproved,
   driver_application_rejected: applicationRejected,
   sender_verified: senderVerified,

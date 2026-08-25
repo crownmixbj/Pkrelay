@@ -56,9 +56,16 @@ import { isSupabaseConfigured } from '@/lib/supabase';
 import { consumeCaptureSession } from '@/store/capture-session';
 import { uploadParcelPhoto } from '@/store/parcel-photos';
 import { showToast } from '@/components/ui/toast';
-import { runIdentityCheck } from '@/store/identity';
+import {
+  fetchSenderIdentity,
+  isVerificationAvailable,
+  runIdentityCheck,
+  type SenderIdentity,
+} from '@/store/identity';
+import { GATE_MESSAGE, GATE_TITLE, postingGate } from '@/lib/posting-gate';
 import { isValidNigerianPhone, nigerianPhoneError } from '@/utils/validation';
 import { AddressLookup } from '@/components/ui/address-lookup';
+import { VerifyBanner } from '@/components/ui/verify-banner';
 import { distanceLabel, type Distance, type Point } from '@/lib/distance';
 import { measureDistance } from '@/store/places';
 import {
@@ -449,14 +456,29 @@ export default function BookScreen() {
    *   shipment does not re-ask for it, so it was never form state.
    */
   /*
-   * ⚠ The identity record is not read here any more.
+   * ⚠ Read again, for the gate rather than for a form.
    *
-   *   It was fetched to choose between the onboarding form and the selfie. With
-   *   the form gone there is nothing to choose: every parcel takes a selfie and
-   *   `runIdentityCheck` matches it against the account's reference if there is
-   *   one, or records it if there is not. One fewer request on every visit to
-   *   this screen, and one fewer thing that can fail before somebody can type.
+   *   This fetch was removed when the NIN card moved to the profile — there was
+   *   nothing left on this screen that depended on it. The just-in-time gate
+   *   brings it back, but for a different purpose: the form does not change
+   *   shape, and nothing here asks for a NIN. The record only decides whether
+   *   Post Parcel goes through.
    */
+  const [identity, setIdentity] = useState<SenderIdentity | null>(null);
+
+  useEffect(() => {
+    /*
+     * Signed out is not "unverified" — it is "unknown". The gate is only
+     * reached after `requireAuth`, so a signed-out visitor never sees it.
+     */
+    let cancelled = false;
+    void fetchSenderIdentity().then((found) => {
+      if (!cancelled) setIdentity(found);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const scrollRef = useRef<ScrollView>(null);
   /*
@@ -854,6 +876,30 @@ export default function BookScreen() {
     }
 
     /*
+     * ⚠ The verification gate, checked here and nowhere earlier.
+     *
+     *   Just-in-time: the whole form is fillable by anybody, and this is the
+     *   only refusal. Gating on entry would send somebody to a NIN form before
+     *   they knew what the delivery costs, which is the pattern this replaced.
+     *
+     *   It stops one group — accounts that have never submitted a NIN. Somebody
+     *   waiting on a check, or flagged for review, goes through; so does
+     *   everybody if verification itself is unreachable. See `postingGate`.
+     */
+    const gate = postingGate(identity, isVerificationAvailable());
+
+    if (!gate.allowed) {
+      showDialog(GATE_TITLE, GATE_MESSAGE, [
+        { text: 'Not now', style: 'cancel' },
+        {
+          text: 'Go to my profile',
+          onPress: () => router.push('/(tabs)/profile'),
+        },
+      ]);
+      return;
+    }
+
+    /*
      * Validate first, then ask for an account. The other order — gate on entry —
      * makes someone sign in before they know whether their parcel is even
      * bookable, and loses everything they typed if they bounce out. Here the
@@ -1113,6 +1159,16 @@ export default function BookScreen() {
                 : `Between two cities · base ${formatNaira(PRICING.base.interstate)} + ${formatNaira(PRICING.perKg.interstate)}/kg`}
             </Text>
           </View>
+
+          {/*
+            ⚠ Above the wizard, and it does not stop the wizard.
+
+              The form stays entirely fillable — that is the point of a
+              just-in-time gate. This is the warning that makes the refusal at
+              Post Parcel unsurprising rather than a wall somebody hits after
+              ten minutes of typing.
+          */}
+          <VerifyBanner />
 
           {/* --------------------------------------------- the wizard ---- */}
           <WizardProgress steps={STEPS} current={step} onJump={setStep} />

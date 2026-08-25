@@ -43,6 +43,7 @@ import { HowItWorks } from '@/components/ui/how-it-works';
 import { PulsingDot } from '@/components/ui/marquee';
 import { SectionHeader } from '@/components/ui/section-header';
 import { QuickQuote } from '@/components/ui/quick-quote';
+import { VerifyBanner } from '@/components/ui/verify-banner';
 import { RiderIllustration } from '@/components/ui/rider-illustration';
 import { EmptyState } from '@/components/ui/screen';
 import { SignedOutState } from '@/components/ui/signed-out-state';
@@ -367,6 +368,17 @@ export default function HomeScreen() {
             sections would otherwise stretch to the full window width.
           */}
           <View style={styles.contentWrap}>
+            {/*
+              ⚠ Above the quote, where somebody is about to start.
+
+                This is the screen people land on and the one they price a
+                delivery from, so it is where a verification prompt has a
+                chance of being read before the form rather than at the end of
+                it. It renders nothing for anyone already verified or waiting
+                on a check — see `shouldShowVerifyBanner`.
+            */}
+            <VerifyBanner />
+
             {/* ---------- Quick quote ---------- */}
             <View style={styles.quote}>
               <QuickQuote onBook={(params) => router.navigate({ pathname: '/book', params })} />
