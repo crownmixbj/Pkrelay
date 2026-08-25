@@ -56,6 +56,40 @@ export function isWaitingOnGuarantor(status: ApplicationStatus): boolean {
   return status === 'pending_guarantor';
 }
 
+/**
+ * Whether an admin may approve this application right now.
+ *
+ * ⚠ Narrower than "not yet decided", and the gap is the whole guarantor feature.
+ *
+ *   The review card used to show its buttons whenever the status was neither
+ *   `approved` nor `rejected` — which includes `pending_guarantor`. An admin
+ *   working the list top to bottom could therefore approve a driver whose
+ *   guarantor had not answered, and the resulting row is indistinguishable from
+ *   one that went through properly: `approved`, with no guarantor record and
+ *   nothing to say the step was skipped.
+ *
+ *   `40_review_controls.sql` refuses that update as well. This is the half that
+ *   stops an admin being offered it in the first place.
+ */
+export function canApprove(status: ApplicationStatus): boolean {
+  return isAwaitingReview(status) || status === 'under_review';
+}
+
+/**
+ * Whether an admin may reject it right now.
+ *
+ * ⚠ Deliberately wider than `canApprove`, including the guarantor wait.
+ *
+ *   An application can be obviously bad on its face — a licence that is not a
+ *   licence, an account already banned. Making the reviewer wait on an email to
+ *   a stranger before they may say so would leave an unusable application in
+ *   the list for a week, and the guarantor would be asked to vouch for somebody
+ *   LOCI has already decided against.
+ */
+export function canReject(status: ApplicationStatus): boolean {
+  return status !== 'approved' && status !== 'rejected';
+}
+
 /** How long the copy promises a review takes. Used to flag overdue queues. */
 export const REVIEW_WORKING_DAYS = 7;
 
@@ -274,10 +308,27 @@ export async function fetchAllApplications(): Promise<DriverApplication[]> {
   return (data ?? []).map(rowToApplication);
 }
 
+/**
+ * An admin's decision.
+ *
+ * ⚠ The note is optional on an approval and required on a rejection, in the
+ *   type rather than in a runtime check.
+ *
+ *   `review_note` is shown to the driver on their timeline and is the `reason`
+ *   field of the rejection email. Both were written months ago and have been
+ *   rendering an empty space ever since, because the one call site passed no
+ *   note and nothing anywhere said it had to. A rejected driver was told they
+ *   were unsuccessful and nothing else — which is the one thing they cannot act
+ *   on. Splitting the union means a call site that forgets does not compile.
+ */
+export type ReviewDecision =
+  | { status: 'approved' | 'under_review' | 'pending'; note?: string; reviewerId: string }
+  | { status: 'rejected'; note: string; reviewerId: string };
+
 /** Approve, reject, or move to under_review. Refused by RLS for non-admins. */
 export async function reviewApplication(
   id: string,
-  decision: { status: ApplicationStatus; note?: string; reviewerId: string },
+  decision: ReviewDecision,
 ): Promise<DriverApplication> {
   const { data, error } = await supabase
     .from('driver_applications')

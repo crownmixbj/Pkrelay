@@ -32,15 +32,19 @@ import { Card } from '@/components/ui/card';
 import { DispatchControl } from '@/components/ui/dispatch-control';
 import { ChipGroup } from '@/components/ui/chip';
 import { showDialog } from '@/components/ui/dialog';
+import { Field } from '@/components/ui/field';
 import { EmptyState, screenPadding, ScreenHeader, SectionLabel } from '@/components/ui/screen';
 import { SignedOutState } from '@/components/ui/signed-out-state';
 import { showToast } from '@/components/ui/toast';
 import { FontSize, MaxContentWidth, Radius, Spacing, Typography, font } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
+  canApprove,
+  canReject,
   fetchAllApplications,
   isAwaitingReview,
   isOverdue,
+  isWaitingOnGuarantor,
   subscribeToApplications,
   reviewApplication,
   REVIEW_WORKING_DAYS,
@@ -48,6 +52,7 @@ import {
   workingDaysSince,
   type ApplicationStatus,
   type DriverApplication,
+  type ReviewDecision,
 } from '@/store/driver-applications';
 import { useSession } from '@/store/session';
 import { AdminOverview as OverviewPanel } from '@/components/ui/admin-overview';
@@ -62,6 +67,17 @@ import { signedDocumentUrl } from '@/store/driver-documents';
  */
 const SECTIONS = ['overview', 'dispatch', 'review'] as const;
 type Section = (typeof SECTIONS)[number];
+
+/**
+ * ⚠ Long enough that "no" cannot be the whole message.
+ *
+ *   The number is arbitrary; what it buys is that the field cannot be cleared
+ *   with a single character to get past it, which is what a length-1 check
+ *   would have allowed. It is a floor on effort, not a measure of quality — a
+ *   reviewer determined to write "no reason" still can, and no validation can
+ *   stop that.
+ */
+const MIN_REASON = 12;
 
 const SECTION_LABELS: Record<Section, string> = {
   overview: 'Overview',
@@ -232,35 +248,41 @@ export default function AdminScreen() {
     [applications, filter],
   );
 
-  const decide = (application: DriverApplication, status: ApplicationStatus) => {
+  const approve = (application: DriverApplication) => {
     if (!user) return;
 
-    const approving = status === 'approved';
-
     showDialog(
-      approving ? 'Approve this driver?' : 'Reject this application?',
-      approving
-        ? `${application.fullName} will be able to accept delivery jobs immediately. Check the documents and guarantor first — this is the only gate.`
-        : `${application.fullName} will be told the application was unsuccessful. They cannot re-apply until this record is cleared.`,
+      'Approve this driver?',
+      `${application.fullName} will be able to accept delivery jobs immediately. Check the documents and guarantor first — this is the only gate.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: approving ? 'Approve' : 'Reject',
-          style: approving ? 'default' : 'destructive',
-          onPress: () => void apply(application, status),
+          text: 'Approve',
+          onPress: () => void apply(application, { status: 'approved', reviewerId: user.id }),
         },
       ],
     );
   };
 
-  const apply = async (application: DriverApplication, status: ApplicationStatus) => {
+  /*
+   * ⚠ No second confirmation, because the reason field already is one.
+   *
+   *   The reviewer has just typed a sentence explaining themselves to a named
+   *   person; a modal asking "are you sure" on top of that is the kind of prompt
+   *   people learn to dismiss without reading, which is what makes the *next*
+   *   one — the approval — less safe too.
+   */
+  const reject = (application: DriverApplication, reason: string) => {
     if (!user) return;
+    void apply(application, { status: 'rejected', note: reason, reviewerId: user.id });
+  };
 
+  const apply = async (application: DriverApplication, decision: ReviewDecision) => {
     setBusyId(application.id);
     try {
-      const updated = await reviewApplication(application.id, { status, reviewerId: user.id });
+      const updated = await reviewApplication(application.id, decision);
       setApplications((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
-      showToast(status === 'approved' ? 'Driver approved' : 'Application rejected', {
+      showToast(decision.status === 'approved' ? 'Driver approved' : 'Application rejected', {
         message: `${application.fullName} — ${application.reference}`,
       });
     } catch (thrown) {
@@ -393,8 +415,8 @@ export default function AdminScreen() {
                   key={application.id}
                   application={application}
                   busy={busyId === application.id}
-                  onApprove={() => decide(application, 'approved')}
-                  onReject={() => decide(application, 'rejected')}
+                  onApprove={() => approve(application)}
+                  onReject={(reason) => reject(application, reason)}
                 />
               ))
             )}
@@ -443,14 +465,17 @@ function ApplicationCard({
   application: DriverApplication;
   busy: boolean;
   onApprove: () => void;
-  onReject: () => void;
+  onReject: (reason: string) => void;
 }) {
   const theme = useTheme();
   const [expanded, setExpanded] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  const [reason, setReason] = useState('');
 
   const waiting = workingDaysSince(application.submittedAt);
   const overdue = isOverdue(application);
   const decided = application.status === 'approved' || application.status === 'rejected';
+  const firstName = application.fullName.trim().split(/\s+/)[0] || 'The applicant';
 
   const attached = Object.entries(application.documents).filter(([, name]) => Boolean(name));
 
@@ -579,31 +604,90 @@ function ApplicationCard({
       )}
 
       {decided ? (
-        <Text style={[styles.decided, { color: theme.textMuted }]}>
-          {STATUS_LABELS[application.status]}
-          {application.reviewedAt
-            ? ` on ${new Date(application.reviewedAt).toLocaleDateString()}`
-            : ''}
-        </Text>
+        <>
+          <Text style={[styles.decided, { color: theme.textMuted }]}>
+            {STATUS_LABELS[application.status]}
+            {application.reviewedAt
+              ? ` on ${new Date(application.reviewedAt).toLocaleDateString()}`
+              : ''}
+          </Text>
+          {/* The reason, kept where the decision is, so it can be quoted back. */}
+          {(application.reviewNote ?? '').length > 0 && (
+            <Text style={[styles.decidedNote, { color: theme.textSecondary }]}>
+              “{application.reviewNote}”
+            </Text>
+          )}
+        </>
+      ) : rejecting ? (
+        <View style={styles.rejectBox}>
+          <Field
+            label="Why is this being rejected?"
+            hint={`${firstName} is sent this word for word. Say what was wrong and whether they can fix it.`}
+            value={reason}
+            onChangeText={setReason}
+            multiline
+            numberOfLines={3}
+            editable={!busy}
+            placeholder="e.g. The licence photo is expired — re-apply with a current one."
+          />
+          <View style={styles.actions}>
+            <Button
+              label={busy ? 'Saving…' : 'Confirm rejection'}
+              size="md"
+              style={styles.action}
+              disabled={busy || reason.trim().length < MIN_REASON}
+              onPress={() => onReject(reason.trim())}
+            />
+            <Button
+              label="Cancel"
+              variant="secondary"
+              size="md"
+              style={styles.action}
+              disabled={busy}
+              onPress={() => {
+                setRejecting(false);
+                setReason('');
+              }}
+            />
+          </View>
+        </View>
       ) : (
         <View style={styles.actions}>
-          <Button
-            label={busy ? 'Saving…' : 'Approve'}
-            size="md"
-            style={styles.action}
-            disabled={busy}
-            icon={(color, size) => <ShieldCheck color={color} size={size} />}
-            onPress={onApprove}
-          />
-          <Button
-            label="Reject"
-            variant="secondary"
-            size="md"
-            style={styles.action}
-            disabled={busy}
-            onPress={onReject}
-          />
+          {canApprove(application.status) && (
+            <Button
+              label={busy ? 'Saving…' : 'Approve'}
+              size="md"
+              style={styles.action}
+              disabled={busy}
+              icon={(color, size) => <ShieldCheck color={color} size={size} />}
+              onPress={onApprove}
+            />
+          )}
+          {canReject(application.status) && (
+            <Button
+              label="Reject"
+              variant="secondary"
+              size="md"
+              style={styles.action}
+              disabled={busy}
+              onPress={() => setRejecting(true)}
+            />
+          )}
         </View>
+      )}
+
+      {/*
+        ⚠ Said out loud, rather than left as a missing button.
+
+        An admin who sees Reject without Approve has no way to tell whether the
+        control is gone deliberately or the screen is broken — and the guess
+        that costs LOCI a driver is the second one, because it ends in somebody
+        approving from the SQL editor to work around it.
+      */}
+      {isWaitingOnGuarantor(application.status) && !rejecting && (
+        <Text style={[styles.decided, { color: theme.textMuted }]}>
+          Approval opens once the guarantor confirms. Nothing here is waiting on you.
+        </Text>
       )}
     </Card>
   );
@@ -740,4 +824,6 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.one },
   action: { flexGrow: 1, flexBasis: 130 },
   decided: { ...Typography.meta, marginTop: Spacing.one },
+  decidedNote: { ...Typography.meta, marginTop: Spacing.half, fontStyle: 'italic' },
+  rejectBox: { gap: Spacing.one, marginTop: Spacing.one },
 });

@@ -25,6 +25,8 @@ import { reviewTimeline } from '../src/store/application-timeline';
 import {
   AWAITING_REVIEW,
   STATUS_LABELS,
+  canApprove,
+  canReject,
   isAwaitingReview,
   isOverdue,
   isWaitingOnGuarantor,
@@ -100,9 +102,124 @@ check(
   '',
 );
 
+// --------------------------------------------- what an admin may do, when ---
+
+/*
+ * ⚠ The gap between "not yet decided" and "decidable" is the guarantor feature.
+ *
+ *   The card gated its buttons on `status !== 'approved' && status !== 'rejected'`,
+ *   which is true of `pending_guarantor`. An admin working the list top to
+ *   bottom could approve a driver nobody had vouched for, and the row that
+ *   results is indistinguishable from one that went through properly.
+ */
+check(
+  'the queue is approvable',
+  AWAITING_REVIEW.every(canApprove) && canApprove('under_review'),
+  'these are the states an admin is looking at in order to decide',
+);
+check(
+  'an unanswered guarantor is not',
+  !canApprove('pending_guarantor'),
+  'approving here skips the one check the whole of 39 exists to add',
+);
+check(
+  'and a decision is not revisited from this screen',
+  !canApprove('approved') && !canApprove('rejected'),
+  'a second approval would overwrite reviewed_at and lose who decided',
+);
+
+/*
+ * ⚠ Rejection is deliberately wider, and that asymmetry is the point.
+ *
+ *   An application can be bad on its face — a licence that is not a licence, an
+ *   account already banned. Holding it until a stranger opens an email leaves
+ *   it in the queue for a week and asks that stranger to vouch for somebody
+ *   LOCI has already decided against.
+ */
+check(
+  'an application held on a guarantor can still be rejected',
+  canReject('pending_guarantor'),
+  'otherwise an obviously bad application is un-actionable for seven days',
+);
+check(
+  'but a decided one cannot be re-rejected',
+  !canReject('approved') && !canReject('rejected'),
+  '',
+);
+check(
+  'and the two predicates are not the same function',
+  ALL_STATUSES.some((s) => canReject(s) !== canApprove(s)),
+  'if they agree everywhere, one of them is not doing what its name says',
+);
+
 // ------------------------------------------- nothing can hide from the UI ----
 
 const admin = read('src/app/(tabs)/admin.tsx');
+
+/*
+ * ⚠ Asserted on the screen, not only on the predicates.
+ *
+ *   A correct `canApprove` that no component calls is a comment. The failure
+ *   being guarded is specifically a card that reintroduces its own inline
+ *   `status !== 'approved' && status !== 'rejected'` test for the buttons.
+ */
+check(
+  'the Approve button is gated on canApprove',
+  /canApprove\(application\.status\)\s*&&/.test(admin),
+  'an inline "not yet decided" test here is what let an unvouched driver be approved',
+);
+check(
+  'and the Reject button on canReject',
+  /canReject\(application\.status\)\s*&&/.test(admin),
+  '',
+);
+check(
+  'the guarantor wait explains itself rather than showing a missing button',
+  admin.includes('isWaitingOnGuarantor(application.status)') &&
+    /Approval opens once the guarantor confirms/.test(admin),
+  'an admin who cannot tell a deliberate omission from a broken screen approves from the SQL editor instead',
+);
+
+// ----------------------------------------------- a rejection says why -------
+
+/*
+ * ⚠ `review_note` has been rendering an empty space since the day it was
+ *   written.
+ *
+ *   It is shown to the driver on their timeline and it is the `reason` field of
+ *   the rejection email — and the single call site passed no note, so a rejected
+ *   driver was told they were unsuccessful and nothing else. That is the one
+ *   thing they cannot act on.
+ */
+const store = read('src/store/driver-applications.ts');
+
+check(
+  'the note is required on a rejection by the type, not by a runtime check',
+  /status:\s*'rejected';\s*note:\s*string;/.test(store),
+  'an optional field is one a future call site forgets, and nothing fails when it does',
+);
+check(
+  'the screen passes the reason through',
+  /status:\s*'rejected',\s*note:\s*reason/.test(admin),
+  'the field can be typed into and still discarded on the way to the server',
+);
+check(
+  'and will not submit a token one',
+  /reason\.trim\(\)\.length\s*<\s*MIN_REASON/.test(admin) && /const MIN_REASON = \d+/.test(admin),
+  'a one-character reason satisfies "not empty" and tells the driver nothing',
+);
+/*
+ * ⚠ The server holds the same rule, because the screen is a courtesy.
+ *
+ *   `review-controls-harness.mjs` proves it runs. This only proves it ships:
+ *   deleting the migration would leave that harness passing against a file it
+ *   no longer reads.
+ */
+check(
+  'the same rule exists in the database',
+  /a rejection must record a reason/.test(read('supabase/40_review_controls.sql')),
+  'the SQL editor, a script and every future component bypass the screen',
+);
 
 /*
  * ⚠ The generalisable version of this whole task.
@@ -283,8 +400,6 @@ check(
  *   stranger opens an email, and without a subscription the application sits
  *   unseen for as long as the tab stays open.
  */
-const store = read('src/store/driver-applications.ts');
-
 check(
   'there is a subscription for every application, not just one',
   store.includes('export function subscribeToApplications('),
