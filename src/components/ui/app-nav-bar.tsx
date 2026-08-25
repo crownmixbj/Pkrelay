@@ -93,8 +93,17 @@ function initials(name: string | undefined): string {
  * The caret is rendered only in the labelled tier, so the icon-only thresholds
  * are untouched.
  */
+/*
+ * ⚠ Two tiers now, not three: labelled links, or the drawer.
+ *
+ *   There used to be a middle tier between 690px and this one where the links
+ *   became bare icons. It is a pattern from native tab bars, and on the web it
+ *   reads as a broken nav: a row of unlabelled glyphs where words were, with no
+ *   hover text and no way to tell "Shipments" from "Hubs" except by guessing at
+ *   a parcel and a pin. Below the labelled tier the links move into the drawer
+ *   the hamburger already opens, which is what a web app is expected to do.
+ */
 const LABEL_BREAKPOINT = 1040;
-const ICON_LINK_BREAKPOINT = 690;
 
 /**
  * The admin entry adds an eighth link, and "Applications" is a long word.
@@ -105,7 +114,6 @@ const ICON_LINK_BREAKPOINT = 690;
  * who actually have the extra link.
  */
 const ADMIN_LABEL_BREAKPOINT = 1160;
-const ADMIN_ICON_LINK_BREAKPOINT = 730;
 /** Below this the capsule tightens its padding to survive a 320px phone. */
 const TIGHT_BREAKPOINT = 400;
 
@@ -495,8 +503,14 @@ export function AppNavBar() {
    */
   useEffect(() => setOpenSubmenu(null), [pathname]);
 
+  /*
+   * ⚠ One flag where there were two.
+   *
+   *   `showInlineLinks` and `showLabels` differing is what created the icon
+   *   tier. Inline links now exist only when they can carry their labels, so
+   *   there is no width at which a link renders without its name.
+   */
   const showLabels = width >= (isAdmin ? ADMIN_LABEL_BREAKPOINT : LABEL_BREAKPOINT);
-  const showInlineLinks = width >= (isAdmin ? ADMIN_ICON_LINK_BREAKPOINT : ICON_LINK_BREAKPOINT);
   const tight = width < TIGHT_BREAKPOINT;
 
   /**
@@ -616,23 +630,20 @@ export function AppNavBar() {
           </Pressable>
 
           {/*
-            Dropped entirely on a phone. Six 34px circles plus the logo and the
-            actions need 617px; forcing them into 360px is what shoved the
-            avatar and hamburger off the end of the capsule.
+            ⚠ Present with labels, or absent entirely. Never in between.
+
+              Below the label breakpoint every one of these lives in the drawer
+              behind the hamburger, which is rendered at every width and is the
+              only navigation on a phone. Rendering them here as icons was the
+              middle tier this removed.
           */}
-          <View
-            style={[
-              styles.links,
-              !showLabels && styles.linksCompact,
-              !showInlineLinks && styles.linksHidden,
-            ]}>
-            {showInlineLinks &&
+          <View style={[styles.links, !showLabels && styles.linksHidden]}>
+            {showLabels &&
               navLinks.map((link, index) => (
                 <NavLinkItem
                   key={link.key}
                   link={link}
                   active={isActive(pathname, link)}
-                  showLabels={showLabels}
                   // The rightmost link's menu opens leftwards; see `alignEnd`.
                   alignEnd={index >= navLinks.length - 2}
                   submenuOpen={openSubmenu === link.key}
@@ -754,7 +765,6 @@ export function AppNavBar() {
 function NavLinkItem({
   link,
   active,
-  showLabels,
   submenuOpen,
   onSubmenuChange,
   onPress,
@@ -763,7 +773,6 @@ function NavLinkItem({
 }: {
   link: NavLink;
   active: boolean;
-  showLabels: boolean;
   /**
    * Opens the menu leftwards from the link's right edge.
    *
@@ -851,20 +860,16 @@ function NavLinkItem({
          * promise of navigation that does not happen.
          */
         accessibilityState={hasChildren ? { expanded: submenuOpen } : { selected: active }}
-        style={({ pressed }) => [
-          styles.link,
-          !showLabels && styles.linkIconOnly,
-          // Compact mode: the soft fill is 1.15:1 on white — all but invisible
-          // on its own — so the ring carries the state.
-          active &&
-            !showLabels && {
-              backgroundColor: theme.primarySoft,
-              borderColor: theme.primary,
-            },
-          pressed && styles.pressed,
-        ]}>
-        {!showLabels && link.icon(color, 19)}
-        {showLabels && (
+        style={({ pressed }) => [styles.link, pressed && styles.pressed]}>
+        {/*
+          ⚠ Always the label. The icon-only branch that used to sit here is
+            gone — this component now only renders at widths where the label
+            fits, so there is no state in which it draws a bare glyph.
+
+            `link.icon` is still used, by the drawer, where it sits beside the
+            label rather than replacing it.
+        */}
+        {
           <View style={styles.linkLabel}>
             <View style={styles.linkTextRow}>
               <Text style={[styles.linkText, { color }]}>{link.label}</Text>
@@ -890,7 +895,7 @@ function NavLinkItem({
               ]}
             />
           </View>
-        )}
+        }
       </Pressable>
 
       {submenuOpen && link.children && (
@@ -1288,10 +1293,11 @@ const styles = StyleSheet.create({
     gap: Spacing.four,
     flexShrink: 1,
   },
-  linksCompact: {
-    gap: Spacing.one + 2,
-  },
-  /** Phone widths: the drawer carries navigation, so the row takes no space. */
+  /*
+   * `linksCompact` sat here — a tighter gap for the icon tier. There is no icon
+   * tier, so there is no width at which the row needs a different gap.
+   */
+  /** Below the label breakpoint the drawer carries navigation; the row takes no space. */
   linksHidden: {
     display: 'none',
   },
@@ -1371,17 +1377,12 @@ const styles = StyleSheet.create({
     fontSize: FontSize.small,
     ...font(600),
   },
-  linkIconOnly: {
-    width: 34,
-    height: 34,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 0,
-    // Reserved on every icon link so the active ring doesn't resize the row.
-    borderWidth: 1.5,
-    borderColor: 'transparent',
-  },
+  /*
+   * `linkIconOnly` sat here: the 34px circle a link collapsed into between
+   * 690px and the label breakpoint. Deleted with the tier — a style with no
+   * caller is a style somebody re-applies later without knowing it was removed
+   * on purpose.
+   */
   /** Stacks the label over its underline and sizes the rule to the word. */
   linkLabel: {
     alignItems: 'stretch',

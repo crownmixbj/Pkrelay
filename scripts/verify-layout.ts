@@ -494,6 +494,95 @@ check(
   'Yoga has no grid implementation, so this would fix the web and flatten iOS and Android',
 );
 
+// --------------------------------- the nav has two tiers, not three --------
+
+/*
+ * ⚠ A row of unlabelled glyphs is a native pattern, not a web one.
+ *
+ *   Between 690px and the label breakpoint the links used to collapse into bare
+ *   icons: a parcel, a pin, a truck, an "i". On a phone tab bar that works —
+ *   five fixed destinations somebody learns once. In a web nav it is a row of
+ *   guesses, with no hover text and no way to tell Shipments from Hubs. The
+ *   drawer behind the hamburger is what a web app is expected to do, and it was
+ *   already built.
+ */
+const navBar = code(read('src/components/ui/app-nav-bar.tsx'));
+
+check(
+  'there is no icon-only tier',
+  !navBar.includes('linkIconOnly') && !navBar.includes('ICON_LINK_BREAKPOINT'),
+  'a link that renders without its label is the pattern this removed',
+);
+check(
+  'and no second flag that could reintroduce one',
+  !navBar.includes('showInlineLinks'),
+  'two flags differing by width is exactly how the middle tier existed',
+);
+/*
+ * ⚠ The load-bearing one: a link renders with its label or not at all.
+ *
+ *   `showLabels &&` gating the map is what makes those two states the only two.
+ *   A future edit that renders the row and hides the text inside would pass
+ *   every check above and bring the glyphs straight back.
+ */
+check(
+  'links render only where their labels fit',
+  navBar.includes('{showLabels &&') && navBar.includes('!showLabels && styles.linksHidden'),
+  'rendering the row and hiding the text inside it is the same bug wearing a different flag',
+);
+check(
+  'and the link itself has no iconless branch left',
+  !/\{!showLabels && link\.icon/.test(navBar),
+  '',
+);
+
+/*
+ * ⚠ Removing the middle tier is only safe because the drawer is unconditional.
+ *
+ *   Below the label breakpoint the hamburger is the *only* navigation. If it
+ *   were itself behind a width test, a range of viewports would have no way to
+ *   reach any page at all.
+ */
+const hamburgerAt = navBar.indexOf('accessibilityLabel="Open menu"');
+check('the hamburger exists', hamburgerAt >= 0);
+
+/*
+ * ⚠ Asserted as a property of the whole actions row, not as a regex around the
+ *   button.
+ *
+ *   My first version matched a specific `flag && <Pressable` shape and missed
+ *   the obvious mutation — wrapping it as `{!showLabels && (` puts a paren and
+ *   a newline between the two, and the pattern walked straight past.
+ *
+ *   The honest rule is simpler: nothing in this row depends on the label
+ *   breakpoint. The avatar and the hamburger are present at every width, and
+ *   the hamburger is the *only* navigation below it. `tight` appears here and
+ *   is fine — it adjusts padding, not presence.
+ */
+const actionsAt = navBar.indexOf('styles.actions,');
+const actionsRow = actionsAt >= 0 ? navBar.slice(actionsAt, navBar.indexOf('<SideMenu')) : '';
+
+check('the actions row parsed', actionsRow.includes('Open menu'), 'the slice missed the hamburger');
+check(
+  'nothing in it is gated on the label breakpoint',
+  actionsRow.length > 0 && !actionsRow.includes('showLabels'),
+  'below that breakpoint the hamburger is the only way to reach any page',
+);
+check(
+  'the drawer is handed every link the bar knows about',
+  navBar.includes('links={navLinks}'),
+  'a drawer showing a subset would hide pages that used to have an icon',
+);
+/*
+ * And it shows them as words. A drawer of icons would be the same failure
+ * moved behind a button.
+ */
+check(
+  'and renders them with their labels',
+  navBar.includes('{link.label}') && navBar.includes('{child.label}'),
+  'including the children, which were only ever reachable from a submenu',
+);
+
 if (failures > 0) {
   console.error(`\n${failures} assertion(s) failed.`);
   process.exit(1);
