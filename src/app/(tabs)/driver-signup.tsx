@@ -110,7 +110,7 @@ import {
   phoneLockMessage,
   PHONE_LOCK_TITLE,
 } from '@/store/registered-phone';
-import { useFormDraft } from '@/hooks/use-form-draft';
+import { mergeDraft, useFormDraft } from '@/hooks/use-form-draft';
 
 const VEHICLE_TYPES = ['Motorcycle', 'Car', 'Van', 'Truck'] as const;
 type VehicleType = (typeof VEHICLE_TYPES)[number];
@@ -670,7 +670,14 @@ export default function DriverSignupScreen() {
   useEffect(() => {
     if (!draftReady || restored.current || !draft) return;
     restored.current = true;
-    setForm(draft.form);
+    /*
+     * ⚠ Merged onto the current shape, never assigned over it.
+     *
+     *   A draft written before a field existed is missing that key, and
+     *   assigning it wholesale produced a form whose type said `string` where
+     *   the value was `undefined` — the crash on `guarantorEmail.trim()`.
+     */
+    setForm(mergeDraft(INITIAL_FORM, draft.form));
     // Local file URIs can expire between sessions. Restoring them anyway is
     // right: the upload reports "attach it again" if one has gone stale, which
     // beats silently dropping five attachments.

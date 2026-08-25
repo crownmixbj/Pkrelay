@@ -29,7 +29,7 @@ import {
 import { Footer } from '@/components/Footer';
 import { showDialog } from '@/components/ui/dialog';
 import { useAuthGate } from '@/hooks/use-auth-gate';
-import { useFormDraft } from '@/hooks/use-form-draft';
+import { mergeDraft, useFormDraft } from '@/hooks/use-form-draft';
 import { AreaPicker, resolveArea } from '@/components/ui/area-picker';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -422,7 +422,8 @@ export default function BookScreen() {
   useEffect(() => {
     if (!draftReady || restoredDraft.current || !draft) return;
     restoredDraft.current = true;
-    setForm(draft);
+    /* Merged onto the current shape — see `mergeDraft` for why never assigned. */
+    setForm(mergeDraft(INITIAL_FORM, draft));
   }, [draftReady, draft]);
 
   useEffect(() => {

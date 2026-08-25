@@ -36,6 +36,48 @@ export type DraftKey = (typeof DRAFT_KEYS)[number];
 
 type Stored<T> = { savedAt: number; value: T };
 
+/**
+ * Restores a saved draft onto the current shape of a form.
+ *
+ * ⚠ Never `setForm(draft)`. That is the bug this exists to prevent, and it
+ *   ships silently.
+ *
+ *   A draft is JSON written by a *previous version of the app*. Add a field and
+ *   every draft on every device is missing it; the form is replaced wholesale
+ *   with the old shape, and the first line of validation that reads
+ *   `form.newField.trim()` throws on a value TypeScript swears is a string.
+ *
+ *   That is exactly how `guarantorEmail` crashed the driver application: the
+ *   type was right, the form was right, and a day-old draft was not. Nothing in
+ *   development catches it, because a developer adding a field has no draft
+ *   from before they added it.
+ *
+ * ⚠ Keys the form no longer has are dropped, not carried.
+ *
+ *   Drafts also outlive *removals* — `guarantorNin` and `guarantorAddress` were
+ *   taken off this form last week and are still sitting in storage. Spreading
+ *   the saved object over the defaults would keep them, quietly reintroducing
+ *   fields the app has deliberately stopped collecting. Only keys the current
+ *   shape declares survive.
+ */
+export function mergeDraft<T extends object>(defaults: T, saved: unknown): T {
+  if (!saved || typeof saved !== 'object') return defaults;
+
+  const stored = saved as Record<string, unknown>;
+  const merged = { ...defaults } as Record<string, unknown>;
+
+  for (const key of Object.keys(defaults)) {
+    const value = stored[key];
+    /*
+     * `undefined` means the draft predates the field; the default stands.
+     * `null` is a real stored value for the nullable ones, so it passes.
+     */
+    if (value !== undefined) merged[key] = value;
+  }
+
+  return merged as T;
+}
+
 export async function clearAllDrafts(): Promise<void> {
   await AsyncStorage.multiRemove([...DRAFT_KEYS]);
 }

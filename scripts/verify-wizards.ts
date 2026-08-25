@@ -25,6 +25,8 @@ function check(name: string, condition: boolean, detail?: string) {
 
 const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8');
 
+import { mergeDraft } from '../src/hooks/use-form-draft';
+
 const code = (source: string) =>
   source
     .replace(/\/\*[\s\S]*?\*\//g, '')
@@ -396,6 +398,111 @@ check(
 );
 
 // ---------------------------------------------------------------------------
+
+// ------------------------------------------- drafts outlive the form shape --
+
+/*
+ * ⚠ A saved draft is JSON written by a previous version of this app.
+ *
+ *   Add a field and every draft on every device is missing it. Restore one with
+ *   `setForm(draft)` and the form is replaced by the old shape — so a value
+ *   TypeScript guarantees is a `string` is `undefined`, and the first
+ *   `.trim()` in validation throws. That is not hypothetical: it is how
+ *   `guarantorEmail` crashed the driver application the day it was added.
+ *
+ *   Nothing in development catches it. A developer adding a field has no draft
+ *   from before they added it, so the only person who hits it is somebody who
+ *   started the form yesterday.
+ */
+const draftHook = read('src/hooks/use-form-draft.ts');
+
+check(
+  'there is one place that restores a draft onto a form',
+  draftHook.includes('export function mergeDraft'),
+  'each screen doing its own spread is each screen forgetting it separately',
+);
+
+/*
+ * ⚠ Run, not read.
+ *
+ *   Everything else in this section greps the source, which proves the shape of
+ *   the code and not its behaviour. This is the actual failure reproduced: a
+ *   draft from an older build, restored onto today's form.
+ */
+const DEFAULTS = { name: '', guarantorEmail: '', fragile: false, notes: null as string | null };
+
+const oldDraft = mergeDraft(DEFAULTS, {
+  name: 'Tunde',
+  /* Written before `guarantorEmail` existed. */
+  fragile: true,
+  /* And carrying a field since removed. */
+  guarantorNin: '12345678901',
+});
+
+check(
+  'a draft predating a field yields the default, not undefined',
+  oldDraft.guarantorEmail === '',
+  `got ${JSON.stringify(oldDraft.guarantorEmail)} — this is the crash, exactly`,
+);
+check(
+  'and .trim() on it does not throw',
+  (() => {
+    try {
+      oldDraft.guarantorEmail.trim();
+      return true;
+    } catch {
+      return false;
+    }
+  })(),
+  'the line that actually failed in the app',
+);
+check('what the draft did hold is kept', oldDraft.name === 'Tunde' && oldDraft.fragile === true);
+check(
+  'and a removed field is not restored',
+  !('guarantorNin' in oldDraft),
+  'drafts outlive removals; a plain spread reintroduces data the app stopped collecting',
+);
+check(
+  'a null the form declares survives',
+  mergeDraft(DEFAULTS, { notes: null }).notes === null,
+  'null is a real stored value for a nullable field, unlike a missing key',
+);
+check('no draft at all yields the defaults', mergeDraft(DEFAULTS, null).name === '');
+check('and so does rubbish', mergeDraft(DEFAULTS, 'not an object').name === '');
+check(
+  'a field the draft predates keeps its default',
+  /if \(value !== undefined\) merged\[key\] = value;/.test(draftHook),
+  'the missing key is the whole bug — the default has to win',
+);
+/*
+ * ⚠ And a field the form has *dropped* does not come back.
+ *
+ *   Drafts outlive removals too. `guarantorNin` and `guarantorAddress` were
+ *   taken off the driver form and are still in storage on real devices; a plain
+ *   spread would restore them, quietly reintroducing data the app decided to
+ *   stop collecting.
+ */
+check(
+  'and a field the form has dropped is not restored',
+  draftHook.includes('for (const key of Object.keys(defaults))'),
+  'iterating the stored object instead would carry removed fields back in',
+);
+
+for (const [screen, source] of [
+  ['the driver application', driver],
+  ['the booking form', book],
+] as const) {
+  check(
+    `${screen} merges its draft rather than assigning it`,
+    /setForm\(mergeDraft\(/.test(source),
+    'setForm(draft) replaces the shape with whatever an older build wrote',
+  );
+  check(
+    `${screen} assigns no draft directly`,
+    !/setForm\(draft(\.\w+)?\)/.test(source),
+    'one direct assignment is one crash for anybody with a day-old draft',
+  );
+}
 
 if (failures > 0) {
   console.error(`\n${failures} failing assertion${failures === 1 ? '' : 's'}.`);
