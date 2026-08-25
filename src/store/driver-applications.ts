@@ -39,6 +39,19 @@ export type DriverApplication = {
 
   guarantorName: string;
   guarantorPhone: string;
+  /** Where the verification invitation goes. */
+  guarantorEmail: string;
+
+  /*
+   * ⚠ Still read, never written any more.
+   *
+   *   The guarantor supplies their own NIN through an invitation now — see
+   *   `39_guarantor_verification.sql`. These three stay on the *read* type
+   *   because applications submitted before that change hold values in them,
+   *   and an admin reviewing a driver approved last year should still see what
+   *   was recorded at the time. `NewApplication` omits them, so nothing can
+   *   write them again.
+   */
   guarantorRelationship: string;
   guarantorAddress: string;
   guarantorNin: string;
@@ -96,6 +109,7 @@ export function rowToApplication(row: Row): DriverApplication {
     licenseId: str(row.license_id),
     guarantorName: str(row.guarantor_name),
     guarantorPhone: str(row.guarantor_phone),
+    guarantorEmail: str(row.guarantor_email),
     guarantorRelationship: str(row.guarantor_relationship),
     guarantorAddress: str(row.guarantor_address),
     guarantorNin: str(row.guarantor_nin),
@@ -137,6 +151,15 @@ export type NewApplication = Omit<
   // Set by the system after the fact, never by the client submitting the form.
   | 'confirmationEmailSentAt'
   | 'confirmationEmailError'
+  /*
+   * ⚠ Omitted so the form physically cannot send them.
+   *
+   *   Leaving them optional would let a future edit reintroduce a driver typing
+   *   their guarantor's NIN — which is the whole thing this change removed.
+   */
+  | 'guarantorRelationship'
+  | 'guarantorAddress'
+  | 'guarantorNin'
 >;
 
 export async function submitApplication(application: NewApplication): Promise<DriverApplication> {
@@ -157,9 +180,7 @@ export async function submitApplication(application: NewApplication): Promise<Dr
       license_id: application.licenseId,
       guarantor_name: application.guarantorName,
       guarantor_phone: application.guarantorPhone,
-      guarantor_relationship: application.guarantorRelationship,
-      guarantor_address: application.guarantorAddress,
-      guarantor_nin: application.guarantorNin,
+      guarantor_email: application.guarantorEmail,
       bank_name: application.bankName,
       account_number: application.accountNumber,
       account_name: application.accountName,

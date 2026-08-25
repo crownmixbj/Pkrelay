@@ -85,7 +85,6 @@ import {
   isValidNin,
   isValidNuban,
   isValidPlateNumber,
-  GUARANTOR_RELATIONSHIPS,
   LICENCE_LENGTH,
   NEXT_OF_KIN_RELATIONSHIPS,
   NIGERIAN_BANKS,
@@ -205,13 +204,15 @@ const DOCUMENTS = [
     hint: 'NIN slip or NIN card only — the number must match the NIN you entered.',
     file: 'driver-nin-slip',
   },
-  {
-    expiry: 'none',
-    key: 'guarantorId',
-    label: "Guarantor's NIN slip",
-    hint: 'NIN slip or NIN card only.',
-    file: 'guarantor-nin-slip',
-  },
+  /*
+    ⚠ The guarantor's NIN slip used to be here, uploaded by the driver.
+
+      A photograph of somebody else's national ID, obtained by the person who
+      benefits from having one — with an obvious incentive to produce something
+      if the real guarantor is reluctant, and with no consent notice ever shown
+      to the guarantor. They upload their own now, through an invitation sent to
+      their own address. See `39_guarantor_verification.sql`.
+  */
   {
     expiry: 'none',
     key: 'vehicle',
@@ -247,10 +248,13 @@ type SignupForm = {
   // Guarantor — someone who vouches for the applicant.
   guarantorName: string;
   guarantorPhone: string;
-  guarantorRelationship: GuarantorRelationship;
-  guarantorAddress: string;
+  /*
+   * ⚠ Where the invitation goes, so it is the one guarantor field that has to
+   *   be right — a typo here is an application that waits on somebody who was
+   *   never asked. `reinvite_guarantor` exists to correct exactly that.
+   */
+  guarantorEmail: string;
   /** Optional — blank is valid; 11 digits when supplied. */
-  guarantorNin: string;
 
   // Where payouts land.
   bankName: BankName;
@@ -263,7 +267,6 @@ type SignupForm = {
   kinRelationship: KinRelationship;
 };
 
-type GuarantorRelationship = (typeof GUARANTOR_RELATIONSHIPS)[number];
 type KinRelationship = (typeof NEXT_OF_KIN_RELATIONSHIPS)[number];
 type BankName = (typeof NIGERIAN_BANKS)[number];
 
@@ -331,16 +334,7 @@ const STEP_FIELDS: (keyof SignupForm)[][] = [
     'plateNumber',
     'licenseId',
   ],
-  [
-    'guarantorName',
-    'guarantorPhone',
-    'guarantorRelationship',
-    'guarantorAddress',
-    'guarantorNin',
-    'kinName',
-    'kinPhone',
-    'kinRelationship',
-  ],
+  ['guarantorName', 'guarantorPhone', 'guarantorEmail', 'kinName', 'kinPhone', 'kinRelationship'],
   ['bankName', 'accountNumber', 'accountName'],
 ];
 
@@ -384,9 +378,7 @@ const INITIAL_FORM: SignupForm = {
   licenseId: '',
   guarantorName: '',
   guarantorPhone: '',
-  guarantorRelationship: 'Employer',
-  guarantorAddress: '',
-  guarantorNin: '',
+  guarantorEmail: '',
   bankName: 'Access Bank',
   accountNumber: '',
   accountName: '',
@@ -466,16 +458,14 @@ function validate(
     errors.guarantorPhone =
       nigerianPhoneError(form.guarantorPhone) ?? 'Enter a valid Nigerian number';
   }
-  // Required. `isValidNin` treats blank as valid because the applicant's own
-  // NIN is optional, so emptiness has to be checked separately here.
-  if (!form.guarantorNin.trim()) {
-    errors.guarantorNin = "Guarantor's NIN is required";
-  } else if (!isValidNin(form.guarantorNin)) {
-    errors.guarantorNin = `NIN must be exactly ${NIN_LENGTH} digits`;
-  }
-
-  if (form.guarantorAddress.trim().length < 10) {
-    errors.guarantorAddress = 'Enter their full residential address';
+  /*
+   * ⚠ The address the invitation is sent to, validated as carefully as a NIN
+   *   used to be — because getting it wrong now stalls the application.
+   */
+  if (!form.guarantorEmail.trim()) {
+    errors.guarantorEmail = "Guarantor's email is required";
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(form.guarantorEmail.trim())) {
+    errors.guarantorEmail = 'Enter a valid email address';
   }
 
   // Payout account
@@ -1034,9 +1024,7 @@ export default function DriverSignupScreen() {
           licenseId: form.licenseId.trim(),
           guarantorName: form.guarantorName.trim(),
           guarantorPhone: form.guarantorPhone.trim(),
-          guarantorRelationship: form.guarantorRelationship,
-          guarantorAddress: form.guarantorAddress.trim(),
-          guarantorNin: form.guarantorNin.trim(),
+          guarantorEmail: form.guarantorEmail.trim(),
           bankName: form.bankName,
           accountNumber: form.accountNumber.trim(),
           accountName: form.accountName.trim(),
@@ -1406,52 +1394,42 @@ export default function DriverSignupScreen() {
                   showError={Boolean(errors.guarantorPhone)}
                 />
 
-                <Dropdown
-                  label="Relationship"
-                  options={GUARANTOR_RELATIONSHIPS}
-                  selected={form.guarantorRelationship}
-                  onSelect={(value) => setField('guarantorRelationship', value)}
-                  icon={(color, size) => <UserCheck color={color} size={size} />}
-                />
-
                 {/*
-                  ⚠ Changed with the applicant's, for the same reason.
+                  ⚠ Relationship, address and NIN all used to be here.
 
-                    A guarantor exists so there is somebody findable when the
-                    driver cannot be found. A place of work is the address least
-                    likely to still reach them — and leaving one field saying
-                    "or office" while the other did not is the kind of drift
-                    nobody notices until they need the address to be a home.
+                    The guarantor now verifies themselves through a link sent to
+                    the address below, so their NIN and their consent come from
+                    them rather than from the person who benefits. Relationship
+                    and address went with it: the form asks for a name, a phone
+                    number and an email, and everything else about the guarantor
+                    is theirs to give.
+
+                    The columns still exist and still hold what past applications
+                    put in them — see the migration for why they were not
+                    dropped.
                 */}
-                <AddressLookup
-                  label="Residential address"
-                  icon={(color, size) => <MapPin color={color} size={size} />}
-                  placeholder="14 Awolowo Road, Ikoyi, Lagos"
-                  value={form.guarantorAddress}
-                  onChange={(next) => setField('guarantorAddress', next.address)}
-                  onBlur={() => validateField('guarantorAddress')}
-                  error={errors.guarantorAddress}
-                  multiline
+                <Field
+                  label="Guarantor's email address"
+                  icon={(color, size) => <Mail color={color} size={size} />}
+                  placeholder="guarantor@example.com"
+                  value={form.guarantorEmail}
+                  onChangeText={(text) => setField('guarantorEmail', text)}
+                  onBlur={() => validateField('guarantorEmail')}
+                  error={errors.guarantorEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  hint="We email them a secure link to confirm they agree and verify themselves. Your application waits until they do."
                 />
 
                 {/*
-              Required, unlike the applicant's own NIN above — a guarantor is
-              only worth having if they can actually be identified.
-            */}
-                <Field
-                  label="Guarantor's NIN"
-                  icon={(color, size) => <IdCard color={color} size={size} />}
-                  placeholder="12345678901"
-                  value={form.guarantorNin}
-                  onChangeText={(text) =>
-                    setField('guarantorNin', text.replace(/\D/g, '').slice(0, NIN_LENGTH))
-                  }
-                  onBlur={() => validateField('guarantorNin')}
-                  error={errors.guarantorNin}
-                  hint={`Required — ${NIN_LENGTH} digits. Adds an extra layer of trust and security.`}
-                  keyboardType="number-pad"
-                  maxLength={NIN_LENGTH}
-                />
+                  ⚠ The guarantor's NIN was here, typed by the driver.
+
+                    A guarantor is only worth having if they can be identified —
+                    which is exactly why the identification should not come from
+                    the person who benefits from having one. They enter it
+                    themselves now, from a link sent to the address above,
+                    having read what it is for.
+                */}
               </Card>
               {/* Next of kin */}
               <Card style={styles.card}>
@@ -1938,7 +1916,8 @@ function ReviewStatus({
           <SummaryRow
             icon={<UserCheck color={theme.textMuted} size={15} />}
             label="Guarantor"
-            value={`${form.guarantorName.trim()} (${form.guarantorRelationship})`}
+            /* The email, because that is what the application now waits on. */
+            value={`${form.guarantorName.trim()} · ${form.guarantorEmail.trim()}`}
           />
           <SummaryRow
             icon={<HeartPulse color={theme.textMuted} size={15} />}

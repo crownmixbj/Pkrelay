@@ -215,6 +215,7 @@ const base: DriverApplication = {
   licenseId: 'LIC1',
   guarantorName: 'G',
   guarantorPhone: '+234',
+  guarantorEmail: 'guarantor@example.test',
   guarantorRelationship: 'Friend',
   guarantorAddress: 'X',
   guarantorNin: '2',
@@ -411,10 +412,25 @@ check(
   !/or office address/.test(signupJsx),
   'a workplace is the address least likely to still reach the person it is meant to identify',
 );
+/*
+ * ⚠ One now, not two.
+ *
+ *   This counted the applicant's field and the guarantor's. The guarantor's
+ *   address is no longer collected at all — they verify themselves through an
+ *   invitation, and the form asks only for a name, a phone number and an email.
+ *   The rule the assertion protects is unchanged: the address that *is* asked
+ *   for is a home, not a workplace.
+ */
 check(
-  'and both are labelled residential',
-  (signupJsx.match(/label="Residential address"/g) ?? []).length === 2,
-  "the applicant's and the guarantor's — changing one and not the other is the drift nobody notices until the address has to be a home",
+  "the applicant's address is labelled residential",
+  (signupJsx.match(/label="Residential address"/g) ?? []).length === 1,
+  'a workplace is the address least likely to still reach the person it identifies',
+);
+check(
+  'and the guarantor is asked for an email instead of an address',
+  signupJsx.includes('label="Guarantor\'s email address"') &&
+    !signupJsx.includes('value={form.guarantorAddress}'),
+  'the guarantor supplies their own details through the invitation now',
 );
 check(
   'the hint describes the field it is under',

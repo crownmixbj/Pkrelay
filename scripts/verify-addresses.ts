@@ -51,7 +51,15 @@ const INPUTS: [string, string, string][] = [
   ['the pickup address', book, 'label="Pickup address"'],
   ['the dropoff address', book, "'Dropoff address' : 'Meeting point'"],
   ["the applicant's address", signup, 'value={form.address}'],
-  ["the guarantor's address", signup, 'value={form.guarantorAddress}'],
+  /*
+   * ⚠ The guarantor's address was here, and is not collected any more.
+   *
+   *   They verify themselves through an invitation now — the form asks for a
+   *   name, a phone number and an email, and everything else about the
+   *   guarantor comes from them. Removed rather than relaxed: an assertion
+   *   about a field that does not exist is one somebody will "fix" by adding
+   *   the field back.
+   */
 ];
 
 for (const [name, source, marker] of INPUTS) {

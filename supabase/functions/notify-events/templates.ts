@@ -30,6 +30,7 @@ import {
 } from '../_shared/email.ts';
 
 export type EmailKind =
+  | 'guarantor_invitation'
   | 'sender_verification_submitted'
   | 'driver_application_approved'
   | 'driver_application_rejected'
@@ -169,6 +170,68 @@ function applicationRejected(payload: Payload, context: Context): Rendered {
  *   a second email rather than a time, because how long a check takes is not
  *   something this system can honestly commit to.
  */
+/**
+ * The one email in this system that goes to somebody who is not a LOCI user.
+ *
+ * ⚠ It has to explain itself from nothing.
+ *
+ *   Every other template here lands in an inbox that was expecting it. This
+ *   one arrives unsolicited, from a company the reader may never have heard
+ *   of, asking for a national identifier. If it reads like a phishing attempt
+ *   it will be treated as one — correctly — so it names who listed them, what
+ *   is being asked, and what happens if they do nothing.
+ *
+ * ⚠ The token is in the link and nowhere else.
+ *
+ *   Not in the subject, not in the body text, not as a code to type. A subject
+ *   line is logged by more systems than a URL path, and shows in notification
+ *   previews on a lock screen.
+ */
+function guarantorInvitation(payload: Payload, context: Context): Rendered {
+  const guarantor = firstName(str(payload, 'guarantor_name'));
+  const driver = str(payload, 'driver_name');
+  const token = str(payload, 'token');
+  const expires = whenReadable(str(payload, 'expires_at'));
+
+  const url = token && context.appUrl ? `${context.appUrl}/guarantor/${token}` : null;
+
+  const text = [
+    `Hello ${guarantor},`,
+    '',
+    `${driver} has listed you as a guarantor on LOCI. Please click the secure link below to review the terms and complete your verification.`,
+    '',
+    url ? url : 'Open the LOCI app to complete your guarantor verification.',
+    '',
+    expires ? `This link expires on ${expires}.` : '',
+    '',
+    'What this involves: confirming you are willing to stand as their guarantor, and entering your own NIN so we can verify who you are. It takes about a minute.',
+    '',
+    `If you were not expecting this, or you do not know ${driver}, you can ignore this email — nothing happens without you.`,
+    '',
+    support(context),
+    '',
+    'LOCI',
+  ]
+    .filter((line) => line !== '')
+    .join('\n');
+
+  return {
+    /* Exactly the subject asked for. */
+    subject: headerSafe(`Action Required: Guarantor Verification for ${driver}`),
+    text,
+    html: layout({
+      heading: 'You have been listed as a guarantor',
+      intro: `Hello ${guarantor}, ${driver} has listed you as a guarantor on LOCI. Please use the secure link below to review the terms and complete your verification.`,
+      bodyHtml: [
+        ROW('Driver', driver || 'Not named'),
+        expires ? ROW('Link expires', expires) : '',
+      ].join(''),
+      cta: url ? { label: 'Review and verify', url } : null,
+      footerNote: `If you were not expecting this, you can ignore it — nothing happens without you. ${support(context)}`,
+    }),
+  };
+}
+
 function verificationSubmitted(payload: Payload, context: Context): Rendered {
   const at = whenReadable(str(payload, 'submitted_at'));
   const url = link(context, '/profile');
@@ -536,6 +599,7 @@ function payoutPaid(payload: Payload, context: Context): Rendered {
 }
 
 const TEMPLATES: Record<EmailKind, (payload: Payload, context: Context) => Rendered> = {
+  guarantor_invitation: guarantorInvitation,
   sender_verification_submitted: verificationSubmitted,
   driver_application_approved: applicationApproved,
   driver_application_rejected: applicationRejected,

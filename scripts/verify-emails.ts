@@ -79,6 +79,9 @@ const HOSTILE: Record<string, unknown> = {
   verified_at: '2026-08-20T10:30:00Z',
   paid_at: '2026-08-20T10:30:00Z',
   expires_at: '2026-08-20T11:30:00Z',
+  guarantor_name: `${XSS} Bisi`,
+  submitted_at: '2026-08-20T10:30:00Z',
+  token: 'deadbeefcafe0123456789abcdef',
 };
 
 // -------------------------------------------- every kind renders at all ----
@@ -230,6 +233,41 @@ check(
   '',
 );
 
+/*
+ * ⚠ The guarantor token, which is a live credential in an email.
+ *
+ *   It is the only thing this system sends that grants access to anything, and
+ *   it grants it to somebody with no account. A subject line is logged by more
+ *   systems than a URL path and appears in lock-screen previews, so the token
+ *   belongs in the link and nowhere else.
+ */
+const invite = render('guarantor_invitation', HOSTILE, CONTEXT);
+check(
+  'the guarantor token is never in the subject',
+  Boolean(invite) && !invite!.subject.includes('deadbeef'),
+  'a subject shows on a lock screen and is logged by every hop the mail takes',
+);
+check(
+  'and reaches the guarantor only as a link',
+  Boolean(invite) && invite!.text.includes('/guarantor/deadbeef'),
+  '',
+);
+check(
+  'the subject is the one asked for',
+  Boolean(invite) && invite!.subject.startsWith('Action Required: Guarantor Verification for'),
+  '',
+);
+/*
+ * ⚠ It arrives unsolicited, from a company the reader may not know, asking for
+ *   a national identifier. Without a way out it reads as phishing — correctly.
+ */
+check(
+  'it tells an unexpecting recipient they can ignore it',
+  Boolean(invite) && /ignore (this email|it)/i.test(invite!.text),
+  'an unsolicited request for a NIN with no opt-out is indistinguishable from a scam',
+);
+check('and says the link expires', Boolean(invite) && /expires/i.test(invite!.text), '');
+
 // ------------------------------------------------ absent data is handled ----
 
 /*
@@ -301,7 +339,7 @@ if (failures > 0) {
 }
 
 console.log(
-  'PASS — all nine templates render with hostile input escaped and with an empty payload,\n' +
+  'PASS — every template renders with hostile input escaped and with an empty payload,\n' +
     '       every one has a text part and a newline-free subject, none carries a NIN, a full\n' +
     '       account number or a link to private storage, the delivery email is a summary\n' +
     '       rather than a receipt, and the SQL kinds and the templates are the same list.',

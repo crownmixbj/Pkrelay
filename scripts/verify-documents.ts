@@ -96,8 +96,22 @@ for (const entry of signup.matchAll(
   if (!clientPolicy.has(entry[1])) clientPolicy.set(entry[1], entry[2]);
 }
 
+/*
+ * ⚠ Six in SQL, five on the form, and the gap is deliberate.
+ *
+ *   `guarantorId` — the guarantor's NIN slip — is no longer offered: the
+ *   guarantor uploads nothing, and verifies themselves through an invitation
+ *   instead. The policy row stays so that slips uploaded before that change
+ *   remain valid documents an admin can still open. A form slot with no policy
+ *   would be the dangerous direction; a policy with no slot is just history.
+ */
 check('the SQL policy table parsed', sqlPolicy.size === 6, `${sqlPolicy.size} kinds`);
-check('the client policy parsed', clientPolicy.size === 6, `${clientPolicy.size} documents`);
+check('the client policy parsed', clientPolicy.size === 5, `${clientPolicy.size} documents`);
+check(
+  'the form no longer asks for the guarantor’s ID',
+  !clientPolicy.has('guarantorId'),
+  'a driver photographing somebody else’s national ID is what this change removed',
+);
 
 /*
  * The licence is two uploads, and only the front carries the date.
@@ -131,10 +145,10 @@ check(
  * driver did give us — a rejection they cannot act on because nothing told them
  * which document was wanted.
  */
-for (const [key, whose] of [
-  ['id', "the driver's"],
-  ['guarantorId', "the guarantor's"],
-] as const) {
+/*
+ * ⚠ One slot now. The guarantor's came off the form entirely.
+ */
+for (const [key, whose] of [['id', "the driver's"]] as const) {
   // Labels are written with either quote — "Guarantor's NIN slip" cannot use
   // single ones. Matching only `'` walked past this entry into the next one.
   const label = new RegExp(`key: '${key}',\\s*\\n\\s*label: (['"])(.*?)\\1`).exec(signup)?.[2];

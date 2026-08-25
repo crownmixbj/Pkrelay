@@ -44,6 +44,7 @@ create table if not exists public.email_outbox (
   kind text not null check (kind in (
     'driver_application_approved',
     'driver_application_rejected',
+    'guarantor_invitation',
     'sender_verification_submitted',
     'sender_verified',
     'delivery_completed',
