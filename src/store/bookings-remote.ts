@@ -44,6 +44,7 @@ export type BookingRow = {
   notes: string;
   estimated_fee: number;
   sender_id: string;
+  capture_session_id: string | null;
   status: string;
   driver: string | null;
   driver_id: string | null;
@@ -92,6 +93,7 @@ export function rowToBooking(row: BookingRow): Booking {
     notes: row.notes,
     estimatedFee: Number(row.estimated_fee),
     senderId: row.sender_id,
+    captureSessionId: row.capture_session_id,
     status: row.status as BookingStage,
     driver: row.driver,
     driverId: row.driver_id,
@@ -107,7 +109,21 @@ export function rowToBooking(row: BookingRow): Booking {
   };
 }
 
-/** The insert payload. Server-owned columns are deliberately absent. */
+/**
+ * The insert payload. Server-owned columns are deliberately absent.
+ *
+ * ⚠ `capture_session_id` travels here rather than in a call afterwards.
+ *
+ *   The selfie used to be linked by `consume_capture_session`, run once the
+ *   booking existed — and `book.tsx` swallowed a failure there on purpose,
+ *   because the parcel was already posted and sending somebody back to a
+ *   completed form would have lost it. The result was parcels with no record of
+ *   who posted them and nothing anywhere saying so.
+ *
+ *   Sent with the insert, a BEFORE INSERT trigger resolves it and the policy
+ *   requires the result — see `44_selfie_with_the_parcel.sql`. There is no
+ *   window where one exists without the other.
+ */
 export function bookingToInsert(
   booking: Omit<
     Booking,
@@ -161,6 +177,7 @@ export function bookingToInsert(
     estimated_fee: booking.estimatedFee,
     sender_id: booking.senderId,
     status: booking.status,
+    capture_session_id: booking.captureSessionId,
   };
 }
 

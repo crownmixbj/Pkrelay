@@ -618,22 +618,45 @@ check(
   /disabled=\{!confirmed \|\| !photoSession \|\| posting\}/.test(bookBody),
   'the sheet used to be the only path to the post, so backing out was the only refusal',
 );
-check(
-  'and the session is spent after the booking row exists',
-  bookBody.indexOf('await addBooking') < bookBody.indexOf('await consumeCaptureSession('),
-);
 /*
- * Asserted against the raw source, not `bookCode`.
+ * ⚠ Both of these pinned an ordering that no longer exists, and the second
+ *   pinned a behaviour that is now the bug.
  *
- * `code()` strips comments, so looking for a `//` line inside the stripped text
- * can never pass — the same self-inflicted failure this file already hit with
- * `indexOf` and the import block.
+ *   The selfie used to be linked by `consumeCaptureSession` *after* the insert,
+ *   because there was no booking row to attach it to until then — so spending
+ *   the session second was correct, and swallowing its failure was correct too:
+ *   the parcel was already posted, and sending somebody back to a completed
+ *   form would have lost it to save a link.
+ *
+ *   That produced parcels with no record of who posted them and nothing saying
+ *   so — a dropped connection, an unrun migration or a closed tab between two
+ *   statements was enough. `44_selfie_with_the_parcel.sql` moves the attach
+ *   inside the insert, so a failure now means no parcel rather than a parcel
+ *   with no evidence. Swallowing it would be hiding the wrong thing.
  */
 check(
-  'a failed attach is swallowed rather than raised',
-  flat(book).includes('// Photo stored, link not made. Recoverable by hand; the parcel is safe.') &&
-    /try \{ await consumeCaptureSession/.test(flat(bookBody)),
-  'the parcel is already posted by that point — failing here would lose it to save the link',
+  'the session is sent with the booking rather than spent after it',
+  /captureSessionId: photoSessionId/.test(bookBody) && !/consumeCaptureSession\(/.test(bookCode),
+  'a link made by a second call is a link that can silently not be made',
+);
+check(
+  'and a failed post is reported rather than swallowed',
+  /if \(!booking\) \{ showDialog\( 'Could not post the parcel'/.test(flat(bookCode)),
+  'the parcel no longer exists when this fails, so there is nothing left to protect by hiding it',
+);
+/*
+ * ⚠ And it says what the server said.
+ *
+ *   "Check your connection" was the only failure worth naming while the insert
+ *   asked four questions about the row itself. Since 42 and 44 a post can also
+ *   be refused for being unverified, or for a selfie already spent, never
+ *   finished, or failed — and sending somebody with a working connection to
+ *   restart their router over a photograph is a support ticket by design.
+ */
+check(
+  'naming the reason the server gave',
+  /bookingError\s*\?/.test(bookCode),
+  'a single generic sentence for five different refusals explains none of them',
 );
 
 /*

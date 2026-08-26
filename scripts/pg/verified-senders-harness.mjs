@@ -79,12 +79,31 @@ await db.exec(`
     status text not null default 'unverified'
   );
 
+  create table public.photo_capture_sessions (
+    id uuid primary key default gen_random_uuid(),
+    owner_id uuid not null,
+    photo_path text,
+    completed_at timestamptz,
+    consumed_at timestamptz,
+    liveness_status text,
+    liveness_probability numeric,
+    liveness_environment text,
+    liveness_checked_at timestamptz,
+    created_at timestamptz not null default now()
+  );
+
   create table public.bookings (
     id uuid primary key default gen_random_uuid(),
     sender_id uuid not null,
     driver_id uuid,
     driver text,
     status text not null default 'Booked',
+    sender_photo_path text,
+    sender_photo_at timestamptz,
+    liveness_status text,
+    liveness_probability numeric,
+    liveness_environment text,
+    liveness_checked_at timestamptz,
     created_at timestamptz not null default now()
   );
 
@@ -105,6 +124,7 @@ await db.exec(`
 
   grant usage on schema public, auth to authenticated;
   grant select, insert on public.bookings to authenticated;
+  grant select on public.photo_capture_sessions to authenticated;
   grant select on public.who, public.profiles, public.sender_identity to authenticated;
 
   insert into public.profiles (id) values ('${SENDER}'), ('${DRIVER}');
@@ -134,12 +154,51 @@ await db.exec(policyFrom(read('supabase/09_bans.sql'), '09_bans.sql'));
 const asSender = () => db.exec(`set role authenticated;`);
 const asOwner = () => db.exec('reset role;');
 
+/*
+ * ⚠ Every post carries a fresh session once 44 is applied.
+ *
+ *   Before 44 the column does not exist, so `session` stays out of the insert.
+ *   After it, a parcel without one is refused — which is the whole point — so
+ *   the helper mints one by default and the tests that care pass their own.
+ */
+let hasCaptureColumn = false;
+
+const mintSession = async (owner = SENDER, over = {}) => {
+  await asOwner();
+  const [row] = await q(
+    `insert into public.photo_capture_sessions
+       (owner_id, photo_path, completed_at, consumed_at, liveness_status)
+     values ($1, $2, $3, $4, $5) returning id`,
+    [
+      owner,
+      over.photo_path === undefined ? 'session/selfie.jpg' : over.photo_path,
+      over.completed_at === undefined ? new Date().toISOString() : over.completed_at,
+      over.consumed_at ?? null,
+      over.liveness_status ?? 'passed',
+    ],
+  );
+  await asSender();
+  return row.id;
+};
+
 const post = async (overrides = {}) => {
   const row = { sender_id: SENDER, driver_id: null, driver: null, status: 'Booked', ...overrides };
+
+  if (!hasCaptureColumn) {
+    return q(
+      `insert into public.bookings (sender_id, driver_id, driver, status)
+       values ($1, $2, $3, $4) returning id`,
+      [row.sender_id, row.driver_id, row.driver, row.status],
+    );
+  }
+
+  const session =
+    overrides.session === undefined ? await mintSession(row.sender_id) : overrides.session;
+
   return q(
-    `insert into public.bookings (sender_id, driver_id, driver, status)
-     values ($1, $2, $3, $4) returning id`,
-    [row.sender_id, row.driver_id, row.driver, row.status],
+    `insert into public.bookings (sender_id, driver_id, driver, status, capture_session_id)
+     values ($1, $2, $3, $4, $5) returning id`,
+    [row.sender_id, row.driver_id, row.driver, row.status, session],
   );
 };
 
@@ -311,6 +370,190 @@ await run('the predicate cannot be asked about somebody else', async () => {
   );
 });
 
+/* ============= 5. no parcel without the selfie that authorised it ======== */
+
+/*
+ * ⚠ The failure that prompted this: a real parcel, a real selfie, nothing
+ *   joining them.
+ *
+ *   The link used to be a second client call after the insert, and the booking
+ *   form caught its failure and discarded it on purpose — the parcel was
+ *   already posted, and sending somebody back to a completed form would have
+ *   lost it. So a dropped connection, an unrun migration or a closed tab
+ *   between two statements produced a parcel nobody could be held to, and the
+ *   admin drawer said "No selfie on this parcel" beside an account that had
+ *   taken one.
+ */
+await asOwner();
+await db.exec(read('supabase/44_selfie_with_the_parcel.sql').replace(/notify pgrst[^;]*;/g, ''));
+await db.exec('delete from public.bookings;');
+hasCaptureColumn = true;
+
+await run('a parcel with no session is refused', async () => {
+  await setStatus('verified');
+  const message = await refusal(() => post({ session: null }));
+
+  check(
+    'the insert is refused',
+    message !== null && /row-level security/i.test(message ?? ''),
+    message === null
+      ? 'a parcel with no record of who posted it is exactly what this migration exists to stop'
+      : message,
+  );
+});
+
+await run('and a good session attaches the photo', async () => {
+  await setStatus('verified');
+  const session = await mintSession();
+  const [row] = await post({ session });
+
+  await asOwner();
+  const [booking] = await q('select * from public.bookings where id = $1', [row.id]);
+
+  check('the parcel exists', booking !== undefined, '');
+  check(
+    'carrying the photo',
+    booking?.sender_photo_path === 'session/selfie.jpg',
+    `got ${booking?.sender_photo_path}`,
+  );
+  check('and when it was taken', booking?.sender_photo_at !== null, '');
+  check(
+    'and the liveness verdict travels with it',
+    booking?.liveness_status === 'passed',
+    'the verdict is the difference between a photo and evidence',
+  );
+  check(
+    'and the session it came from is recorded',
+    booking?.capture_session_id === session,
+    'without it there is nothing behind the path to investigate',
+  );
+
+  const [spent] = await q('select consumed_at from public.photo_capture_sessions where id = $1', [
+    session,
+  ]);
+  check(
+    'the session is spent',
+    spent?.consumed_at !== null,
+    'a reusable session is a reusable alibi',
+  );
+  await asSender();
+});
+
+/*
+ * ⚠ Every guard the old `consume_capture_session` had, still standing.
+ *
+ *   Moving a check is the easiest way to lose one, and losing any of these is
+ *   silent: the parcel posts, the photo attaches, and the thing it proves is
+ *   not what anybody thinks.
+ */
+await run('somebody else’s selfie cannot authorise your parcel', async () => {
+  await setStatus('verified');
+  const theirs = await mintSession(DRIVER);
+  const message = await refusal(() => post({ session: theirs }));
+
+  check(
+    'the insert is refused',
+    message !== null && /not yours|already been used/i.test(message ?? ''),
+    message ?? 'a parcel could then carry a photograph of somebody who has never used LOCI',
+  );
+});
+
+await run('a spent session cannot be spent again', async () => {
+  await setStatus('verified');
+  const session = await mintSession();
+  await post({ session });
+
+  const message = await refusal(() => post({ session }));
+  check(
+    'the second parcel is refused',
+    message !== null && /already been used/i.test(message ?? ''),
+    'one photograph proving two handovers is one of them unproven',
+  );
+});
+
+await run('an unfinished capture cannot authorise anything', async () => {
+  await setStatus('verified');
+  const empty = await mintSession(SENDER, { photo_path: null, completed_at: null });
+
+  check(
+    'a session with no photo is refused',
+    (await refusal(() => post({ session: empty }))) !== null,
+    'there is nothing on it to attach',
+  );
+
+  /*
+   * ⚠ The case that makes `completed_at is not null` do any work.
+   *
+   *   With a null photo the claim already fails on the returned path, so
+   *   deleting the completion guard changed nothing and the mutant survived.
+   *   The state it uniquely stops is a row with bytes uploaded and the session
+   *   never finalised — which has not been through `complete_capture_session`,
+   *   so nothing has checked that the object is where the path says or that the
+   *   uploader owns it.
+   */
+  const halfDone = await mintSession(SENDER, { completed_at: null });
+  check(
+    'and neither can one that was never finalised',
+    (await refusal(() => post({ session: halfDone }))) !== null,
+    'an upload that never completed its session has had none of the checks completion performs',
+  );
+});
+
+/*
+ * ⚠ A failed liveness check stops the parcel; an unavailable one does not.
+ *
+ *   14_liveness.sql made this call and it still holds. A provider outage is not
+ *   the sender's fault, and blocking every parcel in the country over one would
+ *   be a worse failure than recording an unchecked photo. A photo that was
+ *   checked and *failed* is a different thing — something was held up to the
+ *   camera that was not a live face.
+ */
+await run('a failed liveness check refuses the parcel', async () => {
+  await setStatus('verified');
+  const failed = await mintSession(SENDER, { liveness_status: 'failed' });
+  const message = await refusal(() => post({ session: failed }));
+
+  check(
+    'the insert is refused',
+    message !== null && /liveness/i.test(message ?? ''),
+    message ?? 'a photo that failed the check is not evidence of anybody',
+  );
+});
+
+await run('but an unavailable one does not', async () => {
+  await setStatus('verified');
+  const unavailable = await mintSession(SENDER, { liveness_status: 'unavailable' });
+  const message = await refusal(() => post({ session: unavailable }));
+
+  check(
+    'the insert is allowed',
+    message === null,
+    message ?? 'a third-party outage must not stop every parcel in the country',
+  );
+});
+
+/*
+ * ⚠ And the rules 42 and 09 added are still there.
+ *
+ *   44 drops and recreates this policy for the fourth time. Each rewrite is a
+ *   chance to lose the others silently.
+ */
+await run('an unverified sender still cannot post, session or not', async () => {
+  await setStatus('pending');
+  const message = await refusal(() => post());
+  check(
+    'the insert is refused',
+    message !== null,
+    'a valid selfie is not a substitute for approval',
+  );
+});
+
+await run('and a verified one still cannot post pre-assigned', async () => {
+  await setStatus('verified');
+  const message = await refusal(() => post({ driver_id: DRIVER }));
+  check('the insert is refused', message !== null, 'claiming is a separate step');
+});
+
 await db.close();
 
 if (failures > 0) {
@@ -319,7 +562,10 @@ if (failures > 0) {
 }
 
 console.log(
-  'PASS — under RLS the database refuses a parcel from an unverified, pending, flagged or\n' +
+  'PASS — no parcel exists without the selfie that authorised it: the session is claimed\n' +
+    '       inside the insert, cannot be reused, borrowed, unfinished or liveness-failed,\n' +
+    '       and carries its verdict onto the row. Under RLS the database also refuses a\n' +
+    '       parcel from an unverified, pending, flagged or\n' +
     '       rejected sender and from an account with no identity row at all, allows a\n' +
     '       verified one, and still carries every guard the policy had before 42 rewrote\n' +
     '       it — no pre-assigned driver, no invented status, no posting for somebody else,\n' +

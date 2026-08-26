@@ -129,6 +129,19 @@ export async function completeCaptureSession(sessionId: string, fileName: string
 }
 
 /** Spends the session on a posted parcel. Single use, enforced server-side. */
+/**
+ * ⚠ No longer on the posting path, and kept deliberately.
+ *
+ *   `44_selfie_with_the_parcel.sql` attaches the selfie inside the booking
+ *   insert, because doing it afterwards meant a second call whose failure the
+ *   booking form swallowed — producing parcels with no record of who posted
+ *   them. Nothing in the app calls this now.
+ *
+ *   It stays because `consume_capture_session` is still granted in the
+ *   database and is the only way to attach a photo to a parcel that already
+ *   exists, which is what a support repair would need. Deleting the wrapper
+ *   would not remove that function; it would only make it harder to reach.
+ */
 export async function consumeCaptureSession(sessionId: string, bookingId: string): Promise<void> {
   const { error } = await supabase.rpc('consume_capture_session', {
     session_id: sessionId,

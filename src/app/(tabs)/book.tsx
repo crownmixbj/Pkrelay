@@ -53,7 +53,6 @@ import { findHub, hubLabel, hubsForCity, type Hub } from '@/constants/hubs';
 import { useHubs } from '@/store/hubs';
 import { useTheme } from '@/hooks/use-theme';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import { consumeCaptureSession } from '@/store/capture-session';
 import { uploadParcelPhoto } from '@/store/parcel-photos';
 import { showToast } from '@/components/ui/toast';
 import { fetchSenderIdentity, runIdentityCheck, type SenderIdentity } from '@/store/identity';
@@ -392,7 +391,7 @@ const asOption = <T extends string>(options: readonly T[], value: unknown): T | 
 
 export default function BookScreen() {
   const theme = useTheme();
-  const { addBooking } = useBookings();
+  const { addBooking, error: bookingError } = useBookings();
   const { requireAuth } = useAuthGate();
   const router = useRouter();
   const params = useLocalSearchParams<{
@@ -1003,6 +1002,20 @@ export default function BookScreen() {
   const postParcel = async (photoSessionId: string) => {
     // TODO: replace with an API call; the store is the local source of truth for now.
     const booking = await addBooking({
+      /*
+       * ⚠ Sent with the parcel, not linked afterwards.
+       *
+       *   This used to be a second call — `consumeCaptureSession` — made once
+       *   the booking existed, and the failure was caught and discarded a few
+       *   lines below on the reasoning that the parcel was already posted.
+       *   That produced exactly what the admin drawer showed: a real parcel, a
+       *   real selfie, and nothing joining them.
+       *
+       *   The server now resolves it inside the insert and the policy requires
+       *   the result, so a failure means no parcel rather than a parcel with no
+       *   record of who posted it — which is a failure worth reporting.
+       */
+      captureSessionId: photoSessionId,
       deliveryType: form.deliveryType,
       pickupMode: form.pickupMode,
       dropoffMode: form.dropoffMode,
@@ -1059,33 +1072,35 @@ export default function BookScreen() {
      * sections of typing. `error` on the store carries the reason.
      */
     if (!booking) {
+      /*
+       * ⚠ The server's sentence when there is one, not always "check your
+       *   connection".
+       *
+       *   That was the only failure worth naming while the insert asked four
+       *   questions about the row itself. Since 42 and 44 it can also be
+       *   refused for being unverified, or for a selfie that was already spent,
+       *   never finished, or failed its liveness check — and telling somebody
+       *   with a working connection to check their connection sends them to
+       *   restart their router over a photograph.
+       */
       showDialog(
         'Could not post the parcel',
-        'Your details are still here. Check your connection and try again.',
+        bookingError
+          ? `${bookingError} Your details are still here.`
+          : 'Your details are still here. Check your connection and try again.',
       );
       return;
     }
 
     /*
-     * Attach the photo, now that there is a parcel to attach it to.
+     * The selfie is already attached — it went in with the insert.
      *
-     * The upload already happened — `resolveSenderPhoto` did it against the
-     * capture session, which exists precisely because there was no booking row
-     * yet. All that is left is to spend the session on this parcel, which the
-     * server allows exactly once.
-     *
-     * A failure here is swallowed rather than raised. The parcel is already
-     * posted and the photo is already stored; sending the sender back to a
-     * completed form would lose the parcel in order to save the link to it.
-     * The orphaned session is visible in the admin log.
+     * `44_selfie_with_the_parcel.sql` resolves the capture session inside the
+     * same statement that writes the row, so by the time execution reaches
+     * here the parcel and the record of who posted it exist together or
+     * neither does. The `catch` above is what reports a failure now.
      */
     if (isSupabaseConfigured) {
-      try {
-        await consumeCaptureSession(photoSessionId, booking.id);
-      } catch {
-        // Photo stored, link not made. Recoverable by hand; the parcel is safe.
-      }
-
       /*
        * And the photograph of the parcel itself, which until now was thrown
        * away.

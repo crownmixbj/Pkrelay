@@ -316,6 +316,21 @@ export type Booking = {
   /** Session id of whoever posted the parcel. Set by the store, not the form. */
   senderId: string;
 
+  /**
+   * The capture session holding the selfie that authorised this parcel.
+   *
+   * ⚠ Sent with the insert, and the parcel is refused without it.
+   *
+   *   The photo is the record of who handed a driver a box. It used to be
+   *   linked afterwards by a call whose failure was swallowed, which produced
+   *   parcels with no evidence and nothing saying so. Now the server resolves
+   *   it in the same statement — see `44_selfie_with_the_parcel.sql`.
+   *
+   *   Null only for rows read back from the database, where the server has
+   *   already turned it into `senderPhotoPath`.
+   */
+  captureSessionId: string | null;
+
   status: BookingStage;
   /** Name of the driver who accepted the job, or null while it sits in the feed. */
   driver: string | null;
@@ -761,6 +776,7 @@ const SEED_BOOKINGS: Booking[] = [
     dropoffLat: null,
     dropoffLng: null,
     senderId: SESSION_USER.id,
+    captureSessionId: null,
     pickupContactName: 'Sender',
     senderPhone: '+2348011112222',
     recipientName: 'Ada Obi',
@@ -797,6 +813,7 @@ const SEED_BOOKINGS: Booking[] = [
     dropoffLat: null,
     dropoffLng: null,
     senderId: 'user-ngozi',
+    captureSessionId: null,
     pickupContactName: 'Sender',
     senderPhone: '+2348033334444',
     recipientName: 'Tunde Bakare',
@@ -833,6 +850,7 @@ const SEED_BOOKINGS: Booking[] = [
     dropoffLat: null,
     dropoffLng: null,
     senderId: 'user-ada',
+    captureSessionId: null,
     pickupContactName: 'Sender',
     senderPhone: '+2348055556666',
     recipientName: 'Fatima Yusuf',
@@ -869,6 +887,7 @@ const SEED_BOOKINGS: Booking[] = [
     dropoffLat: null,
     dropoffLng: null,
     senderId: SESSION_USER.id,
+    captureSessionId: null,
     pickupContactName: 'Sender',
     senderPhone: '+2348077778888',
     recipientName: 'Bisi Adeyemi',
@@ -905,6 +924,7 @@ const SEED_BOOKINGS: Booking[] = [
     dropoffLat: null,
     dropoffLng: null,
     senderId: 'user-tunde',
+    captureSessionId: null,
     pickupContactName: 'Sender',
     senderPhone: '+2348099990000',
     recipientName: 'Emeka Nwosu',

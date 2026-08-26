@@ -77,6 +77,11 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
     fn: 'sender_selfie_path',
     migration: '43_review_sees_the_selfie.sql',
   },
+  {
+    label: 'Selfie with the parcel',
+    fn: 'attach_capture_on_insert',
+    migration: '44_selfie_with_the_parcel.sql',
+  },
 ];
 
 type PostgrestLike = { message?: unknown; code?: unknown };
