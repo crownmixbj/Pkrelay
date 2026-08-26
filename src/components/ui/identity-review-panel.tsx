@@ -13,6 +13,7 @@ import { EmptyState, SectionLabel } from '@/components/ui/screen';
 import { showToast } from '@/components/ui/toast';
 import { Radius, Spacing, Typography, font } from '@/constants/theme';
 import { errorMessage } from '@/lib/errors';
+import { schemaGapMessage } from '@/lib/schema-gap';
 import { useTheme } from '@/hooks/use-theme';
 import { maskNin } from '@/store/identity';
 import {
@@ -84,7 +85,17 @@ export function IdentityReviewPanel() {
     try {
       setRows(await fetchIdentityQueue());
     } catch (thrown) {
-      setError(errorMessage(thrown, 'Could not load the identity queue.'));
+      /*
+       * ⚠ A missing function is a deployment fact, not a database error.
+       *
+       *   Unmapped, this screen showed "Could not find the function
+       *   public.admin_identity_queue without parameters in the schema cache
+       *   (PGRST202)" — every word true, none of it actionable, and all of it
+       *   reading like a bug in the app rather than a migration nobody has run.
+       */
+      setError(
+        schemaGapMessage(thrown) ?? errorMessage(thrown, 'Could not load the identity queue.'),
+      );
     } finally {
       setLoading(false);
     }
@@ -118,7 +129,11 @@ export function IdentityReviewPanel() {
         message: review.fullName ?? review.email ?? '',
       });
     } catch (thrown) {
-      showDialog('Could not save the decision', errorMessage(thrown, 'Try again.'));
+      const gap = schemaGapMessage(thrown);
+      showDialog(
+        gap ? 'Not set up yet' : 'Could not save the decision',
+        gap ?? errorMessage(thrown, 'Try again.'),
+      );
     } finally {
       setBusyId(null);
     }

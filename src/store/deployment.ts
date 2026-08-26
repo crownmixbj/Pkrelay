@@ -1,6 +1,7 @@
 import { buildLabel } from '@/lib/build-info';
 import { restEndpoint } from '@/lib/supabase';
 import { probePlacesLookup } from '@/store/places';
+import { CAPABILITIES } from '@/lib/schema-gap';
 
 /**
  * Whether the thing you are looking at is the thing that was built.
@@ -17,6 +18,13 @@ import { probePlacesLookup } from '@/store/places';
  *   the web build is deployed separately again; and migrations are run by hand.
  *   Three clocks, none of them visible.
  *
+ * ⚠ The list of capabilities lives in `lib/schema-gap.ts`, not here.
+ *
+ *   The same mapping answers two questions — "what is missing" for this panel,
+ *   and "which file do I run" for the error a screen shows when it hits a
+ *   function that is not there. Two copies would drift, and the copy people
+ *   read under pressure is the error message.
+ *
  * ⚠ The database half is read from PostgREST's own OpenAPI document, not by
  *   calling the functions.
  *
@@ -25,20 +33,6 @@ import { probePlacesLookup } from '@/store/places';
  *   with a side effect is not a probe. The root of `/rest/v1/` lists every
  *   exposed function and changes nothing.
  */
-
-/** A capability, and the function whose presence proves the migration ran. */
-const CAPABILITIES: { label: string; fn: string; migration: string }[] = [
-  { label: 'Parcel photos', fn: 'attach_parcel_photo', migration: '36_parcel_photos.sql' },
-  {
-    label: 'Sender identity reveal',
-    fn: 'admin_reveal_sender_identity',
-    migration: '37_admin_sender_identity.sql',
-  },
-  { label: 'Driver wallet', fn: 'request_payout', migration: '30_driver_wallet.sql' },
-  { label: 'Document expiry', fn: 'record_document', migration: '31_document_expiry.sql' },
-  { label: 'Manual dispatch', fn: 'set_dispatch_mode', migration: '32_dispatch_mode.sql' },
-  { label: 'Account erasure', fn: 'attach_identity_result', migration: '34_identity_handoff.sql' },
-];
 
 export type Capability = {
   label: string;

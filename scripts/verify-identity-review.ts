@@ -22,7 +22,10 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { existsSync, readdirSync } from 'node:fs';
+
 import { postingGate } from '../src/lib/posting-gate';
+import { CAPABILITIES, schemaGapMessage } from '../src/lib/schema-gap';
 import type { IdentityStatus, SenderIdentity } from '../src/store/identity';
 import { verificationPath } from '../src/store/identity';
 import {
@@ -244,6 +247,113 @@ check(
   'one function decides what a chip shows',
   panel.includes('function matches(') && panel.includes('matches(row, filter)'),
   'a chip whose meaning is spelled out at each use site is a chip that means two things',
+);
+
+// --------------------------------- a missing migration says which one -------
+
+/*
+ * ⚠ This screen showed PostgREST's own words for eight days.
+ *
+ *   "Could not find the function public.admin_identity_queue without parameters
+ *   in the schema cache (PGRST202)" — every word true, none of it actionable,
+ *   and all of it reading like a bug in the app rather than a migration nobody
+ *   had run. The person seeing it needs a filename.
+ */
+const missing = {
+  code: 'PGRST202',
+  message:
+    'Could not find the function public.admin_identity_queue without parameters in the schema cache',
+};
+
+check(
+  'a missing function names the migration to run',
+  (schemaGapMessage(missing) ?? '').includes('41_sender_identity_review.sql'),
+  `got: ${schemaGapMessage(missing) ?? 'null'}`,
+);
+check(
+  'and says where to run it',
+  /SQL editor/i.test(schemaGapMessage(missing) ?? ''),
+  'a filename with no instruction is a filename somebody searches the repo for',
+);
+/*
+ * ⚠ Null for everything else, and that is the important half.
+ *
+ *   A helper that answered "run a migration" to a network timeout would send
+ *   somebody to the SQL editor for a problem no SQL can fix, and the real error
+ *   would be gone from the screen.
+ */
+check(
+  'anything else keeps its own error',
+  schemaGapMessage({ code: '23514', message: 'new row violates check constraint' }) === null &&
+    schemaGapMessage(new Error('Network request failed')) === null &&
+    schemaGapMessage(null) === null,
+  'a deployment answer to a runtime failure hides the runtime failure',
+);
+/*
+ * ⚠ Still useful for a function this list has never heard of.
+ *
+ *   A migration newer than the capability list would otherwise fall straight
+ *   back to the raw PostgREST sentence — which is the failure being fixed.
+ */
+check(
+  'an unknown function still says a migration is missing',
+  /migration/i.test(
+    schemaGapMessage({
+      code: 'PGRST202',
+      message: 'Could not find the function public.something_new in the schema cache',
+    }) ?? '',
+  ),
+  '',
+);
+check(
+  'and names it',
+  (
+    schemaGapMessage({
+      code: 'PGRST202',
+      message: 'Could not find the function public.something_new in the schema cache',
+    }) ?? ''
+  ).includes('something_new'),
+  '',
+);
+
+/*
+ * ⚠ Every capability points at a file that exists and defines what it claims.
+ *
+ *   A typo in either half is silent and permanent: the panel reports the
+ *   migration as missing for ever, on a database where it has been run.
+ */
+for (const capability of CAPABILITIES) {
+  const path = `supabase/${capability.migration}`;
+  check(`"${capability.label}" names a migration that exists`, existsSync(join(ROOT, path)), path);
+
+  if (!existsSync(join(ROOT, path))) continue;
+
+  check(
+    `and ${path} really defines ${capability.fn}`,
+    new RegExp(`function public\\.${capability.fn}\\b`).test(read(path)),
+    'a function that is not in the file it is attributed to is reported missing for ever',
+  );
+}
+
+/*
+ * ⚠ The list must not fall behind the migrations again.
+ *
+ *   It stopped at 37 while the app kept shipping 38 through 41 — so a panel
+ *   whose entire job is "is the database behind the code" was itself behind the
+ *   code, turning a question somebody would have investigated into a
+ *   reassuring green tick. Checking the *newest* migration is covered is the
+ *   cheapest way to make that fail on the day it happens.
+ */
+const migrations = readdirSync(join(ROOT, 'supabase'))
+  .filter((name) => /^\d+_.*\.sql$/.test(name))
+  .sort();
+const newest = migrations.at(-1) ?? '';
+
+check('the migrations were listed', newest.length > 0, '');
+check(
+  `the newest migration (${newest}) is on the deployment panel`,
+  CAPABILITIES.some((capability) => capability.migration === newest),
+  'a panel that is itself out of date reports a healthy schema while a screen is broken',
 );
 
 // ------------------------------------------- the approval attestation -------

@@ -272,6 +272,18 @@ check(
  */
 const deployment = code(read('src/store/deployment.ts'));
 
+/*
+ * ⚠ The capability list moved out of the panel's own file.
+ *
+ *   It now lives in `lib/schema-gap.ts`, shared with the code that turns a
+ *   missing-function error into the name of the migration to run — one list, so
+ *   the panel and the error message cannot disagree about which file to run.
+ *   This scrape followed it rather than silently finding nothing, which is what
+ *   it did for one run: zero capabilities parsed, and every check below it
+ *   skipped without a word.
+ */
+const capabilityList = code(read('src/lib/schema-gap.ts'));
+
 check(
   'the schema is probed without calling anything',
   deployment.includes('/rest/v1/') && !/supabase\.rpc\(/.test(deployment),
@@ -295,14 +307,7 @@ check(
  */
 const migrations = readdirSync(join(ROOT, 'supabase')).filter((name) => name.endsWith('.sql'));
 
-for (const [, fn, file] of deployment.matchAll(
-  /fn: '(\w+)',\s*migration: '([\w.]+)'|fn: '(\w+)',\s*\n\s*migration: '([\w.]+)'/g,
-)) {
-  void fn;
-  void file;
-}
-
-const claims = [...deployment.matchAll(/fn: '(\w+)'[\s\S]{0,80}?migration: '([\w.]+)'/g)].map(
+const claims = [...capabilityList.matchAll(/fn: '(\w+)'[\s\S]{0,80}?migration: '([\w.]+)'/g)].map(
   (match) => ({ fn: match[1], file: match[2] }),
 );
 
