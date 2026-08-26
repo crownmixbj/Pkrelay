@@ -157,6 +157,25 @@ check(
 const admin = read('src/app/(tabs)/admin.tsx');
 
 /*
+ * ⚠ Block comments first, then the JSX braces around them. The order is not
+ *   cosmetic.
+ *
+ *   Stripping `{ ... }` wrappers first looks equivalent and is not: a plain
+ *   block comment that happens to follow an opening brace starts a match that
+ *   runs on until the next comment-close-then-brace anywhere in the file. In this file that ate
+ *   5,500 characters of live code, and a mutation test that reinstated the very
+ *   thing an assertion below forbids passed, because the assertion could no
+ *   longer see it.
+ *
+ *   Every other stripper in `scripts/` already does it in this order. These two
+ *   were the exceptions.
+ */
+const adminCode = admin
+  .replace(/(^|[\s{(=,;])\/\*[\s\S]*?\*\//g, '$1')
+  .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, '')
+  .replace(/^\s*\/\/.*$/gm, '');
+
+/*
  * ⚠ Asserted on the screen, not only on the predicates.
  *
  *   A correct `canApprove` that no component calls is a comment. The failure
@@ -178,6 +197,93 @@ check(
   admin.includes('isWaitingOnGuarantor(application.status)') &&
     /Approval opens once the guarantor confirms/.test(admin),
   'an admin who cannot tell a deliberate omission from a broken screen approves from the SQL editor instead',
+);
+
+// ------------------------------------------- the approval attestation -------
+
+/*
+ * ⚠ The gate is a *disabled prop*, not a hidden button.
+ *
+ *   An Approve that appears when the box is ticked is a control somebody has to
+ *   discover; a greyed one beside an unticked box explains itself. Both stop the
+ *   click, but only one of them tells the reviewer why.
+ */
+check(
+  'Approve is gated on the attestation',
+  /disabled=\{busy \|\| !attested\}/.test(adminCode),
+  'an ungated Approve is a button reachable by momentum from the card above it',
+);
+check(
+  'the checkbox is the shared one rather than a second implementation',
+  admin.includes('<ConfirmCheckbox') && admin.includes("from '@/components/ui/form-wizard'"),
+  'a hand-rolled checkbox here would drift from the one on every form in the app',
+);
+/*
+ * ⚠ The label names the documents.
+ *
+ *   "I confirm" attests to nothing and gets ticked without reading. Naming the
+ *   driver's details *and* the guarantor confirmation is what makes somebody
+ *   notice they have not opened one of them.
+ */
+check(
+  'and it says what was checked',
+  /I have verified this driver's details and their guarantor confirmation/.test(admin),
+  'a generic agreement is a box people tick without looking',
+);
+
+/*
+ * ⚠ The single most important assertion about this feature.
+ *
+ *   `visible` is filtered and re-sorted, and the default chip hides an
+ *   application the moment it is decided — so the card in a given position is a
+ *   *different applicant* a second later. A tick that survived that would
+ *   approve the next person in the queue on an attestation made about somebody
+ *   else, and the audit would record a check that never happened. That is worse
+ *   than having no checkbox at all.
+ */
+check(
+  'the tick cannot outlive the card it was made on',
+  /useEffect\(\(\) => \{\s*setAttested\(false\);[\s\S]{0,160}\}, \[application\.id\]\)/.test(
+    adminCode,
+  ),
+  'a checkbox keyed on nothing stays ticked while the row underneath it becomes another person',
+);
+
+/*
+ * ⚠ Reject is deliberately *not* gated, and that asymmetry is load-bearing.
+ *
+ *   The tick exists because approving is the direction that cannot be undone —
+ *   it puts somebody on the road with other people's parcels. Rejecting is
+ *   recoverable and already costs a written reason. Gating both would make the
+ *   tick a reflex performed on every card, which is precisely what stops it
+ *   working on the one that matters.
+ */
+const rejectButton = /label="Reject"[\s\S]{0,400}?\/>/.exec(adminCode)?.[0] ?? '';
+check('the Reject button parsed', rejectButton.length > 0, '');
+check(
+  'Reject is not gated on the attestation',
+  !rejectButton.includes('attested'),
+  'a tick required everywhere is a tick performed everywhere, and then it means nothing anywhere',
+);
+
+/*
+ * ⚠ One confirmation, not two.
+ *
+ *   Approving used to open a modal as well. Three deliberate acts for one
+ *   decision is how a confirmation becomes a thing people dismiss without
+ *   reading — including the ones that matter. The consequence sentence the
+ *   dialog carried now sits beside the checkbox, where it is read *before* the
+ *   decision rather than after it.
+ */
+check(
+  'the approval modal is gone',
+  !adminCode.includes('Approve this driver?'),
+  'a checkbox and a modal for one decision teaches people to click through both',
+);
+check(
+  'and its consequence survived onto the card',
+  /accept delivery jobs immediately/.test(admin) && /only gate/.test(admin),
+  'deleting the dialog must not delete the one sentence that said what approval does',
 );
 
 // ----------------------------------------------- a rejection says why -------

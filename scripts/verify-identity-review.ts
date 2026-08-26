@@ -160,6 +160,25 @@ const store = read('src/store/identity-review.ts');
 const admin = read('src/app/(tabs)/admin.tsx');
 const nav = read('src/components/ui/app-nav-bar.tsx');
 
+/*
+ * ⚠ Block comments first, then the JSX braces around them. The order is not
+ *   cosmetic.
+ *
+ *   Stripping `{ ... }` wrappers first looks equivalent and is not: a plain
+ *   block comment that happens to follow an opening brace starts a match that
+ *   runs on until the next comment-close-then-brace anywhere in the file. In this file that ate
+ *   5,500 characters of live code, and a mutation test that reinstated the very
+ *   thing an assertion below forbids passed, because the assertion could no
+ *   longer see it.
+ *
+ *   Every other stripper in `scripts/` already does it in this order. These two
+ *   were the exceptions.
+ */
+const panelCode = panel
+  .replace(/(^|[\s{(=,;])\/\*[\s\S]*?\*\//g, '$1')
+  .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, '')
+  .replace(/^\s*\/\/.*$/gm, '');
+
 check(
   'the queue is reachable from the admin screen',
   admin.includes("section === 'identity'") && admin.includes('<IdentityReviewPanel />'),
@@ -185,6 +204,67 @@ check(
   panel.includes('function matches(') && panel.includes('matches(row, filter)'),
   'a chip whose meaning is spelled out at each use site is a chip that means two things',
 );
+
+// ------------------------------------------- the approval attestation -------
+
+/*
+ * ⚠ Approving a sender is not only unblocking them.
+ *
+ *   It promotes this selfie to the master reference photo that every future
+ *   shipment of theirs is matched against. An operator who does not know that
+ *   is making a smaller decision than the one they are actually making, so the
+ *   card says it.
+ */
+check(
+  'Approve is gated on the attestation',
+  /disabled=\{busy \|\| !attested\}/.test(panelCode),
+  'an ungated Approve is one click away from the reveal button directly above it',
+);
+check(
+  'the checkbox is the shared one rather than a second implementation',
+  panelCode.includes('<ConfirmCheckbox') &&
+    panelCode.includes("from '@/components/ui/form-wizard'"),
+  '',
+);
+check(
+  'and its label names the act rather than an agreement',
+  /I have compared the selfie against the NIN slip/.test(panel),
+  '"I confirm this is correct" is a box people tick without looking at anything',
+);
+check(
+  'the card says approval keeps the photo as the reference',
+  /reference photo/.test(panel) && /matched against it/.test(panel),
+  'the consequence of this decision outlives the decision, so it has to be on screen for it',
+);
+
+/*
+ * ⚠ The tick, the reveal and the reason all reset with the account.
+ *
+ *   The list is re-fetched after every decision and the default chip hides what
+ *   was just decided, so the card in a given position becomes a different
+ *   person a moment later. A surviving tick would approve the next account on
+ *   an attestation made about somebody else — a record of a comparison that
+ *   never happened. A surviving reveal would leave a signed URL to one person's
+ *   face on screen under another person's name.
+ */
+check(
+  'nothing outlives the card it belongs to',
+  /useEffect\(\(\) => \{\s*setAttested\(false\);\s*setRevealed\(null\);[\s\S]{0,120}\}, \[review\.userId\]\)/.test(
+    panelCode,
+  ),
+  'state keyed on nothing persists while the row underneath it becomes another person',
+);
+
+/*
+ * ⚠ Reject is not gated, and the asymmetry is deliberate.
+ *
+ *   Rejecting already costs a written reason and is recoverable — the sender
+ *   resubmits. A tick required on every card is a tick performed on every card,
+ *   and then it means nothing on the one that matters.
+ */
+const senderReject = /label="Reject"[\s\S]{0,400}?\/>/.exec(panelCode)?.[0] ?? '';
+check('the Reject button parsed', senderReject.length > 0, '');
+check('Reject is not gated on the attestation', !senderReject.includes('attested'), '');
 
 // ------------------------------------------------- the decision, and the note --
 

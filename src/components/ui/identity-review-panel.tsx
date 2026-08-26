@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/card';
 import { ChipGroup } from '@/components/ui/chip';
 import { showDialog } from '@/components/ui/dialog';
 import { Field } from '@/components/ui/field';
+import { ConfirmCheckbox } from '@/components/ui/form-wizard';
 import { EmptyState, SectionLabel } from '@/components/ui/screen';
 import { showToast } from '@/components/ui/toast';
 import { Radius, Spacing, Typography, font } from '@/constants/theme';
@@ -199,6 +200,29 @@ function IdentityCard({
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState('');
 
+  /**
+   * ⚠ Reset on the account, so a tick cannot outlive the card it was made on.
+   *
+   *   The list is re-fetched after every decision and the default chip hides
+   *   what was just decided, so the card in a given position becomes a
+   *   *different person* a moment later. A tick that survived that would
+   *   approve the next account on an attestation somebody made about somebody
+   *   else — which is worse than no checkbox, because it manufactures a record
+   *   of a comparison that never happened.
+   *
+   *   Keyed on `userId` rather than done on save, because React may reuse this
+   *   component instance for a different row without unmounting it. The reveal
+   *   is cleared for the same reason: a signed URL to one person's face must
+   *   not still be on screen under another person's name.
+   */
+  const [attested, setAttested] = useState(false);
+  useEffect(() => {
+    setAttested(false);
+    setRevealed(null);
+    setRejecting(false);
+    setReason('');
+  }, [review.userId]);
+
   const decidable = isAwaitingIdentityReview(review.status);
   const who = review.fullName ?? review.email ?? 'Unnamed account';
   const firstName = (review.fullName ?? '').trim().split(/\s+/)[0] || 'They';
@@ -348,23 +372,59 @@ function IdentityCard({
             </View>
           </View>
         ) : (
-          <View style={styles.actions}>
-            <Button
-              label={busy ? 'Saving…' : 'Approve'}
-              size="md"
-              style={styles.action}
+          <View style={styles.decide}>
+            {/*
+              ⚠ The consequence, stated where the decision is made.
+
+                Approving does not only unblock them: it promotes this selfie to
+                the master reference photo that every future shipment of theirs
+                is compared against. An operator who does not know that is
+                making a smaller decision than the one they are actually making.
+            */}
+            <Text style={[styles.body, { color: theme.textSecondary }]}>
+              Approving keeps this selfie as {firstName === 'They' ? 'their' : `${firstName}'s`}{' '}
+              reference photo — every later parcel is matched against it.
+            </Text>
+
+            <ConfirmCheckbox
+              checked={attested}
+              onChange={setAttested}
               disabled={busy}
-              icon={(color, size) => <ShieldCheck color={color} size={size} />}
-              onPress={() => onDecide({ verdict: 'verified' })}
+              /*
+               * ⚠ Names the act, not an agreement.
+               *
+               *   "I confirm this is correct" is ticked without looking. "I
+               *   have compared" is a claim about something the operator either
+               *   did or did not do, and the button above it is the one that
+               *   opens the documents.
+               */
+              label="I have compared the selfie against the NIN slip"
             />
-            <Button
-              label="Reject"
-              variant="secondary"
-              size="md"
-              style={styles.action}
-              disabled={busy}
-              onPress={() => setRejecting(true)}
-            />
+
+            <View style={styles.actions}>
+              <Button
+                label={busy ? 'Saving…' : 'Approve'}
+                size="md"
+                style={styles.action}
+                disabled={busy || !attested}
+                icon={(color, size) => <ShieldCheck color={color} size={size} />}
+                onPress={() => onDecide({ verdict: 'verified' })}
+              />
+              <Button
+                label="Reject"
+                variant="secondary"
+                size="md"
+                style={styles.action}
+                /*
+                 * ⚠ Not gated, deliberately — see the driver card for the
+                 *   argument. Rejecting already costs a written reason, and a
+                 *   tick performed on every card is a tick that has stopped
+                 *   meaning anything on the one that matters.
+                 */
+                disabled={busy}
+                onPress={() => setRejecting(true)}
+              />
+            </View>
           </View>
         )
       ) : (
@@ -414,6 +474,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   rejectBox: { gap: Spacing.one, marginTop: Spacing.one },
+  decide: { gap: Spacing.two, marginTop: Spacing.one },
   actions: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.one },
   action: { flexGrow: 1, flexBasis: 130 },
   decided: { gap: Spacing.half, marginTop: Spacing.one },

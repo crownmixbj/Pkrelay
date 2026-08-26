@@ -34,6 +34,7 @@ import { IdentityReviewPanel } from '@/components/ui/identity-review-panel';
 import { ChipGroup } from '@/components/ui/chip';
 import { showDialog } from '@/components/ui/dialog';
 import { Field } from '@/components/ui/field';
+import { ConfirmCheckbox } from '@/components/ui/form-wizard';
 import { EmptyState, screenPadding, ScreenHeader, SectionLabel } from '@/components/ui/screen';
 import { SignedOutState } from '@/components/ui/signed-out-state';
 import { showToast } from '@/components/ui/toast';
@@ -251,29 +252,32 @@ export default function AdminScreen() {
     [applications, filter],
   );
 
+  /*
+   * ⚠ No dialog, because the attestation on the card replaced it.
+   *
+   *   This used to open "Approve this driver?" with a Cancel and an Approve.
+   *   The card now carries a checkbox the reviewer has to tick before the
+   *   button is live, and stacking a modal on top of that would be three
+   *   deliberate acts for one decision — which is how a confirmation turns into
+   *   a thing people dismiss without reading, including the ones that matter.
+   *
+   *   The checkbox is the better of the two anyway. A modal's default button is
+   *   reachable by momentum from the click that opened it; a checkbox is not,
+   *   and its label says what was checked rather than "are you sure". The
+   *   consequence sentence the dialog carried now sits beside it, where it is
+   *   read *before* the decision instead of after.
+   */
   const approve = (application: DriverApplication) => {
     if (!user) return;
-
-    showDialog(
-      'Approve this driver?',
-      `${application.fullName} will be able to accept delivery jobs immediately. Check the documents and guarantor first — this is the only gate.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Approve',
-          onPress: () => void apply(application, { status: 'approved', reviewerId: user.id }),
-        },
-      ],
-    );
+    void apply(application, { status: 'approved', reviewerId: user.id });
   };
 
   /*
-   * ⚠ No second confirmation, because the reason field already is one.
+   * ⚠ No confirmation here either, because the reason field is one.
    *
    *   The reviewer has just typed a sentence explaining themselves to a named
    *   person; a modal asking "are you sure" on top of that is the kind of prompt
-   *   people learn to dismiss without reading, which is what makes the *next*
-   *   one — the approval — less safe too.
+   *   people learn to dismiss without reading.
    */
   const reject = (application: DriverApplication, reason: string) => {
     if (!user) return;
@@ -487,6 +491,27 @@ function ApplicationCard({
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState('');
 
+  /**
+   * ⚠ Keyed on the application, so a tick cannot outlive the card it was made on.
+   *
+   *   `visible` is filtered and re-sorted, and the default chip hides a decision
+   *   the moment it is made — so the card in a given position is a *different
+   *   applicant* a second later. Plain `useState` here would leave the box
+   *   ticked, and the next person in the queue would be approved on an
+   *   attestation somebody made about somebody else. That is worse than having
+   *   no checkbox at all: it manufactures a record of a check that did not
+   *   happen.
+   *
+   *   The reset runs on `application.id` rather than on save, because React may
+   *   reuse this component instance for a different row without unmounting it.
+   */
+  const [attested, setAttested] = useState(false);
+  useEffect(() => {
+    setAttested(false);
+    setRejecting(false);
+    setReason('');
+  }, [application.id]);
+
   const waiting = workingDaysSince(application.submittedAt);
   const overdue = isOverdue(application);
   const decided = application.status === 'approved' || application.status === 'rejected';
@@ -667,27 +692,76 @@ function ApplicationCard({
           </View>
         </View>
       ) : (
-        <View style={styles.actions}>
+        <View style={styles.decide}>
           {canApprove(application.status) && (
-            <Button
-              label={busy ? 'Saving…' : 'Approve'}
-              size="md"
-              style={styles.action}
-              disabled={busy}
-              icon={(color, size) => <ShieldCheck color={color} size={size} />}
-              onPress={onApprove}
-            />
+            <>
+              {/*
+                ⚠ The consequence, beside the control, before the decision.
+
+                  This sentence used to live in a confirmation dialog that
+                  opened *after* the click. Somebody who has already decided to
+                  approve reads a modal as an obstacle rather than as
+                  information. Here it is what they read while deciding.
+              */}
+              <Text style={[styles.gateNote, { color: theme.textSecondary }]}>
+                Approving lets {firstName} accept delivery jobs immediately. This is the only gate.
+              </Text>
+
+              <ConfirmCheckbox
+                checked={attested}
+                onChange={setAttested}
+                disabled={busy}
+                /*
+                 * ⚠ Names what was checked rather than saying "I agree".
+                 *
+                 *   "I confirm" attests to nothing and gets ticked without
+                 *   reading. Naming the two documents is what makes somebody
+                 *   notice they have not opened them.
+                 */
+                label="I have verified this driver's details and their guarantor confirmation"
+              />
+            </>
           )}
-          {canReject(application.status) && (
-            <Button
-              label="Reject"
-              variant="secondary"
-              size="md"
-              style={styles.action}
-              disabled={busy}
-              onPress={() => setRejecting(true)}
-            />
-          )}
+
+          <View style={styles.actions}>
+            {canApprove(application.status) && (
+              <Button
+                label={busy ? 'Saving…' : 'Approve'}
+                size="md"
+                style={styles.action}
+                /*
+                 * ⚠ Disabled rather than hidden.
+                 *
+                 *   A button that appears on tick is one somebody has to
+                 *   discover; a greyed one beside an unticked box explains
+                 *   itself. This is friction on purpose, not a puzzle.
+                 */
+                disabled={busy || !attested}
+                icon={(color, size) => <ShieldCheck color={color} size={size} />}
+                onPress={onApprove}
+              />
+            )}
+            {canReject(application.status) && (
+              <Button
+                label="Reject"
+                variant="secondary"
+                size="md"
+                style={styles.action}
+                /*
+                 * ⚠ Not gated on the attestation, and that asymmetry is the point.
+                 *
+                 *   The checkbox exists because approving is the direction that
+                 *   cannot easily be undone — it puts somebody on the road with
+                 *   other people's parcels. Rejecting is recoverable and already
+                 *   costs a written reason. Gating both would make the tick a
+                 *   reflex performed on every card, which is exactly what stops
+                 *   it working on the one that matters.
+                 */
+                disabled={busy}
+                onPress={() => setRejecting(true)}
+              />
+            )}
+          </View>
         </View>
       )}
 
@@ -836,6 +910,8 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
   },
   noticeText: { ...Typography.caption, flex: 1, lineHeight: 17 },
+  decide: { gap: Spacing.two, marginTop: Spacing.one },
+  gateNote: { ...Typography.meta, lineHeight: 20 },
   actions: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.one },
   action: { flexGrow: 1, flexBasis: 130 },
   decided: { ...Typography.meta, marginTop: Spacing.one },
