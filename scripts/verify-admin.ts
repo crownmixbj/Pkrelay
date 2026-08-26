@@ -45,16 +45,42 @@ const navSource = read('src/components/ui/app-nav-bar.tsx');
 
 // --------------------------------------------------------- route coverage ---
 
-const DROPDOWN: Record<string, string> = {
-  'Dashboard Overview': 'admin',
-  'Driver & App Review': 'admin',
-  'User & Role Mgmt.': 'admin-users',
-  'Hubs & Operations': 'admin-ops',
-  'System Logs & Errors': 'admin-logs',
-};
+/*
+ * ⚠ Read out of the nav rather than listed again here.
+ *
+ *   This was a hand-written map of five labels to five routes, plus an
+ *   assertion pinning the `also` array verbatim. Both broke the day a sixth
+ *   admin screen was added — reporting a missing route for a route that
+ *   exists, and a wrong array for an array that had simply grown. An assertion
+ *   that fails on every unrelated change is one somebody edits without reading,
+ *   and the property it was defending gets lost in the edit.
+ *
+ *   What actually matters is unchanged and is asserted below: every entry the
+ *   dropdown offers leads somewhere real, and nothing an admin can click is a
+ *   dead end.
+ */
+const adminEntry =
+  /key: 'admin',[\s\S]*?children: \[([\s\S]*?)\n {4}\],/.exec(navSource)?.[1] ?? '';
 
-for (const [label, route] of Object.entries(DROPDOWN)) {
-  check(`the nav offers "${label}"`, navSource.includes(label));
+check('the Admin dropdown parsed', adminEntry.length > 0, 'nothing to check is not a pass');
+
+const children = [...adminEntry.matchAll(/label: '([^']+)',\s*\n\s*href: '([^']+)',/g)].map(
+  (match) => ({ label: match[1], href: match[2] }),
+);
+
+check(
+  'it offers more than a couple of screens',
+  children.length >= 5,
+  `parsed ${children.length} — the regex has probably stopped matching the file`,
+);
+
+for (const { label, href } of children) {
+  /*
+   * `/admin` is one screen with sections; everything else is its own route.
+   * Either way the file has to exist, because expo-router resolves by filename
+   * and a missing one is a blank screen rather than an error.
+   */
+  const route = href.replace(/^\//, '');
 
   let exists = true;
   try {
@@ -65,10 +91,33 @@ for (const [label, route] of Object.entries(DROPDOWN)) {
   check(`"${label}" resolves to a real screen`, exists, `src/app/(tabs)/${route}.tsx is missing`);
 }
 
+/*
+ * ⚠ A child pointing at a section that no longer exists is a dead link that
+ *   renders the Overview instead.
+ *
+ *   `parseAdminSection` falls back to 'overview' for anything it does not
+ *   recognise — which is right at runtime and silent. So a nav entry left
+ *   behind after a section moved out to its own route would quietly send
+ *   somebody to the dashboard, and look like a bug in the dashboard.
+ */
+const sections =
+  /const SECTIONS = \[([^\]]*)\] as const;/.exec(read('src/app/(tabs)/admin.tsx'))?.[1] ?? '';
+const sectionNames = [...sections.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+
+check('the admin sections parsed', sectionNames.length >= 3, sections);
+
+for (const [, key] of adminEntry.matchAll(/section: '([a-z_]+)'/g)) {
+  check(
+    `the "${key}" nav entry points at a section that exists`,
+    sectionNames.includes(key),
+    `admin.tsx knows ${sectionNames.join(', ')} — anything else silently opens the Overview`,
+  );
+}
+
 check(
   'the entry is Admin, and the old Applications tab is gone',
   navSource.includes("label: 'Admin'") && !navSource.includes("label: 'Applications'"),
-  'the review queue is one of five now — leaving it top-level duplicates it',
+  'the review queue is one of several now — leaving it top-level duplicates it',
 );
 
 check(
@@ -77,10 +126,25 @@ check(
   'hiding it is a courtesy, but it should still be hidden',
 );
 
-check(
-  'Admin claims its three extra routes',
-  navSource.includes("also: ['/admin-users', '/admin-ops', '/admin-logs']"),
-);
+/*
+ * ⚠ `also` is what keeps the Admin entry highlighted on its sibling routes.
+ *
+ *   Without an entry here, opening Sender ID Review leaves the nav showing
+ *   nothing selected — the person is on an admin screen and the chrome says
+ *   they are nowhere. Asserted as coverage of the children rather than as a
+ *   fixed list, so adding a seventh screen fails here on the day it is added.
+ */
+const also = /key: 'admin',[\s\S]*?also: \[([^\]]*)\]/.exec(navSource)?.[1] ?? '';
+const alsoHrefs = [...also.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+
+for (const { label, href } of children) {
+  if (href === '/admin') continue;
+  check(
+    `Admin stays selected on "${label}"`,
+    alsoHrefs.includes(href),
+    `${href} is missing from \`also\` — the nav shows nothing selected while standing on it`,
+  );
+}
 
 // ------------------------------------------------ privilege escalation ------
 
@@ -717,7 +781,7 @@ if (failures > 0) {
 }
 
 console.log(
-  'PASS — all five Admin items resolve to real screens, a ban bites in the database rather\n' +
+  'PASS — every Admin dropdown item resolves to a real screen, a ban bites in the database rather\n' +
     '       than the UI, erasure scrubs every identifying field and destroys no parcel,\n' +
     '       is_admin stays un-writable by any\n' +
     '       client, the grant function refuses self-changes and the last demotion, the audit\n' +

@@ -179,15 +179,56 @@ const panelCode = panel
   .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, '')
   .replace(/^\s*\/\/.*$/gm, '');
 
+/*
+ * ⚠ Its own route, not a fourth chip in the driver console.
+ *
+ *   It shipped as a section of `/admin` beside Overview, Dispatch and Driver
+ *   review, which made one control mean two unrelated things — and let the
+ *   driver queue's subtitle, promising a seven-working-day review, render over
+ *   a sender identity screen LOCI has never made that promise to.
+ */
+const screen = read('src/app/(tabs)/admin-identity.tsx');
+
+/*
+ * ⚠ Stripped, because the file *quotes* the copy it replaced.
+ *
+ *   The comment explaining why the driver queue's promise was removed contains
+ *   that promise, so an assertion reading the raw text finds the explanation and
+ *   reports it as the bug. Third time this trap has been walked into in this
+ *   codebase; every check below that is about behaviour or shipped copy reads
+ *   the stripped source.
+ */
+const screenCode = screen
+  .replace(/(^|[\s{(=,;])\/\*[\s\S]*?\*\//g, '$1')
+  .replace(/^\s*\/\/.*$/gm, '');
+
+check('the queue has a screen of its own', screenCode.includes('<IdentityReviewPanel />'), '');
 check(
-  'the queue is reachable from the admin screen',
-  admin.includes("section === 'identity'") && admin.includes('<IdentityReviewPanel />'),
-  '',
+  'and the driver console no longer carries it',
+  !admin.includes("section === 'identity'") && !admin.includes('IdentityReviewPanel'),
+  'a section left behind in admin.tsx would render the queue twice, in two places, from two lists',
 );
 check(
-  'and from the nav, not only by typing a URL',
-  nav.includes("section: 'identity'"),
+  'reachable from the nav rather than only by typing a URL',
+  nav.includes("href: '/admin-identity'"),
   'a screen with no way in is a screen nobody uses',
+);
+check(
+  'and behind the same admin guard as its siblings',
+  screenCode.includes('<AdminShell') && screenCode.includes('next="/admin-identity"'),
+  'a signed-out visitor must land on sign-in and come back here, not bounce to the home page',
+);
+/*
+ * ⚠ The subtitle is about this queue, and it used to be about another.
+ *
+ *   The seven-working-day window is a promise the Drivers page makes to driver
+ *   applicants. Repeating it here would be LOCI committing to a turnaround for
+ *   sender IDs that nothing in the product offers and nobody staffs.
+ */
+check(
+  'the header does not borrow the driver queue’s promise',
+  !/working days/.test(screenCode) && !/Drivers page/.test(screenCode),
+  'a screen that invents a commitment is one support has to defend',
 );
 check(
   'the default filter is what is waiting, not everything',

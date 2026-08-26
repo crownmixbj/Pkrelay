@@ -30,7 +30,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { DispatchControl } from '@/components/ui/dispatch-control';
-import { IdentityReviewPanel } from '@/components/ui/identity-review-panel';
 import { ChipGroup } from '@/components/ui/chip';
 import { showDialog } from '@/components/ui/dialog';
 import { Field } from '@/components/ui/field';
@@ -61,13 +60,21 @@ import { AdminOverview as OverviewPanel } from '@/components/ui/admin-overview';
 import { signedDocumentUrl } from '@/store/driver-documents';
 
 /**
- * Four of the Admin views: the overview, dispatch, and the two review queues.
+ * The driver console: the overview, dispatch, and the driver review queue.
  *
- * One screen because the overview's headline numbers *are* the queues' numbers
+ * One screen because the overview's headline numbers *are* the queue's numbers
  * — splitting them would mean two places computing "how many are waiting" and
  * eventually disagreeing.
+ *
+ * ⚠ Sender ID Review is deliberately *not* here, though it briefly was.
+ *
+ *   A fourth chip made one control mean two unrelated things. These three
+ *   answer questions about running the driver fleet; a sender proving who they
+ *   are is a support queue on another rhythm, worked by potentially different
+ *   people. It lives at `/admin-identity`, beside User & Role Mgmt. and Hubs &
+ *   Operations, which are separate routes for exactly this reason.
  */
-const SECTIONS = ['overview', 'dispatch', 'review', 'identity'] as const;
+const SECTIONS = ['overview', 'dispatch', 'review'] as const;
 type Section = (typeof SECTIONS)[number];
 
 /**
@@ -85,7 +92,6 @@ const SECTION_LABELS: Record<Section, string> = {
   overview: 'Overview',
   dispatch: 'Dispatch',
   review: 'Driver review',
-  identity: 'Sender IDs',
 };
 
 /*
@@ -101,7 +107,6 @@ const SCREEN_TITLES: Record<Section, string> = {
   overview: 'Dashboard Overview',
   dispatch: 'Dispatch & Assignment',
   review: 'Driver & App Review',
-  identity: 'Sender ID Review',
 };
 
 function parseAdminSection(value: unknown): Section {
@@ -346,7 +351,15 @@ export default function AdminScreen() {
               ? 'How the platform is running right now.'
               : section === 'dispatch'
                 ? 'Whether LOCI matches parcels to drivers, or you do.'
-                : `Review within ${REVIEW_WORKING_DAYS} working days, as the Drivers page promises.`
+                : /*
+                   * ⚠ True of this queue, and it used to leak onto another.
+                   *
+                   *   While Sender IDs was a fourth section this arm caught it
+                   *   too, so a sender identity screen promised a review window
+                   *   LOCI publishes on the Drivers page and has never offered
+                   *   to a sender. Three sections, three arms, no fall-through.
+                   */
+                  `Review within ${REVIEW_WORKING_DAYS} working days, as the Drivers page promises.`
           }
         />
 
@@ -361,18 +374,6 @@ export default function AdminScreen() {
         {section === 'overview' && <OverviewPanel onReview={() => chooseSection('review')} />}
 
         {section === 'dispatch' && <DispatchControl />}
-
-        {/*
-          ⚠ Its own section rather than a card inside Driver review.
-
-            Both are queues of people waiting on a decision, which makes them
-            look like one screen. They are not: a driver application is a
-            person applying to work here, and a sender ID is a customer
-            proving who they are. Different volumes, different rhythms, and
-            different consequences for getting it wrong — folding them together
-            would mean one backlog number covering two unrelated jobs.
-        */}
-        {section === 'identity' && <IdentityReviewPanel />}
 
         {section === 'review' && (
           <>

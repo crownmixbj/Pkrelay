@@ -138,6 +138,7 @@ type NavHref =
   | '/support'
   | '/tracking'
   | '/admin'
+  | '/admin-identity'
   | '/admin-logs'
   | '/admin-ops'
   | '/admin-users';
@@ -390,7 +391,7 @@ const NAV_LINKS: NavLink[] = [
     href: '/admin',
     icon: (color, size) => <ShieldCheck color={color} size={size} />,
     description: 'Run the platform',
-    also: ['/admin-users', '/admin-ops', '/admin-logs'],
+    also: ['/admin-users', '/admin-ops', '/admin-logs', '/admin-identity'],
     children: [
       {
         key: 'overview',
@@ -409,8 +410,7 @@ const NAV_LINKS: NavLink[] = [
       {
         key: 'identity',
         label: 'Sender ID Review',
-        href: '/admin',
-        section: 'identity',
+        href: '/admin-identity',
         icon: (color, size) => <IdCard color={color} size={size} />,
       },
       {
