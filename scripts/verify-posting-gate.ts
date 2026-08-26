@@ -24,6 +24,7 @@ import {
   postingGate,
   shouldShowVerifyBanner,
 } from '../src/lib/posting-gate';
+import { OUTCOME_MESSAGES } from '../src/store/identity';
 import type { IdentityStatus, SenderIdentity } from '../src/store/identity';
 
 let failures = 0;
@@ -229,6 +230,164 @@ check(
   'and still says what to do when no reason survived',
   /submit it again/i.test(blockedMessage(postingGate(identity('rejected')), null)),
   '',
+);
+
+// ------------------------------- no copy survives that the gate made false --
+
+/*
+ * ⚠ This is the bug 42 shipped with, found by somebody reading the screen.
+ *
+ *   Two outcome messages said "Your parcel is not held up" and "your parcel
+ *   still goes ahead and a person reviews it". Both were true for months —
+ *   until the gate was inverted and made every one of them a lie, told to
+ *   exactly the people who were about to be refused.
+ *
+ *   That is the worst class of copy bug here: not wrong in a way that looks
+ *   wrong, but reassuring in a way that sends somebody to fill in a booking
+ *   form that cannot succeed. Pinning the individual sentences would be
+ *   useless — the next rewrite would say something equally false in different
+ *   words. What is pinned is the property: nothing in the sender-facing
+ *   identity copy may promise a parcel will move.
+ */
+const SENDER_COPY = [
+  'src/store/identity.ts',
+  'src/lib/posting-gate.ts',
+  'src/components/ui/verify-identity-card.tsx',
+  'src/components/ui/sender-photo-sheet.tsx',
+  'src/app/(tabs)/book.tsx',
+];
+
+/*
+ * Phrases that assert a shipment proceeds. Deliberately about the *promise*
+ * rather than about any one sentence, so a reworded version fails too.
+ */
+const PROMISES = [
+  /not held up/i,
+  /still goes ahead/i,
+  /parcel (still )?(goes|will go) ahead/i,
+  /does not (stop|block|hold) your parcel/i,
+  /you can still (send|post)/i,
+];
+
+for (const file of SENDER_COPY) {
+  const source = read(file)
+    .replace(/(^|[\s{(=,;])\/\*[\s\S]*?\*\//g, '$1')
+    .replace(/^\s*\/\/.*$/gm, '');
+
+  for (const promise of PROMISES) {
+    check(
+      `${file} does not promise the parcel goes ahead`,
+      !promise.test(source),
+      `matched ${promise} — only a verified sender can post, so this is now false`,
+    );
+  }
+}
+
+/*
+ * ⚠ And the messages agree with the gate, checked rather than assumed.
+ *
+ *   `verified` is the only outcome that means "you can send parcels"; the other
+ *   two mean "saved, waiting". A message that said otherwise would be the same
+ *   bug in a new place.
+ */
+check(
+  'only the verified outcome says they can send now',
+  /can send parcels now/i.test(OUTCOME_MESSAGES.verified) &&
+    !/can send parcels now/i.test(OUTCOME_MESSAGES.flagged) &&
+    !/can send parcels now/i.test(OUTCOME_MESSAGES.unavailable),
+  '',
+);
+check(
+  'and the other two say it is saved and waiting',
+  /saved/i.test(OUTCOME_MESSAGES.flagged) &&
+    /saved/i.test(OUTCOME_MESSAGES.unavailable) &&
+    /email/i.test(OUTCOME_MESSAGES.flagged) &&
+    /email/i.test(OUTCOME_MESSAGES.unavailable),
+  'somebody whose submission is stored needs to know it is stored, and what ends the wait',
+);
+/*
+ * ⚠ A machine's doubt is not reported as a verdict.
+ *
+ *   No person has looked at a flagged photo yet, so telling the customer it did
+ *   not match is LOCI asserting something nobody has checked.
+ */
+check(
+  'a flagged outcome does not tell the sender their photo failed',
+  !/did not match|does not match|failed/i.test(OUTCOME_MESSAGES.flagged),
+  '',
+);
+
+/*
+ * ⚠ The capture is the submit, and the screen has to say so afterwards.
+ *
+ *   There is no Submit button by design — a separate one would let somebody
+ *   photograph their face and wander off, leaving a live photo in a form. What
+ *   was missing was the receipt: nothing acknowledged the submission, and on
+ *   reload the form asked again from scratch, which reads exactly like a
+ *   submission that was lost.
+ *
+ *   Worse than confusing: filling it in again calls `begin_identity_check`,
+ *   which clears the review and moves them to the back of the queue.
+ */
+const verifyCard = read('src/components/ui/verify-identity-card.tsx');
+
+/*
+ * ⚠ The condition, not merely the variable.
+ *
+ *   Checking that `const submitted =` exists passed with the branch that uses
+ *   it replaced by `if (false)` — the receipt gone, the variable still there.
+ *   What matters is that being submitted is what selects the receipt.
+ */
+check(
+  'a submitted sender is shown a receipt rather than the form again',
+  /if \(submitted &&/.test(verifyCard) && /waiting to be checked/i.test(verifyCard),
+  'an empty form after a successful submission looks exactly like a submission that was lost',
+);
+check(
+  'the receipt is keyed on there being a NIN on file',
+  verifyCard.includes('identity?.ninLast4 !== null'),
+  'somebody who abandoned halfway has no NIN stored and must still get the form',
+);
+check(
+  'starting again is offered',
+  /Start again/i.test(verifyCard),
+  'photographing the wrong slip must not be unrecoverable',
+);
+check(
+  'and says what it costs',
+  /end of the queue/i.test(verifyCard),
+  're-submitting clears the review; a sender should know that before they do it',
+);
+check(
+  'a rejected sender still gets the form',
+  /identity\?\.status !== 'rejected'/.test(verifyCard),
+  'they were refused and told to submit again — a receipt would be a dead end',
+);
+
+/*
+ * ⚠ A failed check must not arrive in success green.
+ *
+ *   The card turns green when a photo is banked and the note inherited that
+ *   colour, so "We could not check your photo just now" sat under a tick in the
+ *   same green as "Identity confirmed", inside a box headed "captured and
+ *   checked".
+ */
+const selfieCard = read('src/components/ui/live-selfie-card.tsx');
+
+check(
+  'the note is coloured by the outcome rather than by the capture',
+  selfieCard.includes('noteIsGood ? theme.successOnSoft : theme.warningOnSoft'),
+  'one colour for every note means the colour says nothing',
+);
+check(
+  'and the heading does not claim a check that may not have run',
+  selfieCard.includes('noteIsGood ? copy.done : copy.pending'),
+  '"captured and checked" above "could not check" is the card contradicting itself',
+);
+check(
+  'the card is told which it is',
+  verifyCard.includes("setNoteIsGood(outcome.status === 'verified')"),
+  'defaulting to good news makes every outcome good news',
 );
 
 // -------------------------------------------------- and the server agrees --

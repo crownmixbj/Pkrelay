@@ -31,6 +31,7 @@ import {
   maskNinInput,
   ninError,
   normalizeNin,
+  OUTCOME_MESSAGES,
   pathExplanation,
   verificationPath,
   type SenderIdentity,
@@ -484,10 +485,26 @@ check(
   ),
   'a mismatch is an outcome, not an error; returning one would have callers block the parcel on it',
 );
+/*
+ * ⚠ Repointed. This pinned the sentence "Your parcel is not held up", which
+ *   `42_verified_senders_only.sql` turned into a lie.
+ *
+ *   The property it was really defending is that an outage is an *outcome*
+ *   rather than a refusal: the selfie is stored, the check can be re-run, and
+ *   nothing about the sender is held against them. That is unchanged. What
+ *   changed is that the parcel now does wait — so the assertion follows the
+ *   status, and `verify-posting-gate.ts` polices the wording.
+ */
 check(
   'an unreachable provider reads as unavailable, not as a refusal',
   code(identityStore).includes("status: 'unavailable'") &&
-    /Your parcel is not held up/.test(identityStore),
+    /saved/i.test(OUTCOME_MESSAGES.unavailable),
+  'a transport failure says nothing about the sender, and their submission is kept',
+);
+check(
+  'and does not tell them their parcel is unaffected',
+  !/not held up|still goes ahead/i.test(OUTCOME_MESSAGES.unavailable),
+  'only a verified sender can post; that reassurance stopped being true',
 );
 
 check(

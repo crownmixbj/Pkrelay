@@ -979,13 +979,20 @@ export default function BookScreen() {
      *   The onboarding branch uploaded a NIN and slip collected on step two.
      *   Those are gathered on the profile instead, so this is always the plain
      *   check: matched against the account's reference photo when there is one,
-     *   recorded when there is not. An unverified sender is never stopped —
-     *   that was true before this change and is the reason it is safe.
+     *   recorded when there is not.
+     *
+     * ⚠ The reassurance that used to be here was made false by 42.
+     *
+     *   It read "Your parcel is not held up", which was true while an
+     *   unverified sender could post. Only a verified sender reaches this point
+     *   now — the gate has already run — so a failure here is a failure to
+     *   record *this shipment's* selfie, not a verification problem. Saying the
+     *   parcel is fine would be guessing about a row the server has not written.
      */
     const outcome = await runIdentityCheck(sessionId);
 
     if (!outcome.ok) {
-      setIdentityNote('Your NIN details could not be saved. Your parcel is not held up.');
+      setIdentityNote('We could not record that photo. Try taking it again.');
       return;
     }
 

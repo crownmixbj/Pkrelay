@@ -1,12 +1,14 @@
+import { ShieldQuestion } from 'lucide-react-native';
 import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { IdentityOnboarding } from '@/components/ui/identity-onboarding';
 import { LiveSelfieCard } from '@/components/ui/live-selfie-card';
 import { showToast } from '@/components/ui/toast';
-import { Spacing, Typography } from '@/constants/theme';
+import { Radius, Spacing, Typography, font } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
+  maskNin,
   ninError,
   submitOnboarding,
   verificationPath,
@@ -33,11 +35,22 @@ import {
  *   to compare against later, so the whole check would be a text field that
  *   files a number nobody has confirmed belongs to the person typing it.
  *
- * ⚠ Nothing here blocks anything.
+ * ⚠ This card is now the only way to send a parcel at all.
  *
- *   A sender who never opens this can still post parcels; their per-parcel
- *   selfie is recorded rather than matched. That is deliberate — see
- *   `book.tsx`. This card is the way to become verified, not a gate.
+ *   It used to be optional: a sender who never opened it could still post, and
+ *   their per-parcel selfie was recorded rather than matched. `42_verified_
+ *   senders_only.sql` ended that — the database refuses a booking from anyone
+ *   who is not verified. So this is no longer "the way to become verified", it
+ *   is the front door.
+ *
+ * ⚠ There is no Submit button, and that confused somebody, correctly.
+ *
+ *   Taking the selfie *is* the submit: `onCaptured` runs the whole thing. That
+ *   is deliberate — a separate button would let a person capture a face,
+ *   wander off, and leave a live photo sitting in a form. What was missing was
+ *   the receipt. The form gave no sign anything had been sent, and on reload it
+ *   asked again from scratch, which reads exactly like a submission that was
+ *   lost.
  */
 export function VerifyIdentityCard({
   identity,
@@ -54,6 +67,17 @@ export function VerifyIdentityCard({
   const [errors, setErrors] = useState<{ nin?: string; slip?: string }>({});
   const [session, setSession] = useState<string | null>(null);
   const [note, setNote] = useState('');
+  /*
+   * ⚠ Whether the note is good news, so the card does not paint it green.
+   *
+   *   Only a confirmed identity is good news now. Everything else is "saved,
+   *   waiting" — which is fine, and is not a tick.
+   */
+  const [noteIsGood, setNoteIsGood] = useState(true);
+  /** Set the moment a submission lands, so the form can become a receipt. */
+  const [justSubmitted, setJustSubmitted] = useState(false);
+  /** Set when somebody deliberately chooses to replace what they already sent. */
+  const [resubmitting, setResubmitting] = useState(false);
 
   const path = verificationPath(identity);
 
@@ -66,6 +90,69 @@ export function VerifyIdentityCard({
    *   fill in again.
    */
   if (path !== 'onboarding') return null;
+
+  /*
+   * ⚠ Somebody waiting on a review is shown a receipt, not a blank form.
+   *
+   *   `verificationPath` returns `onboarding` for `pending`, because that used
+   *   to mean "started and abandoned". It now also means "submitted, waiting
+   *   for a person" — and showing that person the empty form again is worse
+   *   than merely confusing: filling it in calls `begin_identity_check`, which
+   *   clears the review and puts them at the *back* of the queue. The app would
+   *   be inviting them to undo their own progress.
+   *
+   *   A NIN on file is what distinguishes the two. Somebody who abandoned
+   *   halfway has none, and still gets the form.
+   */
+  const submitted =
+    !resubmitting &&
+    (justSubmitted || (identity?.ninLast4 !== null && identity?.ninLast4 !== undefined));
+
+  if (submitted && identity?.status !== 'rejected') {
+    return (
+      <View
+        style={[
+          styles.receipt,
+          { backgroundColor: theme.surfaceMuted, borderColor: theme.border },
+        ]}>
+        <View style={styles.receiptHead}>
+          <ShieldQuestion color={theme.warningOnSoft} size={18} />
+          <Text style={[styles.receiptTitle, { color: theme.text }]}>
+            Your ID is with us and waiting to be checked
+          </Text>
+        </View>
+
+        <Text style={[styles.intro, { color: theme.textSecondary }]}>
+          {note.length > 0
+            ? note
+            : `We have your NIN (${maskNin(identity?.ninLast4 ?? null)}), a photo of your slip and your selfie. A person reviews it and we will email you — you can send parcels once it is approved.`}
+        </Text>
+
+        {/*
+          ⚠ Resubmitting is offered, and made deliberate.
+
+            It is the only way out if they photographed the wrong slip, so it
+            cannot be hidden. But it costs them their place in the queue, so it
+            says so rather than sitting there looking like the obvious next
+            step.
+        */}
+        <Pressable
+          onPress={() => {
+            setJustSubmitted(false);
+            setSession(null);
+            setNote('');
+            setNoteIsGood(true);
+            setResubmitting(true);
+          }}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.again, pressed && styles.pressed]}>
+          <Text style={[styles.againText, { color: theme.primary }]}>
+            Submitted the wrong details? Start again — this puts you back at the end of the queue.
+          </Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   /*
    * ⚠ The NIN and slip are checked before the camera opens, not after.
@@ -100,16 +187,25 @@ export function VerifyIdentityCard({
 
     if (!outcome.ok) {
       /*
-       * Said plainly and left recoverable. Unlike the booking form — where a
-       * failed check must never look like a failed shipment — there is no
-       * parcel riding on this, so the honest thing is to report it and let
-       * them try again.
+       * Said plainly and left recoverable. Nothing was stored, so the only
+       * honest thing is to report it and let them try again.
        */
       setNote(outcome.error);
+      setNoteIsGood(false);
       return;
     }
 
     setNote(outcome.message);
+    /*
+     * ⚠ Only 'verified' is a tick.
+     *
+     *   'flagged' and 'unavailable' both mean stored-and-waiting, which is a
+     *   perfectly good outcome and is not the same as done. Colouring them
+     *   green under a heading saying "checked" is what made a failed check read
+     *   as a success.
+     */
+    setNoteIsGood(outcome.status === 'verified');
+    setJustSubmitted(true);
     onVerified();
   };
 
@@ -144,10 +240,12 @@ export function VerifyIdentityCard({
         purpose="sender"
         captured={session}
         note={note}
+        noteIsGood={noteIsGood}
         onCaptured={onCaptured}
         onCleared={() => {
           setSession(null);
           setNote('');
+          setNoteIsGood(true);
         }}
         gate={gate}
       />
@@ -156,6 +254,17 @@ export function VerifyIdentityCard({
 }
 
 const styles = StyleSheet.create({
+  receipt: {
+    gap: Spacing.two,
+    padding: Spacing.three,
+    borderRadius: Radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  receiptHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  receiptTitle: { ...Typography.body, ...font(700), flex: 1 },
+  again: { paddingTop: Spacing.one },
+  againText: { ...Typography.caption, lineHeight: 18 },
+  pressed: { opacity: 0.6 },
   block: {
     gap: Spacing.three,
   },

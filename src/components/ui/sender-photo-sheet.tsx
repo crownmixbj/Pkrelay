@@ -68,7 +68,7 @@ const PURPOSE_COPY: Record<PhotoPurpose, { title: string; body: string; why: str
         the old sentence in place would have been the most misleading kind of
         privacy copy — a specific, reassuring denial of the thing being done.
     */
-    why: 'Drivers carry parcels from strangers. A record of who posted each one protects them and deters prohibited items. Your photo is also compared with the one on your NIN record; if it does not match, your parcel still goes ahead and a person reviews it.',
+    why: 'Drivers carry parcels from strangers. A record of who posted each one protects them and deters prohibited items. Your photo is also compared with the one on your NIN record.',
   },
   driver: {
     title: 'Photo of you, to finish your application',

@@ -194,9 +194,57 @@ export type OnboardingInput = {
   sessionId: string;
 };
 
+/**
+ * What came back, and what to say about it.
+ *
+ * ⚠ Every one of these sentences used to promise the parcel went ahead, and
+ *   `42_verified_senders_only.sql` made all of them false.
+ *
+ *   They were written when a check outcome gated nothing: a flag or an outage
+ *   was recorded and the shipment continued, so "your parcel is not held up"
+ *   was both reassuring and true. Since 42 only a verified sender may post, so
+ *   the two non-verified outcomes were telling somebody the opposite of what
+ *   the database was about to do to them.
+ *
+ *   That is the worst class of copy bug in this app — not wrong in a way that
+ *   looks wrong, but reassuring in a way that sends somebody off to fill in a
+ *   booking form that cannot succeed.
+ */
 export type IdentityOutcome =
   | { ok: true; status: 'verified' | 'flagged' | 'unavailable'; message: string }
   | { ok: false; error: string };
+
+/**
+ * ⚠ One place, so the two ways of reaching each outcome cannot drift.
+ *
+ *   `unavailable` is returned from two branches — a transport failure and a
+ *   response the function did not understand — and they had duplicate literals.
+ *   Editing one and not the other is how half a fix ships.
+ */
+export const OUTCOME_MESSAGES: Record<'verified' | 'flagged' | 'unavailable', string> = {
+  verified: 'Identity confirmed. You can send parcels now.',
+
+  /*
+   * ⚠ Does not say the photo failed, and does not promise a result time.
+   *
+   *   A mismatch is as often an old NIMC photo or a dark room as a fraud, and
+   *   no person has looked yet — so this says what happens next rather than
+   *   passing off a machine's guess as a verdict.
+   */
+  flagged:
+    'Your ID has been saved and needs a person to check it. We will email you when that is done — you can send parcels once it is approved.',
+
+  /*
+   * ⚠ "Could not check" is not a failure the sender caused, and the sentence
+   *   should not read like one.
+   *
+   *   This is what a sender sees when `verify-identity` is not deployed, which
+   *   today is everybody. Their submission is stored and queued; nothing about
+   *   it is wrong.
+   */
+  unavailable:
+    'Your ID has been saved. The automatic check could not run, so a person will review it — we will email you when it is approved.',
+};
 
 /**
  * Uploads the slip, records the NIN, then asks the server to run the check.
@@ -342,11 +390,7 @@ export async function runIdentityCheck(sessionId: string): Promise<IdentityOutco
   if (error) {
     /* The function is not deployed, or is unreachable. Nobody can verify. */
     noteVerificationUnavailable();
-    return {
-      ok: true,
-      status: 'unavailable',
-      message: 'We could not check your photo just now. Your parcel is not held up.',
-    };
+    return { ok: true, status: 'unavailable', message: OUTCOME_MESSAGES.unavailable };
   }
 
   const status = (data as { status?: string } | null)?.status;
@@ -355,20 +399,11 @@ export async function runIdentityCheck(sessionId: string): Promise<IdentityOutco
   noteVerificationReachable();
 
   if (status === 'verified') {
-    return { ok: true, status: 'verified', message: 'Identity confirmed.' };
+    return { ok: true, status: 'verified', message: OUTCOME_MESSAGES.verified };
   }
   if (status === 'flagged') {
-    return {
-      ok: true,
-      status: 'flagged',
-      message:
-        'We could not match that photo. Your parcel still goes ahead and someone will check.',
-    };
+    return { ok: true, status: 'flagged', message: OUTCOME_MESSAGES.flagged };
   }
 
-  return {
-    ok: true,
-    status: 'unavailable',
-    message: 'We could not check your photo just now. Your parcel is not held up.',
-  };
+  return { ok: true, status: 'unavailable', message: OUTCOME_MESSAGES.unavailable };
 }

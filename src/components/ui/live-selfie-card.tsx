@@ -42,16 +42,26 @@ import { useTheme } from '@/hooks/use-theme';
  * editable. What the caller gets back is a capture session id, ready to be
  * spent on the parcel or the application.
  */
-const COPY: Record<PhotoPurpose, { title: string; body: string; done: string }> = {
+/*
+ * ⚠ Two "done" headings, because the card knows two different things.
+ *
+ *   It only ever knows for certain that a photo was banked. Whether the *check*
+ *   happened is the caller's news, and "captured and checked" claimed both —
+ *   so it sat above "We could not check your photo just now" and contradicted
+ *   it in the same box.
+ */
+const COPY: Record<PhotoPurpose, { title: string; body: string; done: string; pending: string }> = {
   sender: {
     title: 'Live photo of you',
     body: 'Taken now, with your camera — a saved picture cannot be used. It is matched against your NIN record and stored privately; the driver never sees it.',
     done: 'Live photo captured and checked.',
+    pending: 'Live photo captured.',
   },
   driver: {
     title: 'Live photo of you',
     body: 'Taken now, with your camera — a saved picture cannot be used. LOCI compares it with the photo on your NIN record.',
     done: 'Live photo captured and checked.',
+    pending: 'Live photo captured.',
   },
 };
 
@@ -59,6 +69,7 @@ export function LiveSelfieCard({
   purpose,
   captured,
   note,
+  noteIsGood = true,
   onCaptured,
   onCleared,
   onError,
@@ -76,6 +87,21 @@ export function LiveSelfieCard({
    * going ahead regardless.
    */
   note?: string;
+  /**
+   * Whether `note` is good news.
+   *
+   * ⚠ It was rendered in success green whatever it said.
+   *
+   *   The card turns green the moment a photo is banked, and the note inherited
+   *   that colour — so "We could not check your photo just now" arrived under a
+   *   tick, in the same green as "Identity confirmed", inside a box headed
+   *   "Live photo captured and checked". Two of those three things were true
+   *   and the reader had no way to tell which.
+   *
+   *   Defaults to `true` because the capture itself succeeding is the common
+   *   case; callers that know the verdict pass it.
+   */
+  noteIsGood?: boolean;
   /**
    * Handed the session id once the photo is uploaded and has passed liveness.
    * Awaited, so a caller doing further work — the driver form runs the NIN
@@ -148,7 +174,7 @@ export function LiveSelfieCard({
           style={[styles.title, { color: captured ? theme.successOnSoft : theme.text }]}
           // The label carries the state, so it is never colour alone.
         >
-          {captured ? copy.done : copy.title}
+          {captured ? (noteIsGood ? copy.done : copy.pending) : copy.title}
         </Text>
         {!captured && (
           <View style={[styles.required, { backgroundColor: theme.primarySoft }]}>
@@ -175,7 +201,19 @@ export function LiveSelfieCard({
           Every guard here is now a boolean.
       */}
       {captured !== null && (note ?? '').length > 0 && (
-        <Text style={[styles.body, { color: theme.successOnSoft }]}>{note}</Text>
+        <Text
+          style={[
+            styles.body,
+            /*
+             * ⚠ Colour is the second signal, never the only one.
+             *
+             *   The sentence itself says what happened; this keeps it from
+             *   *contradicting* the sentence, which is what green did.
+             */
+            { color: noteIsGood ? theme.successOnSoft : theme.warningOnSoft },
+          ]}>
+          {note}
+        </Text>
       )}
 
       {error.length > 0 && <Text style={[styles.error, { color: theme.danger }]}>{error}</Text>}
