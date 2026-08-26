@@ -611,6 +611,128 @@ check(
   'a plain "Account erased" would claim a login was removed on a project that cannot remove it',
 );
 
+// ------------------------------------------- arming a role change -----------
+
+/*
+ * ⚠ Comments stripped, because this file argues with itself in prose.
+ *
+ *   The screen explains why the tick exists and why the dialog stayed. An
+ *   assertion reading the raw text finds the explanation and reports it as the
+ *   implementation — which is how a mutation that deletes the guard passes.
+ */
+const usersCode = adminUsers
+  .replace(/(^|[\s{(=,;])\/\*[\s\S]*?\*\//g, '$1')
+  .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, '')
+  .replace(/^\s*\/\/.*$/gm, '');
+
+/*
+ * ⚠ Flattened, because Prettier decides where these expressions break.
+ *
+ *   `disabled={armedId !== item.id || busyId === item.id}` fits on one line
+ *   until a comment above it pushes the column past 100, at which point
+ *   Prettier wraps it and a line-anchored regex stops matching. That is an
+ *   assertion failing on formatting while the guard it defends is untouched —
+ *   which is how assertions get deleted rather than read. `flat` already exists
+ *   in this file for exactly this.
+ */
+const usersFlat = flat(usersCode);
+
+/*
+ * ⚠ Nine rows here differ by a name and a phone number.
+ *
+ *   The mistake being guarded is not "changed a role carelessly", it is
+ *   "changed the row above the one I meant" — and admin is all-or-nothing, so
+ *   the wrong promotion hands somebody every account in the system.
+ */
+check(
+  'a role change is gated on arming that row',
+  /disabled=\{ ?armedId !== item\.id \|\| busyId === item\.id/.test(usersFlat),
+  'an ungated button in a list of near-identical rows is one stray click from the wrong person',
+);
+check(
+  'the button is greyed rather than removed until armed',
+  /opacity: armedId !== item\.id/.test(usersFlat),
+  'a button that appears on tick is one somebody has to discover; a greyed one explains itself',
+);
+check(
+  'the checkbox is the shared one rather than a fourth implementation',
+  usersFlat.includes('<ConfirmCheckbox') &&
+    usersFlat.includes("from '@/components/ui/form-wizard'"),
+  '',
+);
+/*
+ * ⚠ One arm at a time, which is what an id buys over a set of booleans.
+ *
+ *   Independent per-row ticks would let somebody arm four rows while reading
+ *   and leave four irreversible actions one stray click apart.
+ */
+check(
+  'arming a row is exclusive',
+  /const \[armedId, setArmedId\] = useState<string \| null>\(null\)/.test(usersFlat) &&
+    /onChange=\{\(next\) => setArmedId\(next \? item\.id : null\)\}/.test(usersFlat),
+  'a Set of ticked rows would arm several dangerous buttons at once',
+);
+/*
+ * ⚠ The label says which direction, so it cannot be true of the wrong button.
+ *
+ *   "I confirm this role modification" reads identically above Make admin and
+ *   above Remove — so a tick made while looking at a promotion sits happily
+ *   above a removal.
+ */
+check(
+  'and the label names the direction',
+  /Confirm removing admin/.test(adminUsers) && /Confirm making admin/.test(adminUsers),
+  'one label for two opposite actions is a label that confirms nothing',
+);
+
+/*
+ * ⚠ The tick must not survive anything.
+ *
+ *   Cleared as the action starts rather than in `finally`, because the success
+ *   path awaits a reload and the row would stay live across it. Cleared again
+ *   when the search or segment changes, because that re-renders a different set
+ *   of rows in the same positions — click the button now sitting where the old
+ *   one was and the wrong person's role changes, while the toast names the
+ *   right one and nothing on screen looks wrong.
+ */
+check(
+  'the arm clears when the action starts',
+  /setBusyId\(target\.id\); setArmedId\(null\);/.test(usersFlat),
+  'clearing it after the await leaves the button live across the round trip',
+);
+check(
+  'and when the list changes underneath it',
+  /useEffect\(\(\) => \{ setArmedId\(null\); \}, \[query, segment\]\)/.test(usersFlat),
+  'an arm that outlives a search follows the position rather than the person',
+);
+
+/*
+ * ⚠ The dialog stayed, and that is not the same call as elsewhere.
+ *
+ *   On a single review card a checkbox replaced a modal, because both asked one
+ *   question about one thing on screen. These ask different ones: the tick asks
+ *   "this row", the dialog names the person and says what admin grants. In a
+ *   list, that second question is the one that catches an arm on the wrong row.
+ */
+check(
+  'the dialog still names the person and the consequence',
+  usersFlat.includes('read every account') && /\$\{target\.fullName\}/.test(usersFlat),
+  'without a name, nothing between the tick and the change says who it lands on',
+);
+
+/*
+ * ⚠ Erase is deliberately untouched.
+ *
+ *   It already asks for a typed word, which is stronger than a tick. Adding one
+ *   would be two confirmations on the same control — and every extra tick makes
+ *   the ticks that matter cheaper.
+ */
+check(
+  'erase is not also gated on the arm',
+  !/Erase.{0,600}armedId/.test(usersFlat),
+  'stacking a tick on top of a typed confirmation trains people to do both without reading either',
+);
+
 check(
   'erasure needs a typed confirmation',
   read('src/app/(tabs)/admin-users.tsx').includes('confirmWord="ERASE"'),

@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ChipGroup } from '@/components/ui/chip';
 import { showDialog } from '@/components/ui/dialog';
+import { ConfirmCheckbox } from '@/components/ui/form-wizard';
 import { EmptyState, SectionLabel } from '@/components/ui/screen';
 import { showToast } from '@/components/ui/toast';
 import { Radius, Spacing, Typography, font } from '@/constants/theme';
@@ -75,6 +76,23 @@ export default function AdminUsersScreen() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  /**
+   * The one row whose role button is live, or none.
+   *
+   * ⚠ A single id rather than a set of ticked rows, and that is the design.
+   *
+   *   Nine rows here look almost identical — a name, a phone, a date. The
+   *   mistake this guards is not "meant to click later", it is "clicked the row
+   *   above the one I meant". Independent per-row ticks would let somebody arm
+   *   four rows while reading, and leave four irreversible actions one stray
+   *   click apart. Arming a second row disarms the first, so at most one
+   *   dangerous button on this screen is ever live.
+   *
+   *   It is an id and not a boolean because the list re-sorts and re-filters: a
+   *   tick that meant "row 3" would follow the position rather than the person.
+   */
+  const [armedId, setArmedId] = useState<string | null>(null);
 
   /**
    * The open moderation dialog, or null.
@@ -165,12 +183,37 @@ export default function AdminUsersScreen() {
 
   const adminCount = users.filter((u) => u.isAdmin).length;
 
+  /*
+   * ⚠ An arm does not survive the list changing underneath it.
+   *
+   *   Typing in the search box or switching segment re-renders a different set
+   *   of rows in different positions. Somebody who armed a row, searched for
+   *   somebody else, and clicked the button now sitting where the old one was
+   *   would change the wrong person's role — and the toast would name the right
+   *   one, so nothing on screen would look wrong.
+   */
+  useEffect(() => {
+    setArmedId(null);
+  }, [query, segment]);
+
   /** Names for the audit trail, so it doesn't read as a wall of UUIDs. */
   const nameFor = useCallback(
     (id: string) => users.find((u) => u.id === id)?.fullName || 'Unknown user',
     [users],
   );
 
+  /*
+   * ⚠ The dialog stays, and here it is not the second confirmation it would be
+   *   on a single card.
+   *
+   *   Elsewhere in this app a checkbox replaced a modal, because both were
+   *   asking the same question about the same one thing on screen. These two
+   *   ask different questions. The tick asks "this row"; the dialog names the
+   *   person and says what admin actually grants — which is the check that
+   *   catches somebody who armed the row above the one they meant. In a list of
+   *   near-identical rows that is a different failure, and it needs its own
+   *   guard.
+   */
   const confirm = (target: AdminUser) => {
     const promoting = !target.isAdmin;
 
@@ -192,6 +235,15 @@ export default function AdminUsersScreen() {
 
   const apply = async (target: AdminUser, makeAdmin: boolean) => {
     setBusyId(target.id);
+    /*
+     * ⚠ Disarmed as the action starts, not after it lands.
+     *
+     *   Clearing it in `finally` would be a moment too late: `load()` is
+     *   awaited in the success path, and the row stays armed and clickable
+     *   across that round trip. Clearing it here means the button is dead the
+     *   instant it has been used, whichever way the call goes.
+     */
+    setArmedId(null);
     try {
       await setAdminRole(target.id, makeAdmin);
       await load();
@@ -357,10 +409,49 @@ export default function AdminUsersScreen() {
                 */}
                 {!isSelf && (
                   <View style={styles.rowActions}>
+                    {/*
+                      ⚠ Hidden on an erased account rather than shown disabled.
+
+                        There is no role to change on a row whose account is
+                        gone, so a tick there would arm nothing. Offering it
+                        would be a control that does not do anything, which is
+                        how people learn the ticks do not matter.
+                    */}
+                    {!item.deletedAt && (
+                      <ConfirmCheckbox
+                        compact
+                        checked={armedId === item.id}
+                        disabled={busyId === item.id}
+                        /*
+                         * ⚠ Names the direction, so the label is never true of
+                         *   the wrong button.
+                         *
+                         *   "I confirm this role modification" reads the same
+                         *   above Make admin and above Remove. Saying which way
+                         *   it goes means a tick made while looking at a
+                         *   promotion cannot quietly sit above a removal.
+                         */
+                        label={item.isAdmin ? 'Confirm removing admin' : 'Confirm making admin'}
+                        onChange={(next) => setArmedId(next ? item.id : null)}
+                      />
+                    )}
+
                     <Pressable
                       onPress={() => confirm(item)}
-                      disabled={busyId === item.id || Boolean(item.deletedAt)}
+                      /*
+                       * ⚠ Armed, not busy, not erased — in that order of
+                       *   importance.
+                       *
+                       *   The tick is what makes this button live at all. The
+                       *   other two conditions were already here and still
+                       *   hold: an in-flight change must not be sent twice, and
+                       *   an erased account has no role to change.
+                       */
+                      disabled={
+                        armedId !== item.id || busyId === item.id || Boolean(item.deletedAt)
+                      }
                       accessibilityRole="button"
+                      accessibilityState={{ disabled: armedId !== item.id }}
                       accessibilityLabel={
                         item.isAdmin
                           ? `Remove admin from ${item.fullName}`
@@ -370,7 +461,8 @@ export default function AdminUsersScreen() {
                         styles.roleButton,
                         {
                           backgroundColor: item.isAdmin ? theme.dangerSoft : theme.primarySoft,
-                          opacity: busyId === item.id || item.deletedAt ? 0.4 : 1,
+                          opacity:
+                            armedId !== item.id || busyId === item.id || item.deletedAt ? 0.4 : 1,
                         },
                         pressed && styles.pressed,
                       ]}>

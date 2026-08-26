@@ -201,11 +201,24 @@ export function ConfirmCheckbox({
   onChange,
   label,
   disabled,
+  compact = false,
 }: {
   checked: boolean;
   onChange: (next: boolean) => void;
   label: string;
   disabled?: boolean;
+  /**
+   * Tighter, for a narrow action column rather than the foot of a form.
+   *
+   * ⚠ A variant rather than a second checkbox somewhere else.
+   *
+   *   The admin user list needs one of these inside a right-aligned column of
+   *   pill buttons, where the full-width version wraps badly. Hand-rolling a
+   *   small one there would make four checkboxes in this app, three of which
+   *   share a look by coincidence — and the next person restyling the tick
+   *   would fix three of them.
+   */
+  compact?: boolean;
 }) {
   const theme = useTheme();
 
@@ -218,6 +231,7 @@ export function ConfirmCheckbox({
       accessibilityLabel={label}
       style={({ pressed }) => [
         styles.confirm,
+        compact && styles.confirmCompact,
         styles.tappable,
         {
           backgroundColor: checked ? theme.primarySoft : theme.surfaceMuted,
@@ -228,15 +242,21 @@ export function ConfirmCheckbox({
       <View
         style={[
           styles.box,
+          compact && styles.boxCompact,
           {
             backgroundColor: checked ? theme.primary : theme.surface,
             borderColor: checked ? theme.primary : theme.borderStrong,
           },
         ]}>
-        {checked && <Check color={theme.primaryText} size={14} />}
+        {checked && <Check color={theme.primaryText} size={compact ? 11 : 14} />}
       </View>
 
-      <Text style={[styles.confirmText, { color: checked ? theme.primaryOnSoft : theme.text }]}>
+      <Text
+        style={[
+          styles.confirmText,
+          compact && styles.confirmTextCompact,
+          { color: checked ? theme.primaryOnSoft : theme.text },
+        ]}>
         {label}
       </Text>
     </Pressable>
@@ -304,6 +324,30 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     marginTop: Spacing.two,
+  },
+  confirmCompact: {
+    alignItems: 'center',
+    gap: Spacing.one + 2,
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.two,
+    marginTop: 0,
+  },
+  boxCompact: {
+    width: 16,
+    height: 16,
+    borderWidth: 1.25,
+  },
+  confirmTextCompact: {
+    /*
+     * ⚠ Not `flex: 1` here.
+     *
+     *   The full-width version fills its row; this one sits in a column that
+     *   sizes to its widest child, and stretching would make the whole action
+     *   column as wide as this label.
+     */
+    flex: 0,
+    ...Typography.caption,
+    lineHeight: 16,
   },
   box: {
     width: 22,
