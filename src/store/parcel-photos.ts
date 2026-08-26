@@ -136,8 +136,50 @@ export async function revealSenderIdentity(
   });
 
   if (error) return { ok: false, error: error.message };
+  return signRevealed(data as RevealRow[] | null);
+}
 
-  const row = (data as RevealRow[] | null)?.[0];
+/**
+ * The same reveal, for a sender who has no parcel.
+ *
+ * ⚠ Which is the ordinary case in the identity review queue.
+ *
+ *   `revealSenderIdentity` is keyed on a booking, because it was written for
+ *   the admin parcel drawer. The account most likely to be sitting in the
+ *   review queue is one that has just verified from their profile and has never
+ *   posted anything — so the booking-keyed reveal returns nothing for exactly
+ *   the people a reviewer needs to look at.
+ *
+ *   It is the same door, not a second one: `admin_reveal_identity_for_user`
+ *   writes the same 'privacy' line, into the same table, naming the same actor,
+ *   carrying the same reason. One act of looking, one record of it.
+ */
+export async function revealIdentityForUser(
+  userId: string,
+  reason: string,
+): Promise<RevealOutcome> {
+  const { data, error } = await supabase.rpc('admin_reveal_identity_for_user', {
+    target: userId,
+    reason,
+  });
+
+  if (error) return { ok: false, error: error.message };
+  return signRevealed(data as RevealRow[] | null);
+}
+
+/**
+ * Turns storage paths into short-lived URLs.
+ *
+ * ⚠ Shared, so the two reveals cannot drift on which bucket holds what.
+ *
+ *   The selfie lives in `sender-photo` and the slip in `sender-identity` —
+ *   different lifetimes, different retention decisions, and a pairing that is
+ *   easy to write backwards. Getting it wrong produces a null URL rather than
+ *   an error, which is to say a blank square where a face should be and nothing
+ *   anywhere saying why.
+ */
+async function signRevealed(rows: RevealRow[] | null): Promise<RevealOutcome> {
+  const row = rows?.[0];
   if (!row) {
     return {
       ok: true,

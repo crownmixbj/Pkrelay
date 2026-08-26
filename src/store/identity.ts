@@ -12,7 +12,19 @@ import { contentTypeFor, extensionOf, readFileBytes } from '@/lib/upload';
  *   photo and that this is LEGAL_REVIEW_REQUIRED.
  */
 
-export type IdentityStatus = 'unverified' | 'pending' | 'verified' | 'flagged';
+/**
+ * ⚠ `flagged` and `rejected` are not two words for one thing.
+ *
+ *   `flagged` is a machine's doubt — an old NIMC photo, a dark room, a bad
+ *   camera. It does not stop anybody, because refusing on that evidence locks
+ *   real customers out with no recourse. `rejected` is a person's decision,
+ *   reached with the slip and the face side by side, and it does stop them —
+ *   until they submit again.
+ *
+ *   28_sender_identity.sql explains why the automated path deliberately has no
+ *   `rejected`; 41 explains why the human one does.
+ */
+export type IdentityStatus = 'unverified' | 'pending' | 'verified' | 'flagged' | 'rejected';
 
 export type SenderIdentity = {
   status: IdentityStatus;
@@ -23,6 +35,14 @@ export type SenderIdentity = {
   confidence: number | null;
   environment: 'sandbox' | 'production' | null;
   checkedAt: string | null;
+  /**
+   * Why a reviewer refused it. Null unless somebody has been refused.
+   *
+   * ⚠ This is the sender's copy of the reason, and it is the reason the block
+   *   is survivable. Without it the app can only say "no", and the only way to
+   *   find out what to fix is to email support about a photo they cannot see.
+   */
+  reviewNote: string | null;
 };
 
 /**
@@ -47,8 +67,19 @@ export function verificationPath(identity: SenderIdentity | null): VerificationP
    * `pending` means they started and did not finish. Onboarding again is right:
    * treating it as done would skip the check for everyone who abandoned partway
    * through, which is the population most worth checking.
+   *
+   * `rejected` joins them, and must. A refusal is a refusal *of what they
+   * submitted* — the slip, the NIN, the selfie. Sending them down the selfie
+   * path would ask for the one thing that cannot fix it and would leave the
+   * rejection standing afterwards.
    */
-  if (identity.status === 'unverified' || identity.status === 'pending') return 'onboarding';
+  if (
+    identity.status === 'unverified' ||
+    identity.status === 'pending' ||
+    identity.status === 'rejected'
+  ) {
+    return 'onboarding';
+  }
 
   return identity.hasReference ? 'selfie' : 'capture';
 }
@@ -67,6 +98,7 @@ export function pathExplanation(path: VerificationPath): string {
 
 type IdentityRow = {
   status: string;
+  review_note: string | null;
   nin: string | null;
   reference_path: string | null;
   confidence: number | string | null;
@@ -85,7 +117,7 @@ type IdentityRow = {
 export async function fetchSenderIdentity(): Promise<SenderIdentity | null> {
   const { data, error } = await supabase
     .from('sender_identity')
-    .select('status, nin, reference_path, confidence, environment, checked_at')
+    .select('status, nin, reference_path, confidence, environment, checked_at, review_note')
     .maybeSingle();
 
   if (error || !data) return null;
@@ -98,6 +130,7 @@ export async function fetchSenderIdentity(): Promise<SenderIdentity | null> {
     confidence: row.confidence === null ? null : Number(row.confidence),
     environment: (row.environment as SenderIdentity['environment']) ?? null,
     checkedAt: row.checked_at,
+    reviewNote: row.review_note,
   };
 }
 

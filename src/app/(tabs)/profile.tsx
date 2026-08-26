@@ -403,29 +403,43 @@ function ProfileHeader({
 }
 
 /**
- * ⚠ Four states, and only one of them is a green tick.
+ * ⚠ Five states, and only one of them is a green tick.
  *
  *   Collapsing these to verified/not would tell somebody mid-review that they
  *   had failed, and somebody flagged that they were fine. Flagged in
  *   particular is not "unverified" — it means a check came back and disagreed
  *   with itself, which is a support conversation rather than a retry.
+ *
+ * ⚠ And `rejected` is not `flagged`, however similar they look here.
+ *
+ *   Flagged is a machine's doubt and stops nothing. Rejected is a person's
+ *   decision and stops the account from posting until they submit again — so
+ *   it says "not accepted", which is a thing that happened, rather than "needs
+ *   review", which sounds like something still in motion. The reason and the
+ *   way back in are on the card below; this is only the label.
+ *
+ *   The map is keyed on `IdentityStatus`, which is what made adding a status
+ *   fail to compile here rather than render blank next to somebody's name.
  */
 function VerificationBadge({ status }: { status: IdentityStatus | null }) {
   const theme = useTheme();
 
   if (status === null) return null;
 
-  const look = {
+  const look: Record<IdentityStatus, { text: string; color: string; Icon: typeof BadgeCheck }> = {
     verified: { text: 'Verified', color: theme.success, Icon: BadgeCheck },
     pending: { text: 'Verification in progress', color: theme.warning, Icon: ShieldQuestion },
     flagged: { text: 'Verification needs review', color: theme.danger, Icon: ShieldAlert },
+    rejected: { text: 'ID not accepted', color: theme.danger, Icon: ShieldAlert },
     unverified: { text: 'Not verified yet', color: theme.textMuted, Icon: ShieldQuestion },
-  }[status];
+  };
+
+  const { Icon, color, text } = look[status];
 
   return (
     <View style={styles.badge}>
-      <look.Icon color={look.color} size={14} />
-      <Text style={[styles.badgeText, { color: look.color }]}>{look.text}</Text>
+      <Icon color={color} size={14} />
+      <Text style={[styles.badgeText, { color }]}>{text}</Text>
     </View>
   );
 }

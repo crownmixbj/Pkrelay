@@ -286,6 +286,7 @@ const identity = (over: Partial<SenderIdentity>): SenderIdentity => ({
   confidence: 95,
   environment: 'sandbox',
   checkedAt: new Date().toISOString(),
+  reviewNote: null,
   ...over,
 });
 

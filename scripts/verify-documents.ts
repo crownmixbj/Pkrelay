@@ -634,10 +634,24 @@ check(
   ),
 );
 
+/*
+ * ⚠ The ordering, not the exact list.
+ *
+ *   This pinned the array literal verbatim, so adding a fourth section broke it
+ *   — while the thing it was defending, that Dispatch sits between Overview and
+ *   Driver review, was untouched. An assertion that fails on every unrelated
+ *   change is one somebody eventually edits without reading, which is how the
+ *   real property gets lost.
+ */
+const sections = /const SECTIONS = \[([^\]]*)\] as const;/.exec(code(admin))?.[1] ?? '';
+const order = [...sections.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+
+check('the admin sections parsed', order.length >= 3, sections);
 check(
-  'the admin screen has a Dispatch tab between Overview and Driver review',
-  /const SECTIONS = \['overview', 'dispatch', 'review'\] as const;/.test(code(admin)),
-  'the tab you reach for during an incident should not be furthest from the tab that told you there was one',
+  'Dispatch sits between Overview and Driver review',
+  order.indexOf('overview') < order.indexOf('dispatch') &&
+    order.indexOf('dispatch') < order.indexOf('review'),
+  `got ${order.join(', ')} — the tab you reach for during an incident should not be furthest from the tab that told you there was one`,
 );
 check(
   'and it renders the control',

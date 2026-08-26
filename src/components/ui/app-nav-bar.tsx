@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ClipboardCheck,
   Clock,
+  IdCard,
   Info,
   LayoutDashboard,
   LifeBuoy,
@@ -404,6 +405,13 @@ const NAV_LINKS: NavLink[] = [
         href: '/admin',
         section: 'review',
         icon: (color, size) => <ClipboardCheck color={color} size={size} />,
+      },
+      {
+        key: 'identity',
+        label: 'Sender ID Review',
+        href: '/admin',
+        section: 'identity',
+        icon: (color, size) => <IdCard color={color} size={size} />,
       },
       {
         key: 'users',

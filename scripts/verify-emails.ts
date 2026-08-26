@@ -15,7 +15,7 @@
  *   file can render all nine and read the output. A template exercised only by
  *   sending real mail is a template nobody checks until a customer does.
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 /*
@@ -157,7 +157,22 @@ const stripComments = (source: string) =>
   source.replace(/(^|[\s{(=,;])\/\*[\s\S]*?\*\//g, '$1').replace(/^\s*\/\/.*$/gm, '');
 
 const templatesSource = stripComments(read('supabase/functions/notify-events/templates.ts'));
-const migration = read('supabase/38_transactional_email.sql');
+/*
+ * ⚠ Every migration, in order, not only the one that started it.
+ *
+ *   38 created the outbox and its `check (kind in (...))`. Later migrations add
+ *   kinds, widen that constraint, and queue emails of their own — 39 sends the
+ *   guarantor invitation, 41 the identity rejection. Reading 38 alone made this
+ *   suite report a missing trigger for a trigger that exists, and naming files
+ *   one at a time only moves the problem to whoever writes 42.
+ *
+ *   Ordered by filename so the *last* kind constraint found is the one in force.
+ */
+const migration = readdirSync(join(ROOT, 'supabase'))
+  .filter((name) => /^\d+_.*\.sql$/.test(name))
+  .sort()
+  .map((name) => read(`supabase/${name}`))
+  .join('\n');
 const migrationCode = migration.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*--.*$/gm, '');
 
 /*
@@ -174,9 +189,26 @@ check(
   !/payload\s*\.\s*nin|['"`]nin['"`]|ninLast4|nin_last4/i.test(templatesSource),
   'the field exists on the identity row and would render happily',
 );
+/*
+ * ⚠ Scoped to what is handed to `queue_email`, not to the whole schema.
+ *
+ *   This scanned every migration for the three letters, which was fine while it
+ *   only read 38 and became nonsense the moment it read all of them: 28 defines
+ *   a `nin` column and 41 selects `right(i.nin, 4)` for an admin screen. Both
+ *   are correct and neither goes near an email.
+ *
+ *   What must never happen is a NIN reaching the outbox — a table an admin can
+ *   read and a payload that ends up at a mail provider. So the payloads are
+ *   what is read.
+ */
+const queuedPayloads = [...migrationCode.matchAll(/queue_email\(([\s\S]*?)\n\s*\);/g)]
+  .map((match) => match[1])
+  .join('\n');
+
+check('the queued payloads parsed', queuedPayloads.length > 0, 'nothing to check is not a pass');
 check(
-  'and no trigger puts one in a payload',
-  !/'nin'|new\.nin/i.test(migrationCode),
+  'and no trigger puts a NIN in one',
+  !/'nin'|new\.nin|\bnin\b/i.test(queuedPayloads),
   'the outbox is a table an admin can read and a payload that reaches a mail provider',
 );
 check(
@@ -314,18 +346,44 @@ check(
  *   template queues an email that can never be sent; a template with no kind is
  *   dead code. Neither shows up until the event happens in production.
  */
-const kindsInSql = [...migration.matchAll(/^\s*'([a-z_]+)',?$/gm)]
-  .map((match) => match[1])
-  .filter((value) => EMAIL_KINDS.includes(value as never) || value.includes('_'));
+
+/*
+ * ⚠ Membership in the *live* constraint, not "the string appears somewhere".
+ *
+ *   `migration.includes("'kind'")` matched the trigger that queues the email as
+ *   readily as the constraint that admits it — so a kind added to a trigger and
+ *   forgotten in `check (kind in (...))` passed here, and failed at runtime
+ *   inside `queue_email`, in the caller's transaction, rolling their action
+ *   back with a message about a check constraint. The last constraint written
+ *   across the migrations is the one in force.
+ */
+const kindChecks = [...migration.matchAll(/check \(kind in \(([\s\S]*?)\)\)/g)];
+const liveKinds = [...(kindChecks.at(-1)?.[1] ?? '').matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+
+check('the outbox kind constraint parsed', liveKinds.length >= 11, liveKinds.join(', '));
 
 for (const kind of EMAIL_KINDS) {
   check(
-    `the migration knows about "${kind}"`,
-    migration.includes(`'${kind}'`),
+    `the outbox admits "${kind}"`,
+    liveKinds.includes(kind),
+    'a kind no constraint allows raises inside queue_email and rolls back whatever queued it',
+  );
+  check(
+    `and something queues "${kind}"`,
+    new RegExp(`queue_email\\(\\s*\n?\\s*'${kind}'`).test(migration),
     'a template with no trigger is dead code',
   );
 }
-for (const kind of new Set(kindsInSql)) {
+/*
+ * ⚠ The reverse direction, read from the constraint rather than scraped.
+ *
+ *   This used to collect every quoted lowercase word in the migrations and
+ *   assume each was an email kind. Across all of them that picks up statuses —
+ *   `pending_guarantor`, `ready_for_review` — and demands templates for things
+ *   that are not emails. The constraint is the authoritative list; anything in
+ *   it with no template is a row that queues and can never be sent.
+ */
+for (const kind of new Set(liveKinds)) {
   check(
     `there is a template for "${kind}"`,
     EMAIL_KINDS.includes(kind as never),

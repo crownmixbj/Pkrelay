@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Radius, Spacing, Typography, font } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { BANNER_MESSAGE, shouldShowVerifyBanner } from '@/lib/posting-gate';
+import { blockedMessage, postingGate } from '@/lib/posting-gate';
 import { fetchSenderIdentity, isVerificationAvailable } from '@/store/identity';
 import { useSession } from '@/store/session';
 
@@ -32,17 +32,28 @@ export function VerifyBanner() {
   const router = useRouter();
   const { isAuthenticated } = useSession();
 
-  const [show, setShow] = useState(false);
+  /*
+   * ⚠ The message is carried, not looked up.
+   *
+   *   The banner used one constant sentence, which was correct while there was
+   *   only one way to be blocked. A rejected sender told to "complete your
+   *   one-time ID verification" goes to the profile screen hunting for a step
+   *   they have already done, and never learns what was wrong with it. The
+   *   copy has to come from the same decision that produced the block.
+   */
+  const [message, setMessage] = useState('');
 
   useEffect(() => {
     if (!isAuthenticated) {
-      setShow(false);
+      setMessage('');
       return;
     }
 
     let cancelled = false;
     void fetchSenderIdentity().then((identity) => {
-      if (!cancelled) setShow(shouldShowVerifyBanner(identity, isVerificationAvailable()));
+      if (cancelled) return;
+      const decision = postingGate(identity, isVerificationAvailable());
+      setMessage(blockedMessage(decision, identity?.reviewNote ?? null));
     });
 
     return () => {
@@ -50,7 +61,7 @@ export function VerifyBanner() {
     };
   }, [isAuthenticated]);
 
-  if (!show) return null;
+  if (message === '') return null;
 
   return (
     <View
@@ -58,7 +69,7 @@ export function VerifyBanner() {
       accessibilityRole="alert">
       <ShieldAlert color={theme.warning} size={18} />
 
-      <Text style={[styles.message, { color: theme.text }]}>{BANNER_MESSAGE}</Text>
+      <Text style={[styles.message, { color: theme.text }]}>{message}</Text>
 
       <Pressable
         onPress={() => router.push('/(tabs)/profile')}

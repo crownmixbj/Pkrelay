@@ -62,7 +62,7 @@ import {
   runIdentityCheck,
   type SenderIdentity,
 } from '@/store/identity';
-import { GATE_MESSAGE, GATE_TITLE, postingGate } from '@/lib/posting-gate';
+import { blockedMessage, FORM_IS_SAVED, gateTitle, postingGate } from '@/lib/posting-gate';
 import { isValidNigerianPhone, nigerianPhoneError } from '@/utils/validation';
 import { AddressLookup } from '@/components/ui/address-lookup';
 import { VerifyBanner } from '@/components/ui/verify-banner';
@@ -890,13 +890,25 @@ export default function BookScreen() {
     const gate = postingGate(identity, isVerificationAvailable());
 
     if (!gate.allowed) {
-      showDialog(GATE_TITLE, GATE_MESSAGE, [
-        { text: 'Not now', style: 'cancel' },
-        {
-          text: 'Go to my profile',
-          onPress: () => router.push('/(tabs)/profile'),
-        },
-      ]);
+      /*
+       * ⚠ The reason travels with the refusal.
+       *
+       *   One fixed sentence was right while `unverified` was the only way to
+       *   be stopped. A rejected sender needs to read what a reviewer actually
+       *   said, here, at the moment they are stopped — not to go looking for
+       *   it on another screen.
+       */
+      showDialog(
+        gateTitle(gate),
+        `${blockedMessage(gate, identity?.reviewNote ?? null)} ${FORM_IS_SAVED}`,
+        [
+          { text: 'Not now', style: 'cancel' },
+          {
+            text: 'Go to my profile',
+            onPress: () => router.push('/(tabs)/profile'),
+          },
+        ],
+      );
       return;
     }
 

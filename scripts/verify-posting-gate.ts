@@ -17,8 +17,9 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
-  BANNER_MESSAGE,
-  GATE_MESSAGE,
+  blockedMessage,
+  FORM_IS_SAVED,
+  gateTitle,
   postingGate,
   shouldShowVerifyBanner,
 } from '../src/lib/posting-gate';
@@ -43,6 +44,7 @@ const identity = (status: SenderIdentity['status']): SenderIdentity => ({
   confidence: null,
   environment: null,
   checkedAt: null,
+  reviewNote: status === 'rejected' ? 'The slip photo is too blurry to read.' : null,
 });
 
 // ------------------------------------------------- who is actually stopped --
@@ -124,7 +126,74 @@ check(
 );
 check(
   'the banner says what was asked for',
-  BANNER_MESSAGE === 'Complete your profile verification (NIN) to start sending parcels.',
+  blockedMessage(postingGate(identity('unverified'), true), null) ===
+    'Please complete your one-time ID verification in your profile to publish this parcel.',
+);
+
+// ------------------------------------------------------- the human refusal --
+
+/*
+ * ⚠ A person's rejection is not a machine's flag, and the gate has to know it.
+ *
+ *   `flagged` is Dojah disagreeing with a photo — weak evidence, so nobody is
+ *   stopped. `rejected` is a reviewer who looked at the slip beside the face.
+ *   Treating them alike in either direction is a real failure: block on flagged
+ *   and honest customers are locked out by a dark room; allow on rejected and
+ *   the review does nothing at all.
+ */
+check(
+  'a rejected sender is stopped',
+  postingGate(identity('rejected'), true).allowed === false,
+  'letting them post means an administrator’s decision changed nothing',
+);
+check(
+  'and a flagged one still is not',
+  postingGate(identity('flagged'), true).allowed === true,
+  'a mismatch is an old NIMC photo as often as it is a fraud, and refusing on it locks real customers out',
+);
+/*
+ * ⚠ The outage escape hatch must not reach this one.
+ *
+ *   Everywhere else, "nobody can verify right now" opens the gate so a
+ *   third-party outage does not become a total outage. That argument does not
+ *   apply to a decision a person already made: Dojah being down says nothing
+ *   about it, and a refusal that lapses whenever the provider hiccups is not a
+ *   refusal.
+ */
+check(
+  'and an outage does not un-reject them',
+  postingGate(identity('rejected'), false).allowed === false,
+  'the availability bypass is for checks that cannot run, not for verdicts already reached',
+);
+check(
+  'the refusal carries the reviewer’s reason',
+  blockedMessage(postingGate(identity('rejected'), true), 'The slip photo is too blurry.').includes(
+    'The slip photo is too blurry.',
+  ),
+  'without it the only way to learn what to fix is to email support about a photo they cannot see',
+);
+check(
+  'and still says what to do when no reason survived',
+  /submit it again/i.test(blockedMessage(postingGate(identity('rejected'), true), null)),
+  'a refusal with no reason and no instruction is a dead end',
+);
+check(
+  'it does not tell them to do a thing they have already done',
+  !/complete your one-time/i.test(
+    blockedMessage(postingGate(identity('rejected'), true), 'Blurry.'),
+  ),
+  'they submitted, it was looked at, and it was refused — "complete your verification" denies all three',
+);
+check(
+  'and the heading says so too',
+  gateTitle(postingGate(identity('rejected'), true)) !==
+    gateTitle(postingGate(identity('unverified'), true)),
+  'one title over two different refusals makes the specific one unreadable',
+);
+check(
+  'the banner is shown to a rejected sender',
+  shouldShowVerifyBanner(identity('rejected'), true) === true,
+  'they are blocked, so the standing prompt is exactly who it is for',
 );
 
 // -------------------------------------------------------------- the wiring --
@@ -174,8 +243,23 @@ check(
 );
 check(
   'the prompt says the form is not lost',
-  GATE_MESSAGE.includes('saved'),
+  FORM_IS_SAVED.includes('saved') && code.includes('FORM_IS_SAVED'),
   'somebody who has filled three pages needs to know before they decide whether to leave',
+);
+/*
+ * ⚠ Asserted on the screen, because a correct message nothing renders is a
+ *   comment. The failure guarded is a call site that goes back to one constant
+ *   sentence for both kinds of block.
+ */
+check(
+  'the booking prompt is built from the decision rather than fixed',
+  code.includes('gateTitle(gate)') && code.includes('blockedMessage(gate,'),
+  'a hardcoded title and body would say "one-time verification needed" to somebody already refused',
+);
+check(
+  'and the banner is too',
+  banner.includes('blockedMessage(decision,') && banner.includes('postingGate(identity,'),
+  '',
 );
 check(
   'the gate reads live availability rather than assuming',
@@ -241,8 +325,9 @@ if (failures > 0) {
 }
 
 console.log(
-  'PASS — only a sender who has never submitted is stopped, pending and flagged post\n' +
-    '       freely, an unreachable provider opens the gate rather than closing it, the\n' +
-    '       form fills before anything is checked, the refusal routes to the profile,\n' +
-    '       and submitting a NIN is acknowledged by email every time.',
+  'PASS — only a sender who never submitted, or one a person refused, is stopped; pending\n' +
+    '       and flagged post freely; an unreachable provider opens the gate but does not\n' +
+    '       un-reject anybody; the form fills before anything is checked; every refusal\n' +
+    '       carries its own reason and a route to the profile; and submitting a NIN is\n' +
+    '       acknowledged by email every time.',
 );

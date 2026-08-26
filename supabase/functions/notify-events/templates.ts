@@ -35,6 +35,7 @@ export type EmailKind =
   | 'driver_application_approved'
   | 'driver_application_rejected'
   | 'sender_verified'
+  | 'sender_verification_rejected'
   | 'delivery_completed'
   | 'parcel_cancelled'
   | 'parcel_status_changed'
@@ -300,6 +301,59 @@ function senderVerified(payload: Payload, context: Context): Rendered {
       bodyHtml: at ? ROW('Verified', at) : '',
       cta: url ? { label: 'See your profile', url } : null,
       footerNote: support(context),
+    }),
+  };
+}
+
+/**
+ * ⚠ A refusal that is also an instruction, because the sender can fix this.
+ *
+ *   Unlike a driver rejection, which may be final, this one almost always is
+ *   not: the usual cause is a blurry slip or a dark selfie. So the reason leads
+ *   and the way back in is the call to action, rather than an apology followed
+ *   by a dead end.
+ *
+ *   The reason is not optional here the way it is on a driver rejection —
+ *   `sender_identity_rejection_has_reason` makes an empty one impossible to
+ *   store. The fallback line exists for a payload that arrives malformed
+ *   anyway, and says plainly that nothing was recorded rather than inventing a
+ *   cause the sender would then argue with support about.
+ */
+function senderRejected(payload: Payload, context: Context): Rendered {
+  const reason = str(payload, 'reason').trim();
+  const url = link(context, '/profile');
+
+  const text = [
+    'Hi there,',
+    '',
+    'We looked at the ID you submitted, and we are not able to accept it as it is.',
+    '',
+    reason
+      ? `What we found: ${reason}`
+      : 'No specific reason was recorded. Reply to this email and we will look into it.',
+    '',
+    'You can submit again from your profile — most of the time it only takes a clearer photo.',
+    url ? `Submit again: ${url}` : '',
+    '',
+    'Until then, you will not be able to post a parcel.',
+    '',
+    support(context),
+    '',
+    'LOCI',
+  ]
+    .filter((line) => line !== '')
+    .join('\n');
+
+  return {
+    subject: headerSafe('Your LOCI ID check needs another look'),
+    text,
+    html: layout({
+      heading: 'We could not accept that ID',
+      intro:
+        'We looked at the ID you submitted and we are not able to accept it as it is. You can submit again — most of the time it only takes a clearer photo.',
+      bodyHtml: ROW('What we found', reason || 'Not recorded — reply and we will look into it'),
+      cta: url ? { label: 'Submit again', url } : null,
+      footerNote: `Until you do, you will not be able to post a parcel. ${support(context)}`,
     }),
   };
 }
@@ -604,6 +658,7 @@ const TEMPLATES: Record<EmailKind, (payload: Payload, context: Context) => Rende
   driver_application_approved: applicationApproved,
   driver_application_rejected: applicationRejected,
   sender_verified: senderVerified,
+  sender_verification_rejected: senderRejected,
   delivery_completed: deliveryCompleted,
   parcel_cancelled: parcelCancelled,
   parcel_status_changed: parcelStatusChanged,

@@ -30,6 +30,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { DispatchControl } from '@/components/ui/dispatch-control';
+import { IdentityReviewPanel } from '@/components/ui/identity-review-panel';
 import { ChipGroup } from '@/components/ui/chip';
 import { showDialog } from '@/components/ui/dialog';
 import { Field } from '@/components/ui/field';
@@ -59,13 +60,13 @@ import { AdminOverview as OverviewPanel } from '@/components/ui/admin-overview';
 import { signedDocumentUrl } from '@/store/driver-documents';
 
 /**
- * Two of the five Admin views: the overview, and this review queue.
+ * Four of the Admin views: the overview, dispatch, and the two review queues.
  *
- * One screen because the overview's headline numbers *are* the queue's numbers
+ * One screen because the overview's headline numbers *are* the queues' numbers
  * — splitting them would mean two places computing "how many are waiting" and
  * eventually disagreeing.
  */
-const SECTIONS = ['overview', 'dispatch', 'review'] as const;
+const SECTIONS = ['overview', 'dispatch', 'review', 'identity'] as const;
 type Section = (typeof SECTIONS)[number];
 
 /**
@@ -83,6 +84,7 @@ const SECTION_LABELS: Record<Section, string> = {
   overview: 'Overview',
   dispatch: 'Dispatch',
   review: 'Driver review',
+  identity: 'Sender IDs',
 };
 
 /*
@@ -98,6 +100,7 @@ const SCREEN_TITLES: Record<Section, string> = {
   overview: 'Dashboard Overview',
   dispatch: 'Dispatch & Assignment',
   review: 'Driver & App Review',
+  identity: 'Sender ID Review',
 };
 
 function parseAdminSection(value: unknown): Section {
@@ -354,6 +357,18 @@ export default function AdminScreen() {
         {section === 'overview' && <OverviewPanel onReview={() => chooseSection('review')} />}
 
         {section === 'dispatch' && <DispatchControl />}
+
+        {/*
+          ⚠ Its own section rather than a card inside Driver review.
+
+            Both are queues of people waiting on a decision, which makes them
+            look like one screen. They are not: a driver application is a
+            person applying to work here, and a sender ID is a customer
+            proving who they are. Different volumes, different rhythms, and
+            different consequences for getting it wrong — folding them together
+            would mean one backlog number covering two unrelated jobs.
+        */}
+        {section === 'identity' && <IdentityReviewPanel />}
 
         {section === 'review' && (
           <>
