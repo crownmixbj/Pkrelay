@@ -323,6 +323,78 @@ check(
 );
 
 /*
+ * ⚠ A column the client writes and the database lacks, which is how I broke
+ *   posting.
+ *
+ *   `bookingToInsert` began sending `capture_session_id` when 44 made the
+ *   selfie part of the insert. PostgREST refuses the whole row with PGRST204 on
+ *   any database where 44 has not been run — and the booking form rendered that
+ *   as "Check your connection and try again", to somebody whose connection was
+ *   fine.
+ */
+const missingColumn = {
+  code: 'PGRST204',
+  message: "Could not find the 'capture_session_id' column of 'bookings' in the schema cache",
+};
+
+check(
+  'a missing column names the migration too',
+  (schemaGapMessage(missingColumn) ?? '').includes('44_selfie_with_the_parcel.sql'),
+  `got: ${schemaGapMessage(missingColumn) ?? 'null'} — the same failure as a missing function, with the same remedy`,
+);
+check(
+  'and does not blame the connection',
+  !/connection/i.test(schemaGapMessage(missingColumn) ?? ''),
+  'sending somebody to restart their router over an unrun migration is a support ticket by design',
+);
+check(
+  'an unmapped column still says a migration is missing',
+  /migration/i.test(
+    schemaGapMessage({
+      code: 'PGRST204',
+      message: "Could not find the 'something_new' column of 'bookings' in the schema cache",
+    }) ?? '',
+  ),
+  'the map falling behind the client is the failure being fixed, so it cannot be the only path',
+);
+
+/*
+ * ⚠ Every column the client writes that a migration added must be mapped.
+ *
+ *   Derived from the insert payload rather than listed again here: a hand-kept
+ *   list is exactly what fell behind on the deployment panel. If a future
+ *   column is added to `bookingToInsert` without a map entry, this fails on the
+ *   day it is added rather than in somebody's booking form.
+ */
+const insertPayload = read('src/store/bookings-remote.ts');
+const gapSource = read('src/lib/schema-gap.ts');
+
+check(
+  'the insert payload sends the capture session',
+  /capture_session_id: booking\.captureSessionId/.test(insertPayload),
+  'if it stopped, 44 would be pointless — the selfie would go back to being linked afterwards',
+);
+check(
+  'and the column is mapped to its migration',
+  /capture_session_id: \{[\s\S]{0,160}44_selfie_with_the_parcel\.sql/.test(gapSource),
+  'a column the client writes and this file does not know produces a shrug where a filename belongs',
+);
+
+/*
+ * ⚠ The booking failure path uses it.
+ *
+ *   A correct translation nothing calls is a comment. This is the screen the
+ *   error was actually shown on.
+ */
+check(
+  'a failed post asks for the translation first',
+  /schemaGapMessage\(thrown\) \?\? errorMessage\(thrown, 'Could not post the parcel/.test(
+    read('src/store/bookings.tsx').replace(/\s+/g, ' '),
+  ),
+  'the generic sentence first would hide the only useful one',
+);
+
+/*
  * ⚠ Every capability points at a file that exists and defines what it claims.
  *
  *   A typo in either half is silent and permanent: the panel reports the

@@ -9,6 +9,7 @@ import {
 } from 'react';
 
 import { errorMessage } from '@/lib/errors';
+import { schemaGapMessage } from '@/lib/schema-gap';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { claimBooking, fetchBookings, insertBooking } from '@/store/bookings-remote';
 import { SESSION_USER, useSession } from '@/store/session';
@@ -1048,7 +1049,16 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
         setError(null);
         return booking;
       } catch (thrown) {
-        setError(errorMessage(thrown, 'Could not post the parcel.'));
+        /*
+         * ⚠ A schema gap named, before the generic sentence.
+         *
+         *   The client writes columns that migrations add — `capture_session_id`
+         *   since 44 — and PostgREST refuses the whole row when one is not
+         *   there. Untranslated that reached the booking form as "Check your
+         *   connection and try again", shown to somebody whose connection was
+         *   fine, about a database that was four migrations behind.
+         */
+        setError(schemaGapMessage(thrown) ?? errorMessage(thrown, 'Could not post the parcel.'));
         return null;
       }
     },

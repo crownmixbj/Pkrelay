@@ -1,5 +1,5 @@
 /**
- * Which migration a missing database function belongs to.
+ * Which migration a missing database function or column belongs to.
  *
  * ⚠ PostgREST's own words for this are true and useless.
  *
@@ -84,6 +84,28 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
   },
 ];
 
+/**
+ * Columns the client writes that a migration adds.
+ *
+ * ⚠ This exists because I shipped one and broke posting.
+ *
+ *   `bookingToInsert` started sending `capture_session_id` when 44 made the
+ *   selfie part of the insert. On a database where 44 has not been run,
+ *   PostgREST refuses the whole row with PGRST204 — and the booking form
+ *   rendered that as "Check your connection and try again", to somebody whose
+ *   connection was fine.
+ *
+ *   A client that writes a column is making a claim about the schema. When the
+ *   claim is wrong, the person is owed the filename rather than a guess about
+ *   their router.
+ */
+const COLUMN_MIGRATIONS: Readonly<Record<string, { label: string; migration: string }>> = {
+  capture_session_id: {
+    label: 'Posting a parcel with its selfie',
+    migration: '44_selfie_with_the_parcel.sql',
+  },
+};
+
 type PostgrestLike = { message?: unknown; code?: unknown };
 
 /**
@@ -96,9 +118,29 @@ type PostgrestLike = { message?: unknown; code?: unknown };
  */
 const FUNCTION_MISSING = 'PGRST202';
 
+/**
+ * And its code for "that column is not in the schema".
+ *
+ * A different failure with the same cause and the same remedy: something the
+ * client knows about does not exist in the database yet.
+ */
+const COLUMN_MISSING = 'PGRST204';
+
 /** The function name out of the message, when there is one to be had. */
 function functionIn(message: string): string | null {
   return /(?:function|procedure)\s+public\.([a-z0-9_]+)/i.exec(message)?.[1] ?? null;
+}
+
+/**
+ * The column name out of the message.
+ *
+ * PostgREST phrases it as: Could not find the 'x' column of 'y' in the schema
+ * cache. Both quote styles are accepted because the wording has moved between
+ * releases and a parser that only knows today's is a parser that silently stops
+ * working on an upgrade.
+ */
+function columnIn(message: string): string | null {
+  return /(?:column\s+)?['"`]([a-z0-9_]+)['"`]\s+column/i.exec(message)?.[1] ?? null;
 }
 
 /**
@@ -115,9 +157,23 @@ export function schemaGapMessage(thrown: unknown): string | null {
   if (!thrown || typeof thrown !== 'object') return null;
 
   const error = thrown as PostgrestLike;
-  if (error.code !== FUNCTION_MISSING) return null;
+  if (error.code !== FUNCTION_MISSING && error.code !== COLUMN_MISSING) return null;
 
   const message = typeof error.message === 'string' ? error.message : '';
+
+  if (error.code === COLUMN_MISSING) {
+    const column = columnIn(message);
+    const known = column ? COLUMN_MIGRATIONS[column] : undefined;
+
+    if (known) {
+      return `${known.label} needs a database change that has not been made yet. Run supabase/${known.migration} in the Supabase SQL editor, then reload.`;
+    }
+
+    return column
+      ? `This needs a database column that is not there yet: ${column}. A migration in supabase/ has not been run.`
+      : 'This needs part of the database schema that has not been created yet. A migration in supabase/ has not been run.';
+  }
+
   const fn = functionIn(message);
   const known = CAPABILITIES.find((capability) => capability.fn === fn);
 
