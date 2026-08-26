@@ -72,6 +72,11 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
     fn: 'is_verified_sender',
     migration: '42_verified_senders_only.sql',
   },
+  {
+    label: 'Review sees the selfie',
+    fn: 'sender_selfie_path',
+    migration: '43_review_sees_the_selfie.sql',
+  },
 ];
 
 type PostgrestLike = { message?: unknown; code?: unknown };

@@ -65,8 +65,6 @@ const KIND_CHECK = (() => {
   return found[1];
 })();
 
-
-
 const SENDER = '11111111-1111-1111-1111-111111111111';
 const OTHER = '22222222-2222-2222-2222-222222222222';
 const ADMIN = '33333333-3333-3333-3333-333333333333';
@@ -128,6 +126,23 @@ await db.exec(`
    *   inside queue_email, in the reviewer's transaction, so the whole decision
    *   rolls back with a message about a check constraint.
    */
+  /*
+   * ⚠ Where the selfie actually is on a database with no verify-identity.
+   *
+   *   candidate_path and reference_path are written only by
+   *   record_identity_result, which only that edge function calls. Without it
+   *   the photo exists here and nowhere else — which is exactly the state 41's
+   *   review queue was built for, and exactly the state in which it reported
+   *   "No selfie on file".
+   */
+  create table public.photo_capture_sessions (
+    id uuid primary key default gen_random_uuid(),
+    owner_id uuid not null,
+    photo_path text,
+    completed_at timestamptz,
+    created_at timestamptz not null default now()
+  );
+
   create table public.email_outbox (
     id uuid primary key default gen_random_uuid(),
     kind text not null ${KIND_CHECK},
@@ -162,6 +177,7 @@ await db.exec(`
 `);
 
 await db.exec(read('supabase/41_sender_identity_review.sql'));
+await db.exec(read('supabase/43_review_sees_the_selfie.sql').replace(/notify pgrst[^;]*;/g, ''));
 
 const beAdmin = () =>
   db.exec(`delete from public.who; insert into public.who values ('${ADMIN}');`);
@@ -306,6 +322,181 @@ await run('opening the documents writes an audit line', async () => {
     'and still only four digits of the NIN',
     revealed?.nin_last4 === '8901' && !JSON.stringify(revealed).includes('12345678901'),
     'the reviewer is comparing a face to a document; the number is not the question',
+  );
+});
+
+/* ============ 3b. the selfie is found where the sender left it ========== */
+
+/*
+ * ⚠ The bug this migration exists for, reproduced.
+ *
+ *   The sender takes a selfie, it uploads into a capture session, and
+ *   `sender_identity` never learns about it because the only writer of
+ *   `candidate_path` is an edge function nobody has deployed. The queue then
+ *   tells the reviewer there is nothing to compare — true of the table it read,
+ *   false about the world.
+ */
+await run('a capture-session selfie counts as a selfie', async () => {
+  await beAdmin();
+  await db.exec(`update public.sender_identity set candidate_path = null, reference_path = null
+                  where user_id = '${SENDER}'`);
+
+  const before = (await q(`select * from public.admin_identity_queue()`)).find(
+    (r) => r.user_id === SENDER,
+  );
+  check(
+    'with no session, there is honestly nothing',
+    before?.has_selfie === false,
+    'claiming a photo exists when none does sends a reviewer to an empty square',
+  );
+
+  await db.exec(`insert into public.photo_capture_sessions (owner_id, photo_path, completed_at)
+                 values ('${SENDER}', 'session-1/selfie.jpg', now())`);
+
+  const after = (await q(`select * from public.admin_identity_queue()`)).find(
+    (r) => r.user_id === SENDER,
+  );
+  check(
+    'once they have taken one, the queue says so',
+    after?.has_selfie === true,
+    'this is the "No selfie on file" the reviewer was shown while the photo sat in a session',
+  );
+});
+
+/*
+ * ⚠ An unfinished session is not a photo.
+ *
+ *   A row exists from the moment the camera opens; `photo_path` is null until
+ *   the phone uploads. Counting those would promise the reviewer a face that
+ *   does not exist — and taking the *newest* row rather than the newest
+ *   completed one would hide a good photo behind an abandoned attempt.
+ */
+await run('an abandoned capture is not counted', async () => {
+  await beAdmin();
+  await db.exec(`delete from public.photo_capture_sessions;`);
+  await db.exec(`insert into public.photo_capture_sessions (owner_id, photo_path, completed_at)
+                 values ('${SENDER}', null, null)`);
+
+  const row = (await q(`select * from public.admin_identity_queue()`)).find(
+    (r) => r.user_id === SENDER,
+  );
+  check('no photo, no claim', row?.has_selfie === false, '');
+
+  await db.exec(`insert into public.photo_capture_sessions (owner_id, photo_path, completed_at)
+                 values ('${SENDER}', 'session-old/selfie.jpg', now() - interval '1 hour')`);
+
+  const [revealed] = await q(
+    `select * from public.admin_reveal_identity_for_user($1, 'checking')`,
+    [SENDER],
+  );
+  check(
+    'and the finished one is still reachable behind it',
+    revealed?.selfie_path === 'session-old/selfie.jpg',
+    `got ${revealed?.selfie_path} — an abandoned attempt must not mask a real photo`,
+  );
+});
+
+/*
+ * ⚠ Ordered by when the photo landed, not by when the camera opened.
+ *
+ *   These come apart: somebody opens the camera, hesitates, and finishes a
+ *   minute later — while a session started earlier was completed sooner. The
+ *   first version of this test could not tell the two orderings apart, because
+ *   both rows were created in the same instant, so `order by created_at` passed
+ *   it. The rows below are built so the two orders genuinely disagree.
+ */
+await run('the newest finished capture is the one shown', async () => {
+  await beAdmin();
+  await db.exec(`delete from public.photo_capture_sessions;`);
+
+  /* Opened first, finished last — this is the photo the sender ended up with. */
+  await db.exec(`insert into public.photo_capture_sessions (owner_id, photo_path, completed_at, created_at)
+                 values ('${SENDER}', 'session-new/selfie.jpg', now(), now() - interval '2 hours')`);
+
+  /* Opened later, finished earlier. Newest by creation, and not the answer. */
+  await db.exec(`insert into public.photo_capture_sessions (owner_id, photo_path, completed_at, created_at)
+                 values ('${SENDER}', 'session-stale/selfie.jpg', now() - interval '1 hour', now())`);
+
+  const [revealed] = await q(
+    `select * from public.admin_reveal_identity_for_user($1, 'checking')`,
+    [SENDER],
+  );
+  check(
+    'the one they finished last',
+    revealed?.selfie_path === 'session-new/selfie.jpg',
+    `got ${revealed?.selfie_path} — ordering on creation shows a photo the sender replaced`,
+  );
+});
+
+/*
+ * ⚠ A recorded candidate still wins over a session.
+ *
+ *   Once `verify-identity` is deployed, `candidate_path` is the photo the
+ *   verdict was actually reached about. Preferring a later unrelated session
+ *   selfie would show the reviewer a different face from the one the score
+ *   belongs to.
+ */
+await run('but a recorded candidate takes precedence', async () => {
+  await beAdmin();
+  await db.exec(`update public.sender_identity set candidate_path = 'checked/selfie.jpg'
+                  where user_id = '${SENDER}'`);
+
+  const [revealed] = await q(
+    `select * from public.admin_reveal_identity_for_user($1, 'checking')`,
+    [SENDER],
+  );
+  check('the checked photo', revealed?.selfie_path === 'checked/selfie.jpg', revealed?.selfie_path);
+
+  await db.exec(`update public.sender_identity set candidate_path = null
+                  where user_id = '${SENDER}'`);
+});
+
+/*
+ * ⚠ Finding the photo must not put its path in the list.
+ *
+ *   41's whole audit argument rests on the list carrying a boolean and the
+ *   reveal carrying the path. A fallback implemented by selecting the path into
+ *   the queue would make every page load an unlogged reveal.
+ */
+await run('and the queue still carries no path', async () => {
+  await beAdmin();
+  const rows = await q(`select * from public.admin_identity_queue()`);
+  const values = JSON.stringify(rows);
+
+  check(
+    'no storage path is returned',
+    !values.includes('selfie.jpg') && !values.includes('slip-1.jpg'),
+    'a path in the list is a reveal nobody recorded',
+  );
+});
+
+/*
+ * ⚠ The helper is not an endpoint.
+ *
+ *   It returns the storage path of somebody's face. Reachable by a signed-in
+ *   account, it would be an unaudited way to ask where any selfie lives.
+ */
+/*
+ * ⚠ Asked of the catalogue, not by calling it.
+ *
+ *   Everything in this harness runs as the database owner, who bypasses grants
+ *   — so a call would succeed however the grants are written, and the
+ *   assertion would pass on a function granted to the world. The privilege
+ *   itself is the thing to read.
+ */
+await run('the path helper is granted to nobody', async () => {
+  await beAdmin();
+  const [row] = await q(`
+    select coalesce(array_to_string(p.proacl, ','), '') as acl
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.proname = 'sender_selfie_path'
+  `);
+
+  check('the function exists', row !== undefined, '');
+  check(
+    'and no role but its owner may execute it',
+    !/(^|,)(authenticated|anon|=)/.test(row?.acl ?? ''),
+    `${row?.acl} — a helper that hands out the storage path of somebody's face must stay behind the audited reveal`,
   );
 });
 
