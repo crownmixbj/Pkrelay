@@ -225,6 +225,17 @@ export type IdentityOutcome =
 let verificationReachable = true;
 
 /** False once a submission has failed for reasons that are not the person's. */
+/*
+ * ⚠ No longer read by the posting gate, deliberately.
+ *
+ *   This existed so a Dojah outage would open the gate rather than close it —
+ *   the argument being that a third-party outage must not become a total
+ *   outage of the product. `42_verified_senders_only.sql` ends that: an outage
+ *   is exactly when an unverified account would slip through. The flag is kept
+ *   because the onboarding flow still uses it to tell a sender their
+ *   submission failed for reasons that are not theirs, but nothing decides who
+ *   may post from it.
+ */
 export function isVerificationAvailable(): boolean {
   return verificationReachable;
 }

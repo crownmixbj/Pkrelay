@@ -5,8 +5,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Radius, Spacing, Typography, font } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { blockedMessage, postingGate } from '@/lib/posting-gate';
-import { fetchSenderIdentity, isVerificationAvailable } from '@/store/identity';
+import { blockedMessage, canActNow, postingGate } from '@/lib/posting-gate';
+import { fetchSenderIdentity } from '@/store/identity';
 import { useSession } from '@/store/session';
 
 /**
@@ -42,6 +42,15 @@ export function VerifyBanner() {
    *   copy has to come from the same decision that produced the block.
    */
   const [message, setMessage] = useState('');
+  /*
+   * ⚠ Whether there is anything to do, not just whether to shout.
+   *
+   *   Somebody at `pending` is blocked and has no action available — pressing
+   *   "Verify now" would open a form they have already filled, and submitting
+   *   it again would reset their place in the queue. So they get the sentence
+   *   without the button.
+   */
+  const [actionable, setActionable] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -52,8 +61,9 @@ export function VerifyBanner() {
     let cancelled = false;
     void fetchSenderIdentity().then((identity) => {
       if (cancelled) return;
-      const decision = postingGate(identity, isVerificationAvailable());
+      const decision = postingGate(identity);
       setMessage(blockedMessage(decision, identity?.reviewNote ?? null));
+      setActionable(canActNow(decision));
     });
 
     return () => {
@@ -71,17 +81,19 @@ export function VerifyBanner() {
 
       <Text style={[styles.message, { color: theme.text }]}>{message}</Text>
 
-      <Pressable
-        onPress={() => router.push('/(tabs)/profile')}
-        accessibilityRole="button"
-        accessibilityLabel="Verify now — opens your profile"
-        style={({ pressed }) => [
-          styles.action,
-          { backgroundColor: theme.primary },
-          pressed && styles.pressed,
-        ]}>
-        <Text style={[styles.actionLabel, { color: theme.primaryText }]}>Verify Now</Text>
-      </Pressable>
+      {actionable && (
+        <Pressable
+          onPress={() => router.push('/(tabs)/profile')}
+          accessibilityRole="button"
+          accessibilityLabel="Verify now — opens your profile"
+          style={({ pressed }) => [
+            styles.action,
+            { backgroundColor: theme.primary },
+            pressed && styles.pressed,
+          ]}>
+          <Text style={[styles.actionLabel, { color: theme.primaryText }]}>Verify Now</Text>
+        </Pressable>
+      )}
     </View>
   );
 }

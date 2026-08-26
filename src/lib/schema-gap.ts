@@ -58,6 +58,20 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
     fn: 'admin_identity_queue',
     migration: '41_sender_identity_review.sql',
   },
+  /*
+   * ⚠ Added on the same commit as the migration, because the assertion
+   *   introduced last time refused to let it be otherwise.
+   *
+   *   The list falling behind is what made the panel report a healthy schema
+   *   over a broken screen. `verify-identity-review.ts` now fails when the
+   *   newest file in supabase/ is not here, and it failed on this one — which
+   *   is the guard working on the first opportunity it had.
+   */
+  {
+    label: 'Verified senders only',
+    fn: 'is_verified_sender',
+    migration: '42_verified_senders_only.sql',
+  },
 ];
 
 type PostgrestLike = { message?: unknown; code?: unknown };

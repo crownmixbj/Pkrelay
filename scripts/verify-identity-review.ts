@@ -114,22 +114,28 @@ check(
 // ------------------------------------------- the machine and the person ------
 
 /*
- * ⚠ `flagged` and `rejected` must not collapse into each other.
+ * ⚠ `flagged` and `rejected` both block now, and must still not collapse.
  *
- *   Treat a flag as a refusal and honest customers are locked out by a dark
- *   room or an old NIMC photo. Treat a refusal as a flag and the review does
- *   nothing at all. `28_sender_identity.sql` argues the first half; this is
- *   what keeps both halves true.
+ *   42 made verification a precondition of posting, so a flag stops somebody
+ *   where it used to let them through. What still separates the two is what
+ *   the person is told and whether they can do anything: a flag is a machine's
+ *   doubt awaiting a person, and saying "your photo did not match" before
+ *   anybody has looked would be LOCI asserting something nobody checked. A
+ *   rejection is a person's decision and comes with a reason and a way back in.
+ *
+ *   `verify-posting-gate.ts` holds the full set; these two are here because
+ *   this suite is where the distinction is defined.
  */
 check(
-  'a machine flag does not block',
-  postingGate(identity('flagged'), true).allowed === true,
-  'a mismatch is as often a bad camera as a fraud',
+  'both are blocked',
+  postingGate(identity('flagged')).allowed === false &&
+    postingGate(identity('rejected')).allowed === false,
+  'a machine flag no longer passes — 42 requires verified, not "not refused"',
 );
 check(
-  'a person’s rejection does',
-  postingGate(identity('rejected'), true).allowed === false,
-  'otherwise the reviewer’s decision changed nothing',
+  'but they are not the same refusal',
+  postingGate(identity('flagged')).reason !== postingGate(identity('rejected')).reason,
+  'one is waiting on a person and the other has heard from one',
 );
 
 /*

@@ -18,12 +18,13 @@ import { join } from 'node:path';
 
 import {
   blockedMessage,
+  canActNow,
   FORM_IS_SAVED,
   gateTitle,
   postingGate,
   shouldShowVerifyBanner,
 } from '../src/lib/posting-gate';
-import type { SenderIdentity } from '../src/store/identity';
+import type { IdentityStatus, SenderIdentity } from '../src/store/identity';
 
 let failures = 0;
 
@@ -51,152 +52,226 @@ const identity = (status: SenderIdentity['status']): SenderIdentity => ({
 
 check(
   'somebody who has never submitted is stopped',
-  postingGate(identity('unverified'), true).allowed === false,
+  postingGate(identity('unverified')).allowed === false,
   'this is the one group the gate is for',
 );
 check(
   'and so is an account with no identity row at all',
-  postingGate(null, true).allowed === false,
+  postingGate(null).allowed === false,
   'no row is the same as unverified — a first-time sender has neither',
 );
 
-// ------------------------------------------- and who must never be stopped --
+// ---------------------------------------- exactly one status may post -------
 
-check('a verified sender posts', postingGate(identity('verified'), true).allowed === true);
+check('a verified sender posts', postingGate(identity('verified')).allowed === true);
 
 /*
- * ⚠ The two that look like failures and are not.
+ * ⚠ The reversal, and the reason it is defensible now and was not before.
  *
- *   `pending` is somebody waiting on the provider; `flagged` is somebody
- *   waiting on a person. Both have done exactly what the modal would ask them
- *   to do. Blocking either shows them a prompt for a task they have completed,
- *   with no button that resolves it — a dead end dressed as an instruction.
+ *   `pending` and `flagged` used to pass. The argument was sound: a mismatch is
+ *   as often an old NIMC photo or a dark room as a fraud, and refusing on that
+ *   evidence locked real customers out with *no recourse* — the only path was
+ *   automated and had already said no.
+ *
+ *   41 built the recourse. Both statuses now sit in a queue a person works, and
+ *   can be approved by hand. Blocking is a delay rather than a wall, which is
+ *   the only thing that ever made the old position necessary.
  */
-for (const status of ['pending', 'flagged'] as const) {
-  const decision = postingGate(identity(status), true);
+for (const status of ['unverified', 'pending', 'flagged', 'rejected'] as const) {
+  const decision = postingGate(identity(status));
   check(
-    `a ${status} sender is not stopped`,
-    decision.allowed === true,
-    'they have already submitted; there is nothing the prompt could ask them to do',
+    `a ${status} sender is stopped`,
+    decision.allowed === false,
+    'the server refuses this row; letting the form submit means finding out after three pages',
   );
   check(
-    `and the reason says they are in progress`,
-    decision.allowed === true && decision.reason === 'in-progress',
-    'lumping them in with "verified" would hide a real state from anything that reads this',
+    `and the reason is "${status}" rather than a generic block`,
+    decision.allowed === false && decision.reason === status,
+    'four situations collapsed into one reason is four people told the same wrong thing',
   );
 }
 
 /*
- * ⚠ The most important one in this file.
+ * ⚠ `status <> 'rejected'` is the rewrite that would pass a glance.
  *
- *   Verification runs through an edge function and Dojah. If either is down, or
- *   the function is not deployed, nobody in the country can verify — and a gate
- *   that held would turn a third-party outage into a total outage of the only
- *   thing this app does. The block is defensible only while the way past it
- *   works.
+ *   It reads almost identically to the intent and lets three of the four
+ *   through. Asserting that *only* verified passes, by counting, is what makes
+ *   that impossible to introduce quietly.
+ */
+const ALL: readonly IdentityStatus[] = ['unverified', 'pending', 'verified', 'flagged', 'rejected'];
+check(
+  'and exactly one status may post',
+  ALL.filter((status) => postingGate(identity(status)).allowed).length === 1,
+  `${ALL.filter((status) => postingGate(identity(status)).allowed).join(', ')} — more than one means the predicate is looser than it reads`,
+);
+
+/*
+ * ⚠ The outage escape hatch is gone, deliberately, and this is where that is
+ *   recorded.
+ *
+ *   It used to open the gate when Dojah was unreachable, so a third-party
+ *   outage could not become a total outage of the product. That cannot survive
+ *   this rule: an outage is exactly when an unverified account would slip
+ *   through, and a gate that opens under load is not a gate. The cost is
+ *   accepted — a new sender during an outage waits for Dojah or for an admin.
  */
 check(
-  'an unreachable verification service opens the gate',
-  postingGate(identity('unverified'), false).allowed === true,
-  'a provider outage must not stop every sender in Nigeria from posting a parcel',
-);
-check(
-  'and says that is why',
-  (() => {
-    const decision = postingGate(identity('unverified'), false);
-    return decision.allowed === true && decision.reason === 'verification-unavailable';
-  })(),
-  'a silent bypass is indistinguishable from the gate not working',
+  'an unreachable verification service does not open the gate',
+  // @ts-expect-error the parameter is gone; a call site still passing it must not compile
+  postingGate(identity('unverified'), false).allowed === false,
+  'a gate that opens when the provider is down is open exactly when it matters',
 );
 
 // ------------------------------------------------------------- the banner --
 
+/*
+ * ⚠ Shown to everybody who is stopped, which is now everybody unverified.
+ *
+ *   The old rule hid it from `pending` and `flagged` on the argument that a
+ *   banner somebody cannot act on is one they learn to ignore. That is still
+ *   true, and is now handled by the *message* and by hiding the button —
+ *   somebody who cannot post needs to know before they fill a form, even when
+ *   the answer is "wait".
+ */
 check(
   'the banner is shown to exactly the people the gate stops',
-  shouldShowVerifyBanner(identity('unverified'), true) === true &&
-    shouldShowVerifyBanner(identity('pending'), true) === false &&
-    shouldShowVerifyBanner(identity('flagged'), true) === false &&
-    shouldShowVerifyBanner(identity('verified'), true) === false,
-  'a banner somebody cannot act on or dismiss is how people learn to ignore banners',
-);
-check(
-  'and not while verification is unreachable',
-  shouldShowVerifyBanner(identity('unverified'), false) === false,
-  'telling somebody to do a thing that is currently impossible is worse than saying nothing',
-);
-check(
-  'the banner says what was asked for',
-  blockedMessage(postingGate(identity('unverified'), true), null) ===
-    'Please complete your one-time ID verification in your profile to publish this parcel.',
+  ALL.every(
+    (status) =>
+      shouldShowVerifyBanner(identity(status)) ===
+      (postingGate(identity(status)).allowed === false),
+  ),
+  'a banner whose audience is computed separately from the gate will disagree with it',
 );
 
-// ------------------------------------------------------- the human refusal --
+/*
+ * ⚠ Four blocks, four different sentences, and none of them a dead end.
+ *
+ *   This is what makes the rule defensible rather than merely strict. Two of
+ *   these people have done everything asked and are waiting on LOCI.
+ */
+const messages = (['unverified', 'pending', 'flagged', 'rejected'] as const).map((status) =>
+  blockedMessage(postingGate(identity(status)), identity(status).reviewNote),
+);
+
+check(
+  'every blocked state says something',
+  messages.every((message) => message.length > 20),
+  '',
+);
+check(
+  'and no two of them say the same thing',
+  new Set(messages).size === messages.length,
+  'one sentence for four situations is three people told something untrue',
+);
+check(
+  'the titles differ too',
+  new Set(
+    (['unverified', 'pending', 'flagged', 'rejected'] as const).map((status) =>
+      gateTitle(postingGate(identity(status))),
+    ),
+  ).size === 4,
+  'a heading that denies what somebody already did sends them to support',
+);
 
 /*
- * ⚠ A person's rejection is not a machine's flag, and the gate has to know it.
+ * ⚠ Nobody waiting is told to go and do something.
  *
- *   `flagged` is Dojah disagreeing with a photo — weak evidence, so nobody is
- *   stopped. `rejected` is a reviewer who looked at the slip beside the face.
- *   Treating them alike in either direction is a real failure: block on flagged
- *   and honest customers are locked out by a dark room; allow on rejected and
- *   the review does nothing at all.
+ *   Re-submitting on the profile screen calls `begin_identity_check`, which
+ *   clears the review and puts them back at the start of the queue. Sending a
+ *   waiting sender there does not just waste their time, it makes their
+ *   situation worse.
  */
 check(
-  'a rejected sender is stopped',
-  postingGate(identity('rejected'), true).allowed === false,
-  'letting them post means an administrator’s decision changed nothing',
+  'somebody waiting is not told to complete a verification',
+  !/complete your/i.test(blockedMessage(postingGate(identity('pending')), null)) &&
+    !/complete your/i.test(blockedMessage(postingGate(identity('flagged')), null)),
+  'they have already done it; the instruction is false and the button would reset their place in the queue',
 );
 check(
-  'and a flagged one still is not',
-  postingGate(identity('flagged'), true).allowed === true,
-  'a mismatch is an old NIMC photo as often as it is a fraud, and refusing on it locks real customers out',
+  'and is offered no button',
+  !canActNow(postingGate(identity('pending'))) && !canActNow(postingGate(identity('flagged'))),
+  're-submitting clears the review and starts them over',
+);
+check(
+  'while the two who can act are offered one',
+  canActNow(postingGate(identity('unverified'))) && canActNow(postingGate(identity('rejected'))),
+  'a refusal with no route to the fix is a dead end',
+);
+check(
+  'the waiting messages say a result is coming',
+  /email/i.test(blockedMessage(postingGate(identity('pending')), null)) &&
+    /email/i.test(blockedMessage(postingGate(identity('flagged')), null)),
+  '"please wait" with no actor and no end is how somebody decides the app is broken',
 );
 /*
- * ⚠ The outage escape hatch must not reach this one.
+ * ⚠ The machine's opinion is not repeated to the customer as a verdict.
  *
- *   Everywhere else, "nobody can verify right now" opens the gate so a
- *   third-party outage does not become a total outage. That argument does not
- *   apply to a decision a person already made: Dojah being down says nothing
- *   about it, and a refusal that lapses whenever the provider hiccups is not a
- *   refusal.
+ *   A flag is frequently wrong about an old NIMC photo or a dark room. Telling
+ *   somebody their photo did not match, before any person has looked, is LOCI
+ *   asserting something nobody has checked.
  */
 check(
-  'and an outage does not un-reject them',
-  postingGate(identity('rejected'), false).allowed === false,
-  'the availability bypass is for checks that cannot run, not for verdicts already reached',
+  'a flagged sender is not told their photo failed',
+  !/did not match|does not match|failed/i.test(
+    blockedMessage(postingGate(identity('flagged')), null),
+  ),
+  'no person has looked yet; the score is a machine’s guess',
 );
+
 check(
-  'the refusal carries the reviewer’s reason',
-  blockedMessage(postingGate(identity('rejected'), true), 'The slip photo is too blurry.').includes(
+  'a rejection carries the reviewer’s reason',
+  blockedMessage(postingGate(identity('rejected')), 'The slip photo is too blurry.').includes(
     'The slip photo is too blurry.',
   ),
   'without it the only way to learn what to fix is to email support about a photo they cannot see',
 );
 check(
   'and still says what to do when no reason survived',
-  /submit it again/i.test(blockedMessage(postingGate(identity('rejected'), true), null)),
-  'a refusal with no reason and no instruction is a dead end',
-);
-check(
-  'it does not tell them to do a thing they have already done',
-  !/complete your one-time/i.test(
-    blockedMessage(postingGate(identity('rejected'), true), 'Blurry.'),
-  ),
-  'they submitted, it was looked at, and it was refused — "complete your verification" denies all three',
-);
-check(
-  'and the heading says so too',
-  gateTitle(postingGate(identity('rejected'), true)) !==
-    gateTitle(postingGate(identity('unverified'), true)),
-  'one title over two different refusals makes the specific one unreadable',
-);
-check(
-  'the banner is shown to a rejected sender',
-  shouldShowVerifyBanner(identity('rejected'), true) === true,
-  'they are blocked, so the standing prompt is exactly who it is for',
+  /submit it again/i.test(blockedMessage(postingGate(identity('rejected')), null)),
+  '',
 );
 
-// -------------------------------------------------------------- the wiring --
+// -------------------------------------------------- and the server agrees --
+
+/*
+ * ⚠ The half that is not a courtesy.
+ *
+ *   Everything above decides what the app *says*. Until 42 that was the entire
+ *   enforcement, and an app is a suggestion: anyone with the anon key and curl
+ *   could POST to /rest/v1/bookings. `verified-senders-harness.mjs` proves the
+ *   policy refuses; this only proves it ships.
+ */
+const gateMigration = read('supabase/42_verified_senders_only.sql');
+
+check(
+  'the insert policy requires a verified sender',
+  /and public\.is_verified_sender\(\)/.test(gateMigration),
+  'a rule only the client knows is a rule anyone can skip',
+);
+check(
+  'the predicate accepts nothing but verified',
+  /i\.status = 'verified'/.test(gateMigration) &&
+    !/status <>/.test(
+      gateMigration.replace(/(^|[\s{(=,;])\/\*[\s\S]*?\*\//g, '$1').replace(/^\s*--.*$/gm, ''),
+    ),
+  '"not rejected" reads the same and lets three of the four through',
+);
+/*
+ * ⚠ 09 warned about exactly this and it is worth pinning.
+ *
+ *   42 drops and recreates the policy. Recreating it with only the new
+ *   condition would quietly remove the others, letting a client post a parcel
+ *   pre-assigned to a driver.
+ */
+for (const guard of ['driver_id is null', 'driver is null', "status = 'Booked'", 'is_erased()']) {
+  check(
+    `and still carries "${guard}"`,
+    gateMigration.includes(guard),
+    'a migration that adds one rule while dropping three looks like a success',
+  );
+}
+
+// -------------------------------------------------------------- the wiring --// -------------------------------------------------------------- the wiring --
 
 const book = read('src/app/(tabs)/book.tsx');
 const banner = read('src/components/ui/verify-banner.tsx');
@@ -231,9 +306,18 @@ check(
   code.indexOf('postingGate(') > code.indexOf('const goNext'),
   'the whole point is that the form fills freely and the check comes last',
 );
+/*
+ * ⚠ Measured on a flattened source with a generous window.
+ *
+ *   The original allowed 400 characters between the guard and its `return`, and
+ *   broke the moment the refusal grew a second dialog shape for the people who
+ *   have nowhere to go. An assertion whose threshold is really "how long is the
+ *   body right now" fails on every edit to that body while the property — that
+ *   the function does not carry on past a refusal — is untouched.
+ */
 check(
   'the gate stops the post',
-  /if \(!gate\.allowed\) \{[\s\S]{0,400}return;/.test(code),
+  /if \(!gate\.allowed\) \{.{0,900}return;/.test(code.replace(/\s+/g, ' ')),
   'computing the decision and carrying on is the shape this bug takes',
 );
 check(
@@ -258,13 +342,24 @@ check(
 );
 check(
   'and the banner is too',
-  banner.includes('blockedMessage(decision,') && banner.includes('postingGate(identity,'),
+  banner.includes('blockedMessage(decision,') && banner.includes('postingGate(identity)'),
   '',
 );
+/*
+ * ⚠ Repointed, because the thing it was defending is deliberately gone.
+ *
+ *   This pinned `postingGate(identity, isVerificationAvailable())` to stop
+ *   somebody hardcoding `true` and removing the outage escape hatch. 42 removed
+ *   that hatch on purpose — an outage is exactly when an unverified account
+ *   would slip through. Leaving the assertion would have demanded a parameter
+ *   the function no longer takes; deleting it silently would have lost the
+ *   property underneath, which is that the gate reads *this account's* live
+ *   identity rather than something cached or assumed.
+ */
 check(
-  'the gate reads live availability rather than assuming',
-  code.includes('postingGate(identity, isVerificationAvailable())'),
-  'hardcoding true here would remove the outage escape hatch entirely',
+  'the gate reads the identity it just fetched',
+  code.includes('postingGate(identity)'),
+  'a gate fed a stale or hardcoded identity is a gate that answers about the wrong person',
 );
 
 /*
@@ -325,9 +420,11 @@ if (failures > 0) {
 }
 
 console.log(
-  'PASS — only a sender who never submitted, or one a person refused, is stopped; pending\n' +
-    '       and flagged post freely; an unreachable provider opens the gate but does not\n' +
-    '       un-reject anybody; the form fills before anything is checked; every refusal\n' +
-    '       carries its own reason and a route to the profile; and submitting a NIN is\n' +
-    '       acknowledged by email every time.',
+  'PASS — only a verified sender may post: the database refuses the row and the app says so\n' +
+    '       first; unverified, pending, flagged and rejected are each stopped with their own\n' +
+    '       sentence and their own heading; nobody waiting on a review is told to go and do\n' +
+    '       something that would reset their place in the queue; a rejection carries the\n' +
+    '       reviewer\u2019s reason and a way back in; and the policy still refuses a parcel that\n' +
+    '       arrives pre-assigned, mis-statused, on somebody else\u2019s behalf or from an erased\n' +
+    '       account.',
 );

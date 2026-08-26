@@ -56,13 +56,14 @@ import { isSupabaseConfigured } from '@/lib/supabase';
 import { consumeCaptureSession } from '@/store/capture-session';
 import { uploadParcelPhoto } from '@/store/parcel-photos';
 import { showToast } from '@/components/ui/toast';
+import { fetchSenderIdentity, runIdentityCheck, type SenderIdentity } from '@/store/identity';
 import {
-  fetchSenderIdentity,
-  isVerificationAvailable,
-  runIdentityCheck,
-  type SenderIdentity,
-} from '@/store/identity';
-import { blockedMessage, FORM_IS_SAVED, gateTitle, postingGate } from '@/lib/posting-gate';
+  blockedMessage,
+  canActNow,
+  FORM_IS_SAVED,
+  gateTitle,
+  postingGate,
+} from '@/lib/posting-gate';
 import { isValidNigerianPhone, nigerianPhoneError } from '@/utils/validation';
 import { AddressLookup } from '@/components/ui/address-lookup';
 import { VerifyBanner } from '@/components/ui/verify-banner';
@@ -887,7 +888,7 @@ export default function BookScreen() {
      *   waiting on a check, or flagged for review, goes through; so does
      *   everybody if verification itself is unreachable. See `postingGate`.
      */
-    const gate = postingGate(identity, isVerificationAvailable());
+    const gate = postingGate(identity);
 
     if (!gate.allowed) {
       /*
@@ -901,13 +902,23 @@ export default function BookScreen() {
       showDialog(
         gateTitle(gate),
         `${blockedMessage(gate, identity?.reviewNote ?? null)} ${FORM_IS_SAVED}`,
-        [
-          { text: 'Not now', style: 'cancel' },
-          {
-            text: 'Go to my profile',
-            onPress: () => router.push('/(tabs)/profile'),
-          },
-        ],
+        /*
+         * ⚠ The route out is offered only when there is one.
+         *
+         *   Somebody waiting on a review has nothing to do on the profile
+         *   screen, and re-submitting there would reset their place in the
+         *   queue. Sending them anyway would be a button that makes their
+         *   situation worse.
+         */
+        canActNow(gate)
+          ? [
+              { text: 'Not now', style: 'cancel' },
+              {
+                text: 'Go to my profile',
+                onPress: () => router.push('/(tabs)/profile'),
+              },
+            ]
+          : [{ text: 'OK' }],
       );
       return;
     }
