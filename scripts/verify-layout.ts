@@ -689,6 +689,73 @@ check(
   'this rendered the empty note as a text node for the moment before the check answered',
 );
 
+// ------------------------------- three steps that end on the same line ------
+
+/*
+ * ⚠ A stretched wrapper is not a stretched card.
+ *
+ *   The three "How LOCI Works" cards sit in wrappers with `flex: 1`, and the
+ *   panel's default `align-items: stretch` makes every wrapper as tall as the
+ *   tallest. The Pressable *inside* each wrapper still sizes to its own
+ *   content, so three cards with two, two and three lines of body text ended on
+ *   three different lines — inside three columns that were already identical.
+ *   The ragged edge belonged to the card, not the column.
+ */
+const howItWorks = code(read('src/components/ui/how-it-works.tsx'));
+
+check(
+  'each card fills the column it was given',
+  /cardFilled: \{\s*flex: 1,/.test(howItWorks) &&
+    howItWorks.includes('horizontal && styles.cardFilled'),
+  'without it the wrappers line up and the white boxes inside them do not',
+);
+
+/*
+ * ⚠ And a title that wraps must not move the text under it.
+ *
+ *   The three titles are 31, 36 and 42 characters. At most widths two fit on
+ *   one line and the third wraps, which pushed that card's body a line lower
+ *   than its neighbours' — the misalignment somebody actually reported.
+ *   Reserving the second line fixes it for any copy rather than for today's at
+ *   today's breakpoint, which is why this is asserted as a reserved height and
+ *   not as "the titles are short enough".
+ */
+check(
+  'a wrapped title does not push its body down',
+  /stepTitleReserved: \{\s*minHeight: Typography\.cardTitle\.lineHeight \* 2,/.test(howItWorks),
+  'shortening the copy would fix this at one width and break it at the next',
+);
+check(
+  'and the reservation is applied',
+  howItWorks.includes('horizontal && styles.stepTitleReserved'),
+  'a style nothing references is a comment',
+);
+/*
+ * ⚠ Only across. Stacked, every card is full width, every title fits on one
+ *   line, and a reserved second is three gaps of white space aligning nothing
+ *   with nothing.
+ */
+check(
+  'but not when the cards are stacked',
+  !/styles\.stepTitleReserved(?!\s*[,\]])/.test(
+    howItWorks.replace(/horizontal && styles\.stepTitleReserved/g, ''),
+  ),
+  'reserving a line nobody needs is white space pretending to be alignment',
+);
+/*
+ * ⚠ Derived from the type scale, not typed as a number.
+ *
+ *   `minHeight: 52` would be right today and silently wrong the moment
+ *   `FontSize.subhead` moves, leaving a reserved line that is a little too
+ *   short or a little too tall — which looks like a rendering bug rather than a
+ *   stale constant.
+ */
+check(
+  'the reserved height follows the type scale',
+  !/minHeight: \d+,/.test(howItWorks.slice(howItWorks.indexOf('stepTitleReserved'))),
+  'a hardcoded line height is right until somebody changes the font size',
+);
+
 if (failures > 0) {
   console.error(`\n${failures} assertion(s) failed.`);
   process.exit(1);

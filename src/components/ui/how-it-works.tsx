@@ -118,6 +118,8 @@ function StepCard({
         onBlur={() => setFocused(false)}
         style={({ pressed, hovered }) => [
           styles.card,
+          // Fill the stretched wrapper, so the three cards end on one line.
+          horizontal && styles.cardFilled,
           // `hovered` is web-only; on native this branch never runs.
           hovered && styles.cardHovered,
           focused && styles.cardFocused,
@@ -144,7 +146,15 @@ function StepCard({
 
         <View style={styles.caption}>
           <Text style={styles.stepNumber}>{step.number}</Text>
-          <Text style={[styles.stepTitle, { color: theme.text }]}>{step.title}</Text>
+          <Text
+            style={[
+              styles.stepTitle,
+              // Two lines reserved across, so the bodies share a baseline.
+              horizontal && styles.stepTitleReserved,
+              { color: theme.text },
+            ]}>
+            {step.title}
+          </Text>
           <Text style={[styles.stepBody, { color: theme.textSecondary }]}>{step.body}</Text>
         </View>
       </Pressable>
@@ -179,6 +189,19 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
   },
   cardRow: {
+    flex: 1,
+  },
+  /**
+   * ⚠ The wrapper stretching is not the card stretching.
+   *
+   *   `cardRow` gives each wrapper an equal share of the row and the panel's
+   *   default `align-items: stretch` makes them all the height of the tallest.
+   *   The Pressable inside sizes to its own content, though — so three cards
+   *   with two, two and three lines of body text ended on three different
+   *   lines, inside three wrappers that were already the same height. The
+   *   ragged edge was the card, not the column.
+   */
+  cardFilled: {
     flex: 1,
   },
   card: {
@@ -265,6 +288,24 @@ const styles = StyleSheet.create({
   stepTitle: {
     ...Typography.cardTitle,
     ...font(700),
+  },
+  /**
+   * ⚠ Room for a second line whether or not this title needs one.
+   *
+   *   The three titles are 31, 36 and 42 characters, so at most widths two of
+   *   them fit on one line and the third wraps — which pushed that card's body
+   *   text a line lower than its neighbours' and read as a card sitting too
+   *   low. Reserving the line makes the bodies share a baseline for any copy,
+   *   rather than for today's copy at today's breakpoint.
+   *
+   *   Two lines of `cardTitle`: 17px at a 1.5 ratio is a 26px line.
+   *
+   *   Only when the cards are side by side. Stacked, each one is full width,
+   *   every title fits on one line, and a reserved second would be three gaps
+   *   of white space aligning nothing with nothing.
+   */
+  stepTitleReserved: {
+    minHeight: Typography.cardTitle.lineHeight * 2,
   },
   stepBody: {
     ...Typography.caption,
