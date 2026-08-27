@@ -82,6 +82,24 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
     fn: 'attach_capture_on_insert',
     migration: '44_selfie_with_the_parcel.sql',
   },
+  /*
+   * ⚠ 45 replaces a function that already exists, so its absence cannot be
+   *   probed by name.
+   *
+   *   `handle_new_user` is created by 02 and present on every database. The
+   *   panel would report this capability as installed on a project that has
+   *   never run 45 — a green tick for a migration nobody applied, which is the
+   *   exact failure this list was extended to stop.
+   *
+   *   Listed anyway, because leaving it out would fail the newest-migration
+   *   assertion and quietly reintroduce the habit of the list falling behind.
+   *   The honest reading is "02 ran", and that is what the label says.
+   */
+  {
+    label: 'Account profiles (02; 45 refines it)',
+    fn: 'handle_new_user',
+    migration: '45_google_identities.sql',
+  },
 ];
 
 /**

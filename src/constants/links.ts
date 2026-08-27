@@ -104,3 +104,38 @@ export function emailConfirmationLink(email: string): string {
     ? `https://${LINK_DOMAIN}/confirm?${address}`
     : `${APP_SCHEME}://confirm?${address}`;
 }
+
+/**
+ * Where Google should send somebody back to after they approve.
+ *
+ * ⚠ Whatever this returns has to be in the project's Redirect URLs allowlist,
+ *   exactly like `emailConfirmationLink`. Supabase silently falls back to the
+ *   Site URL for anything not on the list, which looks precisely like OAuth
+ *   being broken and sends the next hour into the client code.
+ *
+ * ⚠ No email rides along, and none is needed.
+ *
+ *   The confirmation link carries one because Supabase puts nothing
+ *   identifying on an expired-link error. An OAuth return either carries a
+ *   session or an error the provider named, and in both cases the app already
+ *   knows who it asked about.
+ *
+ * On the web the current origin is used rather than `LINK_DOMAIN`, so a preview
+ * deploy signs back into itself instead of dropping people on production.
+ */
+export function oauthRedirectLink(): string {
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return `${window.location.origin}/sign-in`;
+  }
+
+  /*
+   * ⚠ Native comes back through the scheme even when universal links are on.
+   *
+   *   A universal link would be caught by the *browser* that is showing
+   *   Google's consent screen, not by the app that opened it — so the person
+   *   ends up on a web page inside a modal browser with a session the app
+   *   never sees. The custom scheme is what closes that browser and hands the
+   *   tokens back.
+   */
+  return `${APP_SCHEME}://sign-in`;
+}

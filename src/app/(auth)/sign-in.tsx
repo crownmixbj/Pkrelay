@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { errorMessage } from '@/lib/errors';
 import { AuthFooterLink, AuthShell } from '@/components/ui/auth-shell';
+import { GoogleSignIn } from '@/components/ui/google-sign-in';
 import { Button } from '@/components/ui/button';
 import { PasswordField } from '@/components/ui/password-field';
 import { ValidatedEmailInput } from '@/components/ValidatedEmailInput';
@@ -116,6 +117,8 @@ export default function SignInScreen() {
           onPress={handleSubmit}
           disabled={pending}
         />
+
+        <GoogleSignIn disabled={pending} />
       </View>
     </AuthShell>
   );

@@ -2,7 +2,8 @@ import { usePathname, useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
 
 import { useExperience } from '@/hooks/use-experience';
-import { redirectFor } from '@/lib/experience';
+import { completionRedirect, redirectFor } from '@/lib/experience';
+import { useSession } from '@/store/session';
 
 /**
  * Keeps the person on a route their interface actually has.
@@ -19,6 +20,7 @@ export function ExperienceRouter() {
   const router = useRouter();
   const pathname = usePathname();
   const experience = useExperience();
+  const { needsPhone } = useSession();
 
   /*
    * The last path we sent someone to.
@@ -35,7 +37,16 @@ export function ExperienceRouter() {
     // driver through the sender home on every cold start.
     if (!experience) return;
 
-    const target = redirectFor(pathname, experience);
+    /*
+     * ⚠ Checked before the experience rule, because it outranks it.
+     *
+     *   An account with no phone number is not allowed anywhere the experience
+     *   rules would send it. Running them first would bounce somebody to a home
+     *   screen and then to this form, which is two navigations to reach one
+     *   destination — and on web, two entries in the history somebody has to
+     *   press back through.
+     */
+    const target = completionRedirect(pathname, needsPhone) ?? redirectFor(pathname, experience);
     if (!target) {
       lastRedirect.current = null;
       return;
@@ -54,7 +65,7 @@ export function ExperienceRouter() {
      * a screen that immediately redirects again.
      */
     router.replace(target as '/');
-  }, [experience, pathname, router]);
+  }, [experience, needsPhone, pathname, router]);
 
   return null;
 }

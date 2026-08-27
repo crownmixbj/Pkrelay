@@ -174,3 +174,43 @@ export function redirectFor(pathname: string, experience: Experience | null): st
   if (routeAllowed(pathname, experience)) return null;
   return EXPERIENCE_HOME[experience];
 }
+
+// ------------------------------------------- an account with no phone number --
+
+/** The one-field screen a Google account lands on before anything else. */
+export const COMPLETE_PROFILE_ROUTE = '/complete-profile';
+
+/**
+ * Routes somebody without a phone number may still be on.
+ *
+ * ⚠ Sign-out has to be one of them.
+ *
+ *   A gate with no exit is a trap: somebody who signs in with the wrong Google
+ *   account and does not want to give a number would otherwise be held on a
+ *   form with no way back to a signed-out state. The auth routes stay open for
+ *   the same reason.
+ */
+const COMPLETION_EXEMPT = ['/complete-profile', '/sign-in', '/sign-up', '/confirm', '/legal'];
+
+/**
+ * Where to send an account that has no phone number on file, or null.
+ *
+ * ⚠ Every email sign-up has a valid Nigerian number, and a rule elsewhere rests
+ *   on that.
+ *
+ *   `guard_application_phone` in `16_driver_identity.sql` stops a driver
+ *   applicant claiming a number that is not their account's — and it
+ *   deliberately passes accounts with *no* number, because some predate the
+ *   field. Google accounts arrive with none, so without this every one of them
+ *   would be a driver applicant who can type any phone they like. The lock
+ *   would hold for every email signup and for no Google signup, silently.
+ *
+ * ⚠ A pure function so the rule can be tested, and mutated, without a router.
+ */
+export function completionRedirect(pathname: string, needsPhone: boolean): string | null {
+  if (!needsPhone) return null;
+  if (COMPLETION_EXEMPT.some((route) => pathname === route || pathname.startsWith(`${route}/`))) {
+    return null;
+  }
+  return COMPLETE_PROFILE_ROUTE;
+}

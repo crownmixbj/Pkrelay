@@ -11,6 +11,8 @@ import {
 } from 'react';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 
 import { errorMessage } from '@/lib/errors';
 import { showToast } from '@/components/ui/toast';
@@ -24,7 +26,7 @@ import {
   type DriverApplication,
 } from '@/store/driver-applications';
 import { authErrorMessage, isEmailTakenCode, isSupabaseConfigured, supabase } from '@/lib/supabase';
-import { emailConfirmationLink } from '@/constants/links';
+import { emailConfirmationLink, oauthRedirectLink } from '@/constants/links';
 import { registerForPush, unregisterPush } from '@/store/push';
 import type { City } from '@/store/bookings';
 
@@ -175,6 +177,33 @@ export type SessionContextValue = {
   resendConfirmation: (email: string) => Promise<AuthResult>;
   /** Emails a password-reset link. Never reveals whether the account exists. */
   requestPasswordReset: (email: string) => Promise<AuthResult>;
+  /**
+   * Hands off to Google and comes back with a session.
+   *
+   * ⚠ Resolves *before* the session exists on web, and that is not a bug.
+   *
+   *   The browser navigates away to Google. Nothing after the call runs — the
+   *   page is replaced — so a caller that awaits this and then reads `user`
+   *   would be writing code for a moment that never arrives. On native the
+   *   browser is a modal and this does resolve, which is why the return type
+   *   carries an error at all.
+   */
+  signInWithGoogle: () => Promise<AuthResult>;
+  /**
+   * True when the signed-in account has no phone number on file.
+   *
+   * ⚠ Only a Google account can be in this state.
+   *
+   *   Email sign-up refuses to submit without a valid Nigerian number, so every
+   *   account created that way has one. `guard_application_phone` rests on
+   *   that: it stops a driver applicant claiming a number that is not their
+   *   account's, and passes accounts with none. Without the screen this flag
+   *   drives, every Google account would be an applicant who can type any phone
+   *   they like.
+   */
+  needsPhone: boolean;
+  /** Records the number a Google account was asked for on first sign-in. */
+  savePhone: (phone: string) => Promise<AuthResult>;
   signOut: () => Promise<void>;
 };
 
@@ -718,6 +747,101 @@ export function SessionProvider({
     }
   }, []);
 
+  const signInWithGoogle = useCallback(async (): Promise<AuthResult> => {
+    if (!isSupabaseConfigured) return NOT_CONFIGURED;
+
+    try {
+      const { data, error } = await withTimeout(
+        supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: oauthRedirectLink(),
+            /*
+             * ⚠ Web navigates itself; native must not.
+             *
+             *   Left to redirect on native, Supabase would try to replace a
+             *   document that is not there. The URL is opened in a modal
+             *   browser instead, and the scheme redirect closes it.
+             */
+            skipBrowserRedirect: Platform.OS !== 'web',
+          },
+        }),
+      );
+
+      if (error) return { error: authErrorMessage(error.code, error.message) };
+
+      if (Platform.OS !== 'web' && data?.url) {
+        const result = await WebBrowser.openAuthSessionAsync(data.url, oauthRedirectLink());
+
+        /*
+         * ⚠ Dismissing is not failing.
+         *
+         *   Somebody who changes their mind and closes the sheet gets `dismiss`
+         *   or `cancel`. Reporting that as an error puts a red banner in front
+         *   of a deliberate act.
+         */
+        if (result.type !== 'success') return { error: null };
+
+        /*
+         * The tokens come back in the URL fragment. `setSession` is what turns
+         * them into a session the rest of the app can see; without it the
+         * browser closes and nothing has happened.
+         */
+        const params = new URLSearchParams(result.url.split('#')[1] ?? '');
+        const access_token = params.get('access_token');
+        const refresh_token = params.get('refresh_token');
+
+        if (access_token && refresh_token) {
+          const restored = await supabase.auth.setSession({ access_token, refresh_token });
+          if (restored.error) {
+            return { error: authErrorMessage(restored.error.code, restored.error.message) };
+          }
+        }
+      }
+
+      return { error: null };
+    } catch (thrown) {
+      return { error: thrownMessage(thrown) };
+    }
+  }, []);
+
+  /**
+   * ⚠ Written to both places the phone is read from.
+   *
+   *   `handle_new_user` copies `raw_user_meta_data ->> 'phone'` into
+   *   `profiles.phone` at signup, and `guard_application_phone` reads the
+   *   metadata rather than the profile. Updating only one would leave the
+   *   profile screen showing a number the driver phone lock cannot see.
+   */
+  const savePhone = useCallback(async (phone: string): Promise<AuthResult> => {
+    if (!isSupabaseConfigured) return NOT_CONFIGURED;
+
+    const trimmed = phone.trim();
+
+    try {
+      const { data, error } = await withTimeout(
+        supabase.auth.updateUser({ data: { phone: trimmed } }),
+      );
+      if (error) return { error: authErrorMessage(error.code, error.message) };
+
+      const { error: profileError } = await withTimeout(
+        supabase
+          .from('profiles')
+          .update({ phone: trimmed })
+          .eq('id', data.user?.id ?? ''),
+      );
+      if (profileError) return { error: profileError.message };
+
+      setSession((previous) =>
+        previous ? { ...previous, user: { ...previous.user, phone: trimmed } } : previous,
+      );
+
+      return { error: null };
+    } catch (thrown) {
+      return { error: thrownMessage(thrown) };
+    }
+  }, []);
+
   const signOut = useCallback(async () => {
     /*
      * Forget the device before dropping the session.
@@ -777,6 +901,9 @@ export function SessionProvider({
       refreshDriverStatus,
       signUp,
       signIn,
+      signInWithGoogle,
+      needsPhone: status === 'signedIn' && (user?.phone ?? '').trim().length === 0,
+      savePhone,
       resendConfirmation,
       requestPasswordReset,
       signOut,
@@ -793,6 +920,8 @@ export function SessionProvider({
       refreshDriverStatus,
       signUp,
       signIn,
+      signInWithGoogle,
+      savePhone,
       resendConfirmation,
       requestPasswordReset,
       signOut,

@@ -5,6 +5,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { errorMessage } from '@/lib/errors';
 import { AuthFooterLink, AuthShell } from '@/components/ui/auth-shell';
+import { GoogleSignIn } from '@/components/ui/google-sign-in';
 import { Button } from '@/components/ui/button';
 import { showDialog } from '@/components/ui/dialog';
 import { Field } from '@/components/ui/field';
@@ -160,6 +161,8 @@ export default function SignUpScreen() {
           onPress={handleSubmit}
           disabled={!valid || pending}
         />
+
+        <GoogleSignIn disabled={pending} />
 
         <Text style={[styles.legal, { color: theme.textMuted }]}>
           By creating an account you agree to LOCI&apos;s terms of service and privacy policy.
