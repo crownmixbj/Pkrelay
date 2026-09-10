@@ -44,7 +44,7 @@ const part = (longName: string, types: string[], shortName = longName) => ({
 // -------------------------------------------------------------- resolving ---
 
 check(
-  'a town LOCI serves resolves to itself',
+  'a town Package Relay serves resolves to itself',
   (() => {
     const outcome = resolvePlaceCity([
       part('Allen Avenue', ['route']),
@@ -59,7 +59,7 @@ check(
  * ⚠ The ordering assertion, and the reason the state is a fallback.
  *
  *   Reading the state first would send every address in Oyo to Ibadan —
- *   correct for most of the state, wrong for anywhere LOCI lists separately.
+ *   correct for most of the state, wrong for anywhere Package Relay lists separately.
  */
 check(
   'the locality beats the state',
@@ -119,7 +119,7 @@ check(
 );
 
 check(
-  'somewhere LOCI does not reach says so',
+  'somewhere Package Relay does not reach says so',
   (() => {
     const outcome = resolvePlaceCity([
       part('Nairobi', ['locality']),
@@ -358,7 +358,7 @@ if (failures > 0) {
 
 console.log(
   'PASS — a typed address resolves to a served city by locality before state, refuses\n' +
-    '       rather than guesses when LOCI does not reach it, and explains which city the\n' +
+    '       rather than guesses when Package Relay does not reach it, and explains which city the\n' +
     '       price came from. The Google key never leaves the edge function, one address\n' +
     '       costs one session, and the city picker returns whenever lookup cannot work —\n' +
     '       saying which of the three reasons it was, rather than changing silently.',

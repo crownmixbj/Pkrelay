@@ -1,4 +1,4 @@
-# Getting LOCI onto testers' phones
+# Getting Package Relay onto testers' phones
 
 Everything in this file is a command **you** run — building requires accounts I
 cannot log into on your behalf. The repo is configured for it; nothing has been
@@ -197,7 +197,7 @@ Every build shows its identity at the bottom of the Settings sheet (the gear
 icon), for example:
 
 ```
-LOCI preview · 1.0.0 (14)
+Package Relay preview · 1.0.0 (14)
 ```
 
 Ask for that line in every report. Build numbers auto-increment on the server
@@ -213,13 +213,15 @@ only way to know which artefact a bug came from.
   gets painful, adding EAS Update is the fix — it pushes JS-only changes to
   installed builds in seconds. It is a real addition, not a config flag, so it
   is not done here.
-- **Testers share one Supabase project.** There is no separate staging database.
-  Test parcels and real parcels will sit in the same tables. Consider a second
-  Supabase project for the `preview` environment before testing widens.
+- **Staging is a separate Supabase project**, reached by the `preview` and
+  `preview-testflight` profiles and by Cloudflare Pages preview deployments. Test
+  parcels never touch production tables, and staging cannot email a real driver,
+  post to Slack, or spend the live Dojah wallet — see `docs/STAGING.md` for the
+  setup and `npm run verify:staging` for the assertions that keep it that way.
 - **iPad shows a scaled iPhone app.** `supportsTablet` is false. Fine for a
   delivery app; worth knowing if a tester picks up an iPad.
 - **The microphone permission is switched off.** `expo-image-picker` asks for
-  `RECORD_AUDIO` by default because it can record video. LOCI only ever picks
+  `RECORD_AUDIO` by default because it can record video. Package Relay only ever picks
   images, so it is disabled — if video capture is ever added, that has to come
   back or the picker will fail on Android.
 - **The migrations still need running.** `supabase/01`–`10` must be applied to

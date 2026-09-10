@@ -4,7 +4,7 @@
  * The two that carry real risk are the cancellation windows and the sender
  * photo. A cancellation window enforced only in the UI is not a rule — it is a
  * button someone can reach with a network client. And a selfie described as
- * "verification" is a claim LOCI cannot back, to senders and to anyone relying
+ * "verification" is a claim Package Relay cannot back, to senders and to anyone relying
  * on it afterwards. Most of what follows guards those two.
  */
 import { readFileSync } from 'node:fs';
@@ -48,9 +48,9 @@ const code = (source: string) =>
 
 const flat = (source: string) => source.replace(/\s+/g, ' ');
 
-const cancelSql = read('supabase/11_cancellation.sql');
+const cancelSql = read('supabase/migrations/20250101000011_cancellation.sql');
 const cancelSqlCode = code(cancelSql);
-const photoSql = read('supabase/12_sender_photo.sql');
+const photoSql = read('supabase/migrations/20250101000012_sender_photo.sql');
 const photoSqlCode = code(photoSql);
 const book = read('src/app/(tabs)/book.tsx');
 const bookCode = code(book);
@@ -187,7 +187,7 @@ check('the surcharge is still ₦800', PRICING.handoverSurcharge === 800);
 check(
   'a hub pickup is now chargeable',
   isChargeableHandover('hub', 'pickup'),
-  'this is the change — it discourages senders queueing at a hub LOCI has to staff',
+  'this is the change — it discourages senders queueing at a hub Package Relay has to staff',
 );
 check(
   'a public-location pickup is now free',
@@ -245,7 +245,7 @@ check(
 
 check(
   'the free pickup option is offered first',
-  bookCode.indexOf("label: 'Public location pickup'") < bookCode.indexOf("label: 'LOCI hub'"),
+  bookCode.indexOf("label: 'Public location pickup'") < bookCode.indexOf("label: 'Package Relay hub'"),
   'the first card is the one people take when they are not reading closely',
 );
 check('the hub card no longer claims to be free', !flat(bookCode).includes('Zero drop-off fees'));
@@ -291,7 +291,7 @@ check(
 
 // ------------------------------------------------------ the sender’s photo --
 
-const captureSql = read('supabase/13_capture_sessions.sql');
+const captureSql = read('supabase/migrations/20250101000013_capture_sessions.sql');
 const captureSqlCode = code(captureSql);
 const captureScreen = read('src/app/capture/[id].tsx');
 const captureStore = read('src/store/capture-session.ts');
@@ -319,7 +319,7 @@ check(
 check(
   'no UI surface claims verification',
   [photoSheet, captureScreen].every((source) => !/verif(y|ied|ication)/i.test(code(source))),
-  'a sender told they were "verified" would reasonably believe LOCI checked who they are',
+  'a sender told they were "verified" would reasonably believe Package Relay checked who they are',
 );
 check(
   'the camera opens front-facing on both paths',
@@ -504,7 +504,7 @@ const assetLinks = JSON.parse(read('public/.well-known/assetlinks.json'));
 check(
   'the Apple association file scopes itself to the capture path',
   aasa.applinks.details[0].components[0]['/'] === '/capture/*',
-  'claiming the whole domain would route every LOCI web page into the app',
+  'claiming the whole domain would route every Package Relay web page into the app',
 );
 check(
   'and names the real bundle identifier',
@@ -534,7 +534,7 @@ check(
 check(
   'there is a web page for a scan with no app installed',
   captureScreen.includes("if (Platform.OS === 'web')") &&
-    flat(captureScreen).includes('Open this in the LOCI app'),
+    flat(captureScreen).includes('Open this in the Package Relay app'),
   'the silent failure is exactly what the https link exists to avoid',
 );
 check(
@@ -630,7 +630,7 @@ check(
  *
  *   That produced parcels with no record of who posted them and nothing saying
  *   so — a dropped connection, an unrun migration or a closed tab between two
- *   statements was enough. `44_selfie_with_the_parcel.sql` moves the attach
+ *   statements was enough. `20250101000044_selfie_with_the_parcel.sql` moves the attach
  *   inside the insert, so a failure now means no parcel rather than a parcel
  *   with no evidence. Swallowing it would be hiding the wrong thing.
  */
@@ -687,14 +687,14 @@ check(
 check(
   'the legal position is flagged for review, not asserted',
   photoSheet.includes('LEGAL_REVIEW_REQUIRED') &&
-    read('supabase/12_sender_photo.sql').includes('LEGAL_REVIEW_REQUIRED') &&
+    read('supabase/migrations/20250101000012_sender_photo.sql').includes('LEGAL_REVIEW_REQUIRED') &&
     privacyNotes.includes('LEGAL_REVIEW_REQUIRED'),
 );
 check(
   'the notes correct the earlier over-warning about biometric data',
   flat(privacyNotes).includes('That was too strong') &&
     flat(privacyNotes).includes('for the purpose of uniquely identifying'),
-  'the Act only treats it as sensitive where it is used to identify — LOCI does no matching',
+  'the Act only treats it as sensitive where it is used to identify — Package Relay does no matching',
 );
 check(
   'and record that retention is still unresolved',

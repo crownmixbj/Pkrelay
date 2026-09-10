@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase';
  *
  *   The guarantor will not sign up to confirm somebody else's job application,
  *   so the two RPCs below are granted to `anon`. The token is the entire
- *   credential — see `39_guarantor_verification.sql` for the rules that make
+ *   credential — see `20250101000039_guarantor_verification.sql` for the rules that make
  *   that defensible.
  */
 
@@ -60,8 +60,8 @@ export async function openInvitation(token: string): Promise<InvitationView> {
  *   string is rendered and written, and changing it changes both at once.
  */
 export const CONSENT_TEXT =
-  'I confirm that I agree to act as a guarantor for this driver on LOCI, that the ' +
-  'National Identification Number I have entered is my own, and that LOCI may verify ' +
+  'I confirm that I agree to act as a guarantor for this driver on Package Relay, that the ' +
+  'National Identification Number I have entered is my own, and that Package Relay may verify ' +
   'it with NIMC for this purpose.';
 
 export type CompleteReason =

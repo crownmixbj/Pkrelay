@@ -109,8 +109,8 @@ const SURCHARGE_BADGE = `+${formatNaira(PRICING.handoverSurcharge)}`;
  * The two ways a parcel leaves the sender — and the surcharge now sits on the
  * hub, not on the driver run.
  *
- * That is the opposite of what it costs LOCI to serve, and deliberately so: a
- * hub drop-off means someone queueing at a counter LOCI has to staff, while a
+ * That is the opposite of what it costs Package Relay to serve, and deliberately so: a
+ * hub drop-off means someone queueing at a counter Package Relay has to staff, while a
  * driver already travelling the route can collect from a public place at no
  * extra cost. The fee steers senders towards the cheaper operation.
  *
@@ -126,8 +126,8 @@ const PICKUP_MODES: readonly ModeOption<HandoverMode>[] = [
   },
   {
     value: 'hub',
-    label: 'LOCI hub',
-    description: 'You bring the parcel to the selected LOCI hub yourself.',
+    label: 'Package Relay hub',
+    description: 'You bring the parcel to the selected Package Relay hub yourself.',
     badge: SURCHARGE_BADGE,
   },
 ];
@@ -155,7 +155,7 @@ type BookingForm = {
   dropoffMode: HandoverMode;
   originCity: City;
   destinationCity: City;
-  /** Chosen LOCI hub id, used only when pickupMode is 'hub'. */
+  /** Chosen Package Relay hub id, used only when pickupMode is 'hub'. */
   pickupHubId: string;
   /** Dropdown selection — either a preset area or OTHER_AREA. */
   pickupAreaSelection: string;
@@ -323,9 +323,9 @@ function validate(form: BookingForm, hubs: Hub[]): FieldErrors {
   if (form.pickupMode === 'hub') {
     // The area comes from the chosen hub, so the hub is what's validated.
     if (!hubsForCity(hubs, form.originCity).length) {
-      errors.pickupHubId = `No LOCI hub in ${form.originCity} yet — use public location pickup`;
+      errors.pickupHubId = `No Package Relay hub in ${form.originCity} yet — use public location pickup`;
     } else if (!form.pickupHubId) {
-      errors.pickupHubId = 'Choose a LOCI hub';
+      errors.pickupHubId = 'Choose a Package Relay hub';
     }
   } else if (!form.pickupAreaSelection) {
     errors.pickupAreaSelection = 'Choose a pickup area';
@@ -871,7 +871,7 @@ export default function BookScreen() {
       setStep(STEPS.length - 1);
       showDialog(
         'Take the live photo first',
-        'Every LOCI parcel carries a photo of the person who posted it. It is the last item on this page.',
+        'Every Package Relay parcel carries a photo of the person who posted it. It is the last item on this page.',
       );
       return;
     }
@@ -966,7 +966,7 @@ export default function BookScreen() {
      *   The parcel's requirement is the photograph, and it exists — it is
      *   uploaded and it has passed liveness. The NIN match is an account-level
      *   record that nothing in this form depends on, and the rule everywhere
-     *   else in LOCI is that it never blocks a shipment. Withholding the
+     *   else in Package Relay is that it never blocks a shipment. Withholding the
      *   session on a failed slip upload would turn "we could not reach the
      *   provider" into "you cannot send a parcel".
      */
@@ -1095,7 +1095,7 @@ export default function BookScreen() {
     /*
      * The selfie is already attached — it went in with the insert.
      *
-     * `44_selfie_with_the_parcel.sql` resolves the capture session inside the
+     * `20250101000044_selfie_with_the_parcel.sql` resolves the capture session inside the
      * same statement that writes the row, so by the time execution reaches
      * here the parcel and the record of who posted it exist together or
      * neither does. The `catch` above is what reports a failure now.
@@ -1109,7 +1109,7 @@ export default function BookScreen() {
        *   it. `bookings-remote.ts` sent `item_photo_uri: null` on purpose —
        *   the picker returns a local `file://` URI that means nothing on
        *   another device — so a sender was asked for evidence of condition at
-       *   handover and it was discarded at the door. See 36_parcel_photos.sql.
+       *   handover and it was discarded at the door. See 20250101000036_parcel_photos.sql.
        *
        * Uploaded here rather than at capture, because the storage policy checks
        * the object's folder against a booking whose sender is the caller: there
@@ -1337,14 +1337,14 @@ export default function BookScreen() {
 
                 {/*
               Hub mode offers the actual partner hubs in the selected city, not
-              neighbourhoods — the label promised LOCI locations, so the options
-              have to be LOCI locations. Public-location pickup keeps the area
+              neighbourhoods — the label promised Package Relay locations, so the options
+              have to be Package Relay locations. Public-location pickup keeps the area
               picker, where naming a neighbourhood is the right question.
             */}
                 {form.pickupMode === 'hub' ? (
                   cityHubs.length > 0 ? (
                     <Dropdown
-                      label="Pickup LOCI area"
+                      label="Pickup Package Relay area"
                       options={cityHubs.map((hub) => hub.id)}
                       selected={form.pickupHubId}
                       onSelect={selectHub}
@@ -1355,7 +1355,7 @@ export default function BookScreen() {
                       placeholder={`Choose a hub in ${form.originCity}`}
                       icon={(color, size) => <Store color={color} size={size} />}
                       /*
-                    Matching runs on the rendered label — "LOCI Bodija Hub —
+                    Matching runs on the rendered label — "Package Relay Bodija Hub —
                     Bodija" — so typing either the hub name or the neighbourhood
                     finds it, which is how someone would actually look.
                   */
@@ -1372,7 +1372,7 @@ export default function BookScreen() {
                       <Store color={theme.warningOnSoft} size={16} />
                       <View style={styles.noHubsText}>
                         <Text style={[styles.noHubsTitle, { color: theme.warningOnSoft }]}>
-                          No LOCI hub in {form.originCity} yet
+                          No Package Relay hub in {form.originCity} yet
                         </Text>
                         <Text style={[styles.noHubsBody, { color: theme.warningOnSoft }]}>
                           Switch to public location pickup and a driver will collect from a spot you
@@ -1484,9 +1484,9 @@ export default function BookScreen() {
                   <Building2 color={theme.textSecondary} size={16} />
                   <Text style={[styles.defaultNoteText, { color: theme.textSecondary }]}>
                     <Text style={[styles.defaultNoteValue, { color: theme.text }]}>
-                      LOCI hub (OTP Collection)
+                      Package Relay hub (OTP Collection)
                     </Text>{' '}
-                    — This only if uncollected, parcel will be moved to the LOCI hub. This transfer
+                    — This only if uncollected, parcel will be moved to the Package Relay hub. This transfer
                     may incur a mileage-based surcharge
                   </Text>
                 </View>

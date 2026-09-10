@@ -377,7 +377,7 @@ function StageRow({
  *   delivered, bare     marked Delivered with no name and no photo
  *
  * The third one is the important one. It happens for every parcel that predates
- * `supabase/10_delivery.sql`, and it will keep happening wherever a driver
+ * `supabase/migrations/20250101000010_delivery.sql`, and it will keep happening wherever a driver
  * completes a job without signal. Rendering those the same as a fully evidenced
  * delivery would be the exact false reassurance this panel used to warn about.
  */

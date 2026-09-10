@@ -36,7 +36,7 @@ import { useSession } from '@/store/session';
  *
  * ⚠ An offer is held five minutes within a city and ten between cities — see
  *   `OFFER_HOLD_MINUTES`, which mirrors `public.offer_hold` in
- *   `supabase/21_offer_windows.sql`. Offers themselves land on Assigned Trip,
+ *   `supabase/migrations/20250101000021_offer_windows.sql`. Offers themselves land on Assigned Trip,
  *   and `notify-offer` alerts the driver when one does; the warning that used to
  *   live here belongs on that screen, where the push permission can be checked.
  */
@@ -205,7 +205,7 @@ export function JourneyPlanner() {
         <Text style={[styles.gateBody, { color: theme.textSecondary }]}>
           {application
             ? 'Your application is still being reviewed. Once it is approved you can declare the journeys you are making and parcels will be offered to you automatically.'
-            : 'Apply to drive first. Approved drivers declare the journeys they are making, and LOCI offers them parcels going the same way.'}
+            : 'Apply to drive first. Approved drivers declare the journeys they are making, and Package Relay offers them parcels going the same way.'}
         </Text>
         <Button
           label={application ? 'See your application' : 'Apply to drive'}
@@ -301,7 +301,7 @@ export function JourneyPlanner() {
           The honest limit, on the screen rather than in a changelog.
 
           A driver whose offers keep expiring will conclude the app is broken or
-          that LOCI is giving work to someone else. Saying it here costs one
+          that Package Relay is giving work to someone else. Saying it here costs one
           sentence and saves that.
 
           No caveat about keeping the screen open: this screen is not where
@@ -310,7 +310,7 @@ export function JourneyPlanner() {
           can check the permission.
         */}
         <Text style={[styles.caveat, { color: theme.textMuted }]}>
-          Matched trips appear on your Assigned Trip screen, not here, and LOCI alerts you when one
+          Matched trips appear on your Assigned Trip screen, not here, and Package Relay alerts you when one
           does. Trips within one city are held for {OFFER_HOLD_MINUTES.local} minutes and trips
           between cities for {OFFER_HOLD_MINUTES.interstate}.
         </Text>
@@ -324,7 +324,7 @@ export function JourneyPlanner() {
           <EmptyState
             icon={(color, size) => <Route color={color} size={size} />}
             title="No journeys yet"
-            message="Declare where you are going and LOCI will offer you parcels heading the same way."
+            message="Declare where you are going and Package Relay will offer you parcels heading the same way."
           />
         ) : (
           <View style={styles.list}>

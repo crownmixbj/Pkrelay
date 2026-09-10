@@ -1,5 +1,5 @@
 /**
- * Every transactional email LOCI sends, as pure functions.
+ * Every transactional email Package Relay sends, as pure functions.
  *
  * No network, no Deno APIs, no secrets — so `scripts/verify-emails.ts` can
  * render all of them and assert on the output. An email template that is only
@@ -83,7 +83,7 @@ function applicationApproved(payload: Payload, context: Context): Rendered {
   const text = [
     `Hi ${name},`,
     '',
-    'Your LOCI driver application has been approved. You can start accepting deliveries now.',
+    'Your Package Relay driver application has been approved. You can start accepting deliveries now.',
     '',
     `Reference: ${reference}`,
     city ? `Operating city: ${city}` : '',
@@ -97,13 +97,13 @@ function applicationApproved(payload: Payload, context: Context): Rendered {
     '',
     support(context),
     '',
-    'LOCI',
+    'Package Relay',
   ]
     .filter((line) => line !== '')
     .join('\n');
 
   return {
-    subject: headerSafe(`You're approved to drive with LOCI — ${reference}`),
+    subject: headerSafe(`You're approved to drive with Package Relay — ${reference}`),
     text,
     html: layout({
       heading: 'You are approved',
@@ -131,7 +131,7 @@ function applicationRejected(payload: Payload, context: Context): Rendered {
   const text = [
     `Hi ${name},`,
     '',
-    'We have reviewed your LOCI driver application, and we are not able to approve it this time.',
+    'We have reviewed your Package Relay driver application, and we are not able to approve it this time.',
     '',
     `Reference: ${reference}`,
     '',
@@ -143,11 +143,11 @@ function applicationRejected(payload: Payload, context: Context): Rendered {
     '',
     support(context),
     '',
-    'LOCI',
+    'Package Relay',
   ].join('\n');
 
   return {
-    subject: headerSafe(`Your LOCI driver application — ${reference}`),
+    subject: headerSafe(`Your Package Relay driver application — ${reference}`),
     text,
     html: layout({
       heading: 'About your driver application',
@@ -172,7 +172,7 @@ function applicationRejected(payload: Payload, context: Context): Rendered {
  *   something this system can honestly commit to.
  */
 /**
- * The one email in this system that goes to somebody who is not a LOCI user.
+ * The one email in this system that goes to somebody who is not a Package Relay user.
  *
  * ⚠ It has to explain itself from nothing.
  *
@@ -199,9 +199,9 @@ function guarantorInvitation(payload: Payload, context: Context): Rendered {
   const text = [
     `Hello ${guarantor},`,
     '',
-    `${driver} has listed you as a guarantor on LOCI. Please click the secure link below to review the terms and complete your verification.`,
+    `${driver} has listed you as a guarantor on Package Relay. Please click the secure link below to review the terms and complete your verification.`,
     '',
-    url ? url : 'Open the LOCI app to complete your guarantor verification.',
+    url ? url : 'Open the Package Relay app to complete your guarantor verification.',
     '',
     expires ? `This link expires on ${expires}.` : '',
     '',
@@ -211,7 +211,7 @@ function guarantorInvitation(payload: Payload, context: Context): Rendered {
     '',
     support(context),
     '',
-    'LOCI',
+    'Package Relay',
   ]
     .filter((line) => line !== '')
     .join('\n');
@@ -222,7 +222,7 @@ function guarantorInvitation(payload: Payload, context: Context): Rendered {
     text,
     html: layout({
       heading: 'You have been listed as a guarantor',
-      intro: `Hello ${guarantor}, ${driver} has listed you as a guarantor on LOCI. Please use the secure link below to review the terms and complete your verification.`,
+      intro: `Hello ${guarantor}, ${driver} has listed you as a guarantor on Package Relay. Please use the secure link below to review the terms and complete your verification.`,
       bodyHtml: [
         ROW('Driver', driver || 'Not named'),
         expires ? ROW('Link expires', expires) : '',
@@ -245,13 +245,13 @@ function verificationSubmitted(payload: Payload, context: Context): Rendered {
     '',
     'You do not need to do anything else. We will email you again as soon as the check is done.',
     '',
-    'You can keep using LOCI in the meantime.',
+    'You can keep using Package Relay in the meantime.',
     '',
     url ? `See your profile: ${url}` : '',
     '',
     support(context),
     '',
-    'LOCI',
+    'Package Relay',
   ]
     .filter((line) => line !== '')
     .join('\n');
@@ -265,7 +265,7 @@ function verificationSubmitted(payload: Payload, context: Context): Rendered {
         'We have your NIN and the photo of your slip. You do not need to do anything else — we will email you again as soon as the check is done.',
       bodyHtml: at ? ROW('Submitted', at) : '',
       cta: url ? { label: 'See your profile', url } : null,
-      footerNote: `You can keep using LOCI in the meantime. ${support(context)}`,
+      footerNote: `You can keep using Package Relay in the meantime. ${support(context)}`,
     }),
   };
 }
@@ -286,13 +286,13 @@ function senderVerified(payload: Payload, context: Context): Rendered {
     '',
     support(context),
     '',
-    'LOCI',
+    'Package Relay',
   ]
     .filter((line) => line !== '')
     .join('\n');
 
   return {
-    subject: headerSafe('Your LOCI identity is verified'),
+    subject: headerSafe('Your Package Relay identity is verified'),
     text,
     html: layout({
       heading: 'Identity verified',
@@ -339,13 +339,13 @@ function senderRejected(payload: Payload, context: Context): Rendered {
     '',
     support(context),
     '',
-    'LOCI',
+    'Package Relay',
   ]
     .filter((line) => line !== '')
     .join('\n');
 
   return {
-    subject: headerSafe('Your LOCI ID check needs another look'),
+    subject: headerSafe('Your Package Relay ID check needs another look'),
     text,
     html: layout({
       heading: 'We could not accept that ID',
@@ -363,7 +363,7 @@ function senderRejected(payload: Payload, context: Context): Rendered {
 /**
  * ⚠ A summary, and never the word "receipt".
  *
- *   The brief asked for a payment receipt. LOCI has no payment provider, no
+ *   The brief asked for a payment receipt. Package Relay has no payment provider, no
  *   charge record and no paid state on a booking — so this email can honestly
  *   say what the delivery cost, and cannot honestly say it was paid. A document
  *   headed "Receipt" is one somebody may hand to an accountant, an insurer or a
@@ -403,7 +403,7 @@ function deliveryCompleted(payload: Payload, context: Context): Rendered {
     '',
     support(context),
     '',
-    'LOCI',
+    'Package Relay',
   ]
     .filter((line) => line !== '')
     .join('\n');
@@ -452,7 +452,7 @@ function parcelCancelled(payload: Payload, context: Context): Rendered {
     '',
     support(context),
     '',
-    'LOCI',
+    'Package Relay',
   ]
     .filter((line) => line !== '')
     .join('\n');
@@ -480,7 +480,7 @@ function parcelCancelled(payload: Payload, context: Context): Rendered {
  *   A parcel passes through several stages, and an email at each is how people
  *   learn to filter your domain — after which they miss the delivery one too.
  *   The copy is deliberately short and the subject carries the stage, so it
- *   threads and can be muted without muting everything LOCI sends.
+ *   threads and can be muted without muting everything Package Relay sends.
  */
 function parcelStatusChanged(payload: Payload, context: Context): Rendered {
   const tracking = str(payload, 'tracking_id');
@@ -498,7 +498,7 @@ function parcelStatusChanged(payload: Payload, context: Context): Rendered {
     '',
     support(context),
     '',
-    'LOCI',
+    'Package Relay',
   ]
     .filter((line) => line !== '')
     .join('\n');
@@ -547,7 +547,7 @@ function driverOffer(payload: Payload, context: Context): Rendered {
     '',
     url ? `Open your driver hub: ${url}` : '',
     '',
-    'LOCI',
+    'Package Relay',
   ]
     .filter((line) => line !== '')
     .join('\n');
@@ -565,7 +565,7 @@ function driverOffer(payload: Payload, context: Context): Rendered {
         expires ? ROW('Expires', expires) : '',
       ].join(''),
       cta: url ? { label: 'Accept in the app', url } : null,
-      footerNote: 'You receive these because you are an approved LOCI driver with an active trip.',
+      footerNote: 'You receive these because you are an approved Package Relay driver with an active trip.',
     }),
   };
 }
@@ -588,7 +588,7 @@ function driverJobCancelled(payload: Payload, context: Context): Rendered {
     '',
     url ? `Open your driver hub: ${url}` : '',
     '',
-    'LOCI',
+    'Package Relay',
   ]
     .filter((line) => line !== '')
     .join('\n');
@@ -628,7 +628,7 @@ function payoutPaid(payload: Payload, context: Context): Rendered {
     '',
     url ? `See your wallet: ${url}` : '',
     '',
-    'LOCI',
+    'Package Relay',
   ]
     .filter((line) => line !== '')
     .join('\n');

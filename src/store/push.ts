@@ -82,7 +82,7 @@ export async function registerForPush(): Promise<PushRegistration> {
         name: 'Trip offers',
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],
-        // A driver muting LOCI's other noise should still hear about work.
+        // A driver muting Package Relay's other noise should still hear about work.
         sound: 'default',
       });
     }
@@ -139,7 +139,7 @@ export async function pushIsEnabled(): Promise<boolean> {
 export function pushProblem(reason: 'unsupported' | 'denied' | 'error'): string {
   switch (reason) {
     case 'denied':
-      return 'Notifications are turned off for LOCI. Turn them on in your phone settings, or keep this screen open while you wait.';
+      return 'Notifications are turned off for Package Relay. Turn them on in your phone settings, or keep this screen open while you wait.';
     case 'unsupported':
       return 'This device cannot receive push notifications. Keep this screen open while you wait for a trip.';
     case 'error':

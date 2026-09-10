@@ -21,7 +21,7 @@ import {
 } from '@/store/documents';
 
 /**
- * Your documents — what LOCI holds, where each one stands, and when it lapses.
+ * Your documents — what Package Relay holds, where each one stands, and when it lapses.
  *
  * Everything a driver uploaded during their application was, until now, write-
  * only: it went into a private bucket and a reviewer looked at it. A driver
@@ -126,7 +126,7 @@ export function DocumentAlerts() {
               {expiring.length === 1 ? 'A document is' : 'Documents are'} due for renewal
             </Text>
             <Text style={[styles.alertBody, { color: theme.warningOnSoft }]}>
-              Renew before the date and nothing changes. Let it lapse and LOCI has to stop offering
+              Renew before the date and nothing changes. Let it lapse and Package Relay has to stop offering
               you parcels.
             </Text>
           </View>
@@ -141,7 +141,7 @@ export function DocumentAlerts() {
               Add the expiry dates
             </Text>
             <Text style={[styles.alertBody, { color: theme.primaryOnSoft }]}>
-              LOCI did not ask for these when you applied, so we cannot remind you before something
+              Package Relay did not ask for these when you applied, so we cannot remind you before something
               lapses. Open Edit your details and type the date printed on each one — you do not need
               to upload anything again.
             </Text>
@@ -208,7 +208,7 @@ export function DocumentList() {
           <View style={styles.headText}>
             <Text style={[styles.title, { color: theme.text }]}>Documents submitted</Text>
             <Text style={[styles.caption, { color: theme.textMuted }]}>
-              What LOCI holds, where each one stands, and when it lapses.
+              What Package Relay holds, where each one stands, and when it lapses.
             </Text>
           </View>
         </View>
@@ -227,7 +227,7 @@ export function DocumentList() {
           <Text style={[styles.muted, { color: theme.textMuted }]}>Loading…</Text>
         ) : documents.length === 0 ? (
           <Text style={[styles.muted, { color: theme.textMuted }]}>
-            LOCI could not load your documents just now. They are safe — try again in a moment, and
+            Package Relay could not load your documents just now. They are safe — try again in a moment, and
             contact support if this keeps happening.
           </Text>
         ) : (

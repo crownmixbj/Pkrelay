@@ -165,7 +165,7 @@ export default function DriverScreen() {
           that was a *different number* from the wallet balance — gross, and
           counting parcels still moving — and then a button to the Wallet.
 
-          All three are gone. The split is by subject: this screen is who LOCI
+          All three are gone. The split is by subject: this screen is who Package Relay
           has you down as and what you are carrying; the Wallet is every
           question about money, including which account it lands in.
 
@@ -260,7 +260,7 @@ export default function DriverScreen() {
             <EmptyState
               icon={(color, size) => <ClipboardList color={color} size={size} />}
               title="No jobs yet"
-              message="You haven't carried anything yet. Use Setup Trip to tell LOCI the journeys you are making, and parcels going the same way are offered to you automatically."
+              message="You haven't carried anything yet. Use Setup Trip to tell Package Relay the journeys you are making, and parcels going the same way are offered to you automatically."
             />
           </View>
         ) : (
@@ -415,7 +415,7 @@ function ApplyPrompt({ onApply }: { onApply: () => void }) {
       <View style={[styles.applyIcon, { backgroundColor: theme.primarySoft }]}>
         <Truck color={theme.primaryOnSoft} size={22} />
       </View>
-      <Text style={[styles.applyTitle, { color: theme.text }]}>Drive with LOCI</Text>
+      <Text style={[styles.applyTitle, { color: theme.text }]}>Drive with Package Relay</Text>
       <Text style={[styles.applyBody, { color: theme.textSecondary }]}>
         Anyone with an account can send a parcel. Carrying one needs an approved driver application
         — vehicle, licence, guarantor and payout details, reviewed within {REVIEW_WORKING_DAYS}{' '}

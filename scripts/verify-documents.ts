@@ -37,8 +37,8 @@ function check(name: string, condition: boolean, detail?: string) {
 
 const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8');
 
-const expirySql = read('supabase/31_document_expiry.sql');
-const modeSql = read('supabase/32_dispatch_mode.sql');
+const expirySql = read('supabase/migrations/20250101000031_document_expiry.sql');
+const modeSql = read('supabase/migrations/20250101000032_dispatch_mode.sql');
 const signup = read('src/app/(tabs)/driver-signup.tsx');
 const locker = read('src/components/ui/document-locker.tsx');
 const control = read('src/components/ui/dispatch-control.tsx');
@@ -306,7 +306,7 @@ check(
  * ⚠ Two different absences, and the wording must not merge them.
  *
  *   A NIN slip has no expiry because none exists to record. A licence with a
- *   blank date has one printed on it that LOCI never asked for. Saying "no
+ *   blank date has one printed on it that Package Relay never asked for. Saying "no
  *   expiry date recorded" of both reads, on the NIN, as a gap the driver should
  *   close and cannot — and on the licence it fails to say that closing it is
  *   exactly what is wanted.
@@ -521,7 +521,7 @@ const updates = read('src/app/(tabs)/driver-updates.tsx');
 check(
   'the edit sheet shows the documents that were submitted',
   /<DocumentList \/>/.test(code(sheet)),
-  'a sheet showing only the typed answers answers "what does LOCI have for me" by half',
+  'a sheet showing only the typed answers answers "what does Package Relay have for me" by half',
 );
 check(
   'the updates page shows the alerts without opening anything',

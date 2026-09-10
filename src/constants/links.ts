@@ -25,7 +25,7 @@
  */
 
 /**
- * Set `EXPO_PUBLIC_LINK_DOMAIN` to the bare host, e.g. `loci.ng`.
+ * Set `EXPO_PUBLIC_LINK_DOMAIN` to the bare host, e.g. `pkrelay.ng`.
  *
  * No protocol and no trailing slash: it is interpolated into both a URL and an
  * `applinks:` entry, and those want different shapes around the same host.
@@ -66,11 +66,11 @@ export function captureInstruction(): { title: string; body: string } {
   return universalLinksEnabled
     ? {
         title: 'Scan with your phone',
-        body: 'Point your phone camera at the code and tap the link. LOCI opens on the photo screen — or the web page, if you have not installed it yet.',
+        body: 'Point your phone camera at the code and tap the link. Package Relay opens on the photo screen — or the web page, if you have not installed it yet.',
       }
     : {
-        title: 'Scan from inside the LOCI app',
-        body: 'Open LOCI on your phone and scan this code from there. Your phone’s ordinary camera app will not open it — that needs a web address, which is not set up yet.',
+        title: 'Scan from inside the Package Relay app',
+        body: 'Open Package Relay on your phone and scan this code from there. Your phone’s ordinary camera app will not open it — that needs a web address, which is not set up yet.',
       };
 }
 

@@ -18,7 +18,7 @@ import { useSession } from '@/store/session';
  * one subtly wrong. It is written once here.
  *
  * ⚠ This is not the security boundary. It hides a screen; the RLS policies and
- *   `security definer` functions in `supabase/07_admin.sql` are what refuse the
+ *   `security definer` functions in `supabase/migrations/20250101000007_admin.sql` are what refuse the
  *   data. A non-admin who reaches these routes directly sees the panel below,
  *   and would see empty lists even without it.
  */
@@ -51,7 +51,7 @@ export function AdminShell({
       <Frame title={title} subtitle={subtitle}>
         <SignedOutState
           title="Sign in to continue"
-          message="This area is only available to LOCI administrators."
+          message="This area is only available to Package Relay administrators."
           next={next}
         />
       </Frame>
@@ -74,7 +74,7 @@ export function AdminShell({
             title="Not available"
             message="This area isn't available on your account."
           />
-          <Button label="Back to LOCI" size="md" onPress={() => router.replace('/')} />
+          <Button label="Back to Package Relay" size="md" onPress={() => router.replace('/')} />
         </Card>
       </Frame>
     );

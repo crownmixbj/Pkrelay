@@ -7,7 +7,7 @@ import { readFileBytes } from '@/lib/upload';
  *
  * Files live in a PRIVATE bucket at `<user_id>/<document_key>.<ext>`. That path
  * is not a convention the client is trusted to follow — the storage policies in
- * `05_storage_and_alerts.sql` compare the first segment to `auth.uid()`, so an
+ * `20250101000005_storage_and_alerts.sql` compare the first segment to `auth.uid()`, so an
  * upload aimed at somebody else's folder is refused by Postgres.
  *
  * Nothing here produces a public URL. Reading is done through short-lived signed
@@ -26,7 +26,7 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   heic: 'image/heic',
   /*
     `heif` alongside `heic`, because `lib/upload.ts` has always known both and
-    the bucket refused one of them. See 35_heif_uploads.sql.
+    the bucket refused one of them. See 20250101000035_heif_uploads.sql.
   */
   heif: 'image/heif',
   webp: 'image/webp',

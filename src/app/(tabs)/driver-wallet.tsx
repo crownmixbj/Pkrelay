@@ -43,15 +43,15 @@ import {
 } from '@/store/wallet';
 
 /**
- * Driver Wallet — what LOCI owes, and where it is going.
+ * Driver Wallet — what Package Relay owes, and where it is going.
  *
  * Every figure comes from `public.driver_earnings` and `public.payout_requests`
- * (`supabase/30_driver_wallet.sql`), so unlike the Expected earnings card this
+ * (`supabase/migrations/20250101000030_driver_wallet.sql`), so unlike the Expected earnings card this
  * screen is entitled to the word "balance". A parcel delivered writes one row at
  * the commission rate recorded on that row; nothing here is a sum of quoted
  * fares.
  *
- * ⚠ The one thing this screen must never imply is that LOCI moves money.
+ * ⚠ The one thing this screen must never imply is that Package Relay moves money.
  *
  *   Nothing in the app talks to a bank. `settle_payout` records that a person
  *   made a transfer. A wallet that shows a balance, a button and a tidy
@@ -148,7 +148,7 @@ export default function DriverWalletScreen() {
             message={
               application
                 ? 'Your wallet opens when your application is approved and you deliver your first parcel.'
-                : 'Only approved drivers earn on LOCI. Apply to drive and your wallet starts with your first delivery.'
+                : 'Only approved drivers earn on Package Relay. Apply to drive and your wallet starts with your first delivery.'
             }
           />
           <Button
@@ -176,7 +176,7 @@ export default function DriverWalletScreen() {
   const askToRequest = () => {
     showDialog(
       `Request ${naira(balance.available)}?`,
-      `This goes to ${application?.bankName ?? 'your payout account'} ····${(application?.accountNumber ?? '').slice(-4)}.\n\nLOCI transfers it by hand — it is not instant, and you will see it here once someone has sent it.`,
+      `This goes to ${application?.bankName ?? 'your payout account'} ····${(application?.accountNumber ?? '').slice(-4)}.\n\nPackage Relay transfers it by hand — it is not instant, and you will see it here once someone has sent it.`,
       [
         { text: 'Not now', style: 'cancel' },
         { text: 'Request payout', onPress: () => void submit() },
@@ -204,7 +204,7 @@ export default function DriverWalletScreen() {
     }
 
     showToast('Payout requested', {
-      message: 'LOCI will transfer it to your account. You will see it here when it is done.',
+      message: 'Package Relay will transfer it to your account. You will see it here when it is done.',
       tone: 'info',
     });
     void refresh();
@@ -324,7 +324,7 @@ export default function DriverWalletScreen() {
               </Text>
             </View>
             <Text style={[styles.pendingNote, { color: theme.warningOnSoft }]}>
-              Waiting on LOCI to make the transfer. It has already been taken out of your available
+              Waiting on Package Relay to make the transfer. It has already been taken out of your available
               balance, so it cannot be requested twice.
             </Text>
             <Button
@@ -342,7 +342,7 @@ export default function DriverWalletScreen() {
           ---------- Where it goes ----------
 
           The existing card, not a second bank form. It owns the 48-hour cooling
-          window from `supabase/16_driver_identity.sql`, and a wallet screen with
+          window from `supabase/migrations/20250101000016_driver_identity.sql`, and a wallet screen with
           its own "Edit" writing straight to the account would be a way round the
           one control that stops a hijacked session redirecting the next payout.
         */}
@@ -361,7 +361,7 @@ export default function DriverWalletScreen() {
           <EmptyState
             icon={(color, size) => <Banknote color={color} size={size} />}
             title={loading ? 'Loading…' : 'Nothing yet'}
-            message="Deliveries you complete and payouts LOCI sends both appear here."
+            message="Deliveries you complete and payouts Package Relay sends both appear here."
           />
         ) : (
           <View style={styles.feed}>
@@ -378,7 +378,7 @@ export default function DriverWalletScreen() {
         <View style={[styles.footnote, { backgroundColor: theme.surfaceMuted }]}>
           <Info color={theme.textMuted} size={15} />
           <Text style={[styles.footnoteText, { color: theme.textSecondary }]}>
-            LOCI does not send money automatically. A payout marked paid means someone at LOCI made
+            Package Relay does not send money automatically. A payout marked paid means someone at Package Relay made
             the transfer and recorded it — if it says paid and your bank disagrees, contact support
             with the date.
           </Text>

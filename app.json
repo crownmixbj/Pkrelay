@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "LOCI",
+    "name": "PKRELAY",
     "slug": "parcel_mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -15,8 +15,8 @@
         "usesNonExemptEncryption": false
       },
       "infoPlist": {
-        "NSCameraUsageDescription": "LOCI uses the camera to photograph a parcel at handover and to capture your driver documents.",
-        "NSPhotoLibraryUsageDescription": "LOCI lets you attach a photo of a parcel or a driver document from your library."
+        "NSCameraUsageDescription": "Package Relay uses the camera to photograph a parcel at handover and to capture your driver documents.",
+        "NSPhotoLibraryUsageDescription": "Package Relay lets you attach a photo of a parcel or a driver document from your library."
       },
       "associatedDomains": [
         "applinks:REPLACE_WITH_LINK_DOMAIN"
@@ -75,8 +75,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "LOCI lets you attach a photo of a parcel or a driver document from your library.",
-          "cameraPermission": "LOCI uses the camera to photograph a parcel at handover and to capture your driver documents.",
+          "photosPermission": "Package Relay lets you attach a photo of a parcel or a driver document from your library.",
+          "cameraPermission": "Package Relay uses the camera to photograph a parcel at handover and to capture your driver documents.",
           "microphonePermission": false
         }
       ],

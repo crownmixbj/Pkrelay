@@ -1,5 +1,5 @@
 /**
- * How to reach LOCI.
+ * How to reach Package Relay.
  *
  * ⚠ Every address and number below is a placeholder on a domain nobody has
  *   registered. They are in one file precisely so that replacing them is a
@@ -30,8 +30,8 @@ export const CHANNELS: Channel[] = [
     key: 'email',
     label: 'Email support',
     bestFor: 'Anything about an application, a parcel, or your account.',
-    value: 'support@loci.ng',
-    href: 'mailto:support@loci.ng',
+    value: 'support@pkrelay.ng',
+    href: 'mailto:support@pkrelay.ng',
     responseTime: 'Within 1 working day',
   },
   {
@@ -46,16 +46,16 @@ export const CHANNELS: Channel[] = [
     key: 'business',
     label: 'Business & partnerships',
     bestFor: 'Bulk delivery, becoming a partner hub, press.',
-    value: 'business@loci.ng',
-    href: 'mailto:business@loci.ng',
+    value: 'business@pkrelay.ng',
+    href: 'mailto:business@pkrelay.ng',
     responseTime: 'Within 2 working days',
   },
   {
     key: 'privacy',
     label: 'Privacy requests',
     bestFor: 'Getting a copy of your data, or asking us to delete it.',
-    value: 'privacy@loci.ng',
-    href: 'mailto:privacy@loci.ng',
+    value: 'privacy@pkrelay.ng',
+    href: 'mailto:privacy@pkrelay.ng',
     /*
      * The NDPR expects a data-subject request to be answered within one month.
      * Quoting it here is a commitment — it is also the only honest thing to

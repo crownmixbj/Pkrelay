@@ -1,0 +1,41 @@
+# Supabase CLI configuration.
+#
+# This file is what turns `supabase/migrations/` into something the CLI will
+# replay onto a database. Committed on purpose: it contains no credentials, and
+# without it `supabase link` has nothing to attach a project ref to.
+#
+# ⚠ `project_id` is a LOCAL name, not the project ref from the dashboard.
+#
+#   It names the docker stack `supabase start` would bring up on your machine.
+#   Which hosted project a command talks to is decided by `supabase link
+#   --project-ref <ref>` and by `--project-ref` on the command itself — never by
+#   anything in this file. That is deliberate: a ref committed here would pin
+#   the repo to one database, which is the exact coupling the staging split is
+#   undoing.
+
+project_id = "loci"
+
+[db]
+# Matches the hosted projects (Postgres 17.6). A mismatch here means a local
+# `supabase start` reproduces bugs the real database does not have, and misses
+# ones it does.
+major_version = 17
+port = 54322
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage", "graphql_public"]
+
+[auth]
+enabled = true
+# Overridden per environment. The staging project's real value is set in its
+# dashboard, because the staging web build lives on a different origin from
+# production and an auth redirect to the wrong one silently drops the session.
+site_url = "http://localhost:8081"
+additional_redirect_urls = ["http://localhost:8081", "parcelmobile://"]
+
+[functions]
+# Edge functions are deployed explicitly with `supabase functions deploy`, per
+# project. Listing them here would not change that; it would only add a second
+# place to forget one.

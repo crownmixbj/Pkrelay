@@ -224,7 +224,7 @@ export default function DriverUpdatesScreen() {
             every other thing on the page. The document *list* is not here — it
             lives inside Edit your details with the rest of the submitted
             application, because that is where somebody looks for "what did I
-            give LOCI". Status where it is seen; information where it belongs.
+            give Package Relay". Status where it is seen; information where it belongs.
           */}
           <DocumentAlerts />
 

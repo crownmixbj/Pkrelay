@@ -5,7 +5,7 @@ import type { City } from '@/store/bookings';
  *
  * Sourced from published city-centre coordinates and rounded to four decimal
  * places (~11 m), which is far finer than this is used for. These locate the
- * *city*, not a LOCI depot — once real hub addresses exist, replace these with
+ * *city*, not a Package Relay depot — once real hub addresses exist, replace these with
  * the depot coordinates rather than adjusting them by hand.
  */
 export const HUB_COORDINATES: Record<City, { lat: number; lon: number }> = {

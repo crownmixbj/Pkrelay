@@ -11,7 +11,7 @@ import { MODE_LABEL, MODE_MEANING, type OperatingMode } from '@/store/dispatch';
  * The two are genuinely different products, not a preference: a scheduled
  * journey is a route declared ahead of time, and a flash shift is a driver
  * sitting in one city for the next couple of hours. Matching treats them
- * differently — see `supabase/18_flash_mode.sql` — so the driver has to be able
+ * differently — see `supabase/migrations/20250101000018_flash_mode.sql` — so the driver has to be able
  * to say which one they are doing.
  *
  * ⚠ One deliberate departure from the mockup.

@@ -57,8 +57,8 @@ export type Clause = {
 export const TERMS: Clause[] = [
   {
     key: 'what',
-    title: 'What LOCI does',
-    body: 'LOCI connects people sending parcels with independent drivers who carry them. We are not the carrier. Drivers use their own vehicles, set their own hours, and are not employees.',
+    title: 'What Package Relay does',
+    body: 'Package Relay connects people sending parcels with independent drivers who carry them. We are not the carrier. Drivers use their own vehicles, set their own hours, and are not employees.',
   },
   {
     key: 'account',
@@ -67,18 +67,18 @@ export const TERMS: Clause[] = [
   },
   {
     key: 'driver',
-    title: 'Driving with LOCI',
+    title: 'Driving with Package Relay',
     body: 'Carrying a parcel needs an approved driver application. We check identity, vehicle, licence and a guarantor before approving, and one live application is allowed per account. Approval can be withdrawn.',
   },
   {
     key: 'fares',
     title: 'Fares',
-    body: 'The figure shown when you book is an estimate produced from distance, weight, size and handover choice. It is what the driver is paid on delivery. There is no separate LOCI fee shown today.',
+    body: 'The figure shown when you book is an estimate produced from distance, weight, size and handover choice. It is what the driver is paid on delivery. There is no separate Package Relay fee shown today.',
   },
   {
     key: 'fragile',
     title: 'Fragile items are not insured',
-    body: 'Marking an item fragile tells the driver to handle it carefully. It does not buy cover, and LOCI charges nothing extra for it. Nothing in this app currently insures a parcel against loss or damage.',
+    body: 'Marking an item fragile tells the driver to handle it carefully. It does not buy cover, and Package Relay charges nothing extra for it. Nothing in this app currently insures a parcel against loss or damage.',
   },
   {
     key: 'handover',
@@ -93,7 +93,7 @@ export const TERMS: Clause[] = [
   {
     key: 'data',
     title: 'Contact details on a job',
-    body: 'A driver sees the addresses and phone numbers on a job so they can complete it. Using them for anything else ends their access. If that happens to you, write to privacy@loci.ng.',
+    body: 'A driver sees the addresses and phone numbers on a job so they can complete it. Using them for anything else ends their access. If that happens to you, write to privacy@pkrelay.ng.',
   },
 ];
 
@@ -105,7 +105,7 @@ export const TERMS: Clause[] = [
  * wrong. Naming the gaps is the honest position until they are filled.
  */
 export const TERMS_GAPS: string[] = [
-  'Limitation of liability — what LOCI is and is not answerable for when a parcel is lost, damaged or stolen',
+  'Limitation of liability — what Package Relay is and is not answerable for when a parcel is lost, damaged or stolen',
   'Insurance — whether any cover exists, who provides it, and what it pays',
   'Cancellation and refunds — there is no refund mechanism in the app today',
   'Dispute resolution and governing law',
@@ -128,8 +128,8 @@ export type DataItem = {
 /**
  * Everything this app stores about a person.
  *
- * Read from `supabase/01_bookings.sql`, `02_driver_applications.sql`,
- * `05_storage_and_alerts.sql` and `hooks/use-form-draft.ts`. The verification
+ * Read from `supabase/migrations/20250101000001_bookings.sql`, `20250101000002_driver_applications.sql`,
+ * `20250101000005_storage_and_alerts.sql` and `hooks/use-form-draft.ts`. The verification
  * script cross-checks the sensitive columns against the SQL, so a new field
  * added to the schema without a line here is caught.
  */
@@ -160,14 +160,14 @@ export const DATA_COLLECTED: DataItem[] = [
     store: 'driver_applications',
     what: 'National Identification Number, home address, driving licence number, vehicle and plate, bank name, account number and account name, and your guarantor and next-of-kin details including their NIN and phone',
     why: 'To verify you are who you say you are before trusting you with other people’s property, and to pay you.',
-    who: 'You and LOCI reviewers only. Row Level Security refuses this data to every other account, including other drivers.',
+    who: 'You and Package Relay reviewers only. Row Level Security refuses this data to every other account, including other drivers.',
   },
   {
     key: 'documents',
     store: 'storage',
     what: 'The identity, licence and vehicle documents you upload',
     why: 'Evidence for the review.',
-    who: 'You and LOCI reviewers. Held in a private store and opened only through short-lived signed links, so a leaked URL stops working.',
+    who: 'You and Package Relay reviewers. Held in a private store and opened only through short-lived signed links, so a leaked URL stops working.',
   },
   {
     key: 'draft',
@@ -210,7 +210,7 @@ export const PROCESSORS: Processor[] = [
   {
     key: 'slack',
     name: 'Slack',
-    purpose: 'Alerts the LOCI team that a new driver application has arrived.',
+    purpose: 'Alerts the Package Relay team that a new driver application has arrived.',
     shares:
       'Name, phone, email, city and vehicle type. Deliberately not your NIN, bank account or guarantor details.',
   },
@@ -243,7 +243,7 @@ export const YOUR_RIGHTS: Clause[] = [
   {
     key: 'withdraw',
     title: 'Withdrawing consent',
-    body: 'You can stop driving or stop using LOCI at any time. Finish anything you have already accepted first.',
+    body: 'You can stop driving or stop using Package Relay at any time. Finish anything you have already accepted first.',
   },
 ];
 

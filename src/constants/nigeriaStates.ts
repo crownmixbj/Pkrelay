@@ -4,7 +4,7 @@
  * The single source for every state picker in the app. Deliberately separate
  * from `CITIES` in the bookings store: that is the nine-city *operating*
  * footprint that pricing, booking and the jobs feed depend on. A driver can
- * live in a state LOCI does not yet serve; a parcel cannot be routed there.
+ * live in a state Package Relay does not yet serve; a parcel cannot be routed there.
  */
 export const NIGERIA_STATES = [
   'Abia',

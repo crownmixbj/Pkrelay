@@ -1,7 +1,7 @@
 /**
  * Runs the guarantor verification rules against a real Postgres.
  *
- * ⚠ This is the only endpoint in LOCI an anonymous stranger may call.
+ * ⚠ This is the only endpoint in Package Relay an anonymous stranger may call.
  *
  *   Everything else is behind `auth.uid()`. The guarantor has no account and
  *   will not make one, so `open_guarantor_invitation` and
@@ -104,7 +104,7 @@ await db.exec(`
   $fn$;
 `);
 
-await db.exec(read('supabase/39_guarantor_verification.sql'));
+await db.exec(read('supabase/migrations/20250101000039_guarantor_verification.sql'));
 
 const DELE = '22222222-2222-2222-2222-222222222222';
 await db.exec(`insert into auth.users (id) values ('${DELE}');`);

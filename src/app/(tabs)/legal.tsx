@@ -97,7 +97,7 @@ export default function LegalScreen() {
                 Draft — not reviewed by a lawyer
               </Text>
               <Text style={[styles.bannerBody, { color: theme.warningOnSoft }]}>
-                This describes how LOCI works today. It has not been through legal review and does
+                This describes how Package Relay works today. It has not been through legal review and does
                 not yet cover liability, insurance, refunds or disputes. It should not be relied on
                 as a contract by anyone, in either direction.
               </Text>
@@ -117,7 +117,7 @@ function Terms() {
 
   return (
     <>
-      <SectionLabel>How LOCI works</SectionLabel>
+      <SectionLabel>How Package Relay works</SectionLabel>
       <Card style={styles.card}>
         {TERMS.map((clause, index) => (
           <ClauseRow key={clause.key} clause={clause} first={index === 0} />
@@ -235,7 +235,7 @@ function Privacy() {
           </View>
         ))}
         <Text style={[styles.rightsFootnote, { color: theme.textMuted }]}>
-          Exercise any of these by writing to privacy@loci.ng. Under the NDPR we must answer within
+          Exercise any of these by writing to privacy@pkrelay.ng. Under the NDPR we must answer within
           30 days.
         </Text>
       </Card>

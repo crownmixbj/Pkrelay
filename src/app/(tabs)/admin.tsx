@@ -310,7 +310,7 @@ export default function AdminScreen() {
         <View style={styles.content}>
           <SignedOutState
             title="Sign in to review applications"
-            message="The review dashboard is only available to LOCI administrators."
+            message="The review dashboard is only available to Package Relay administrators."
             next="/admin"
           />
         </View>
@@ -333,7 +333,7 @@ export default function AdminScreen() {
               title="Not available"
               message="This area isn't available on your account."
             />
-            <Button label="Back to LOCI" size="md" onPress={() => router.replace('/')} />
+            <Button label="Back to Package Relay" size="md" onPress={() => router.replace('/')} />
           </Card>
         </View>
       </ScrollView>
@@ -350,13 +350,13 @@ export default function AdminScreen() {
             section === 'overview'
               ? 'How the platform is running right now.'
               : section === 'dispatch'
-                ? 'Whether LOCI matches parcels to drivers, or you do.'
+                ? 'Whether Package Relay matches parcels to drivers, or you do.'
                 : /*
                    * ⚠ True of this queue, and it used to leak onto another.
                    *
                    *   While Sender IDs was a fourth section this arm caught it
                    *   too, so a sender identity screen promised a review window
-                   *   LOCI publishes on the Drivers page and has never offered
+                   *   Package Relay publishes on the Drivers page and has never offered
                    *   to a sender. Three sections, three arms, no fall-through.
                    */
                   `Review within ${REVIEW_WORKING_DAYS} working days, as the Drivers page promises.`
@@ -383,7 +383,7 @@ export default function AdminScreen() {
               {/*
                 ⚠ Shown next to the backlog, and deliberately not counted in it.
 
-                  These are held on somebody outside LOCI. Adding more reviewers
+                  These are held on somebody outside Package Relay. Adding more reviewers
                   clears none of them, so folding them into "Awaiting review"
                   would be a number that asks for the wrong response.
               */}
@@ -771,7 +771,7 @@ function ApplicationCard({
 
         An admin who sees Reject without Approve has no way to tell whether the
         control is gone deliberately or the screen is broken — and the guess
-        that costs LOCI a driver is the second one, because it ends in somebody
+        that costs Package Relay a driver is the second one, because it ends in somebody
         approving from the SQL editor to work around it.
       */}
       {isWaitingOnGuarantor(application.status) && !rejecting && (

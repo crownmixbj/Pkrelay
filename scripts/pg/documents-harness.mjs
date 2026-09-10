@@ -79,15 +79,15 @@ async function run(label, fn) {
 const db = await PGlite.create();
 const q = async (sql, params = []) => (await db.query(sql, params)).rows;
 
-const docs = read('supabase/31_document_expiry.sql');
-const mode = read('supabase/32_dispatch_mode.sql');
+const docs = read('supabase/migrations/20250101000031_document_expiry.sql');
+const mode = read('supabase/migrations/20250101000032_dispatch_mode.sql');
 
 console.log('\nrunning document expiry and dispatch mode against Postgres…\n');
 
 // --------------------------------------------------------------- scaffold --
 
 /*
- * Enough of LOCI to make the two files run, and no more.
+ * Enough of Package Relay to make the two files run, and no more.
  *
  * `journey_matches` is a stub returning a column-driven answer rather than the
  * real matcher: this harness is about what happens *around* matching — the
@@ -113,7 +113,7 @@ await db.exec(`
   create table public.app_events (
     id bigserial primary key,
     /*
-      ⚠ The real CHECK constraint, copied from 07_admin.sql, and it belongs here.
+      ⚠ The real CHECK constraint, copied from 20250101000007_admin.sql, and it belongs here.
 
         This stub used to say 'level text' with nothing else. Every harness did.
         So twelve inserts across nine migrations wrote 'warn' — which the real
@@ -209,7 +209,7 @@ await db.exec(`
  * ⚠ FILE ORDER, and this is not a tidiness preference — it is the fix for a bug
  *   this harness let through to production.
  *
- *   `31_document_expiry.sql` shipped with `document_state` defined *above*
+ *   `20250101000031_document_expiry.sql` shipped with `document_state` defined *above*
  *   `document_warning_days`, which it calls. Postgres validates the body of a
  *   `language sql` function at creation time, so that fails outright with
  *   `42883: function public.document_warning_days() does not exist`.
@@ -229,7 +229,7 @@ function functionsInFileOrder(sql) {
   );
 }
 
-await run('31_document_expiry.sql loads', async () => {
+await run('20250101000031_document_expiry.sql loads', async () => {
   await db.exec(extractTable(docs, 'public.document_kinds'));
   await db.exec(extractStatement(docs, 'insert into public.document_kinds'));
   await db.exec(extractTable(docs, 'public.driver_documents'));
@@ -242,7 +242,7 @@ await run('31_document_expiry.sql loads', async () => {
   }
 });
 
-await run('32_dispatch_mode.sql loads', async () => {
+await run('20250101000032_dispatch_mode.sql loads', async () => {
   for (const fn of functionsInFileOrder(mode)) {
     await db.exec(extractFunction(mode, fn));
   }

@@ -9,7 +9,7 @@ import type { City } from '@/store/bookings';
  * offered to them one at a time and held briefly. They accept, decline, or let
  * it lapse.
  *
- * The rules are in `supabase/15_dispatch.sql` and every one of them is enforced
+ * The rules are in `supabase/migrations/20250101000015_dispatch.sql` and every one of them is enforced
  * there — the matcher and the expiry sweeper are not even granted to
  * `authenticated`, so nothing here can trigger dispatch. This module declares
  * journeys, reads offers, and answers them.
@@ -30,7 +30,7 @@ export type JourneyStatus = 'open' | 'paused' | 'completed' | 'cancelled';
  *   flash      an ad-hoc shift inside one city — "I am in Ibadan and free for
  *              two hours". Local parcels only.
  *
- * ⚠ Flash is not cosmetic. Until `supabase/18_flash_mode.sql`, no local parcel
+ * ⚠ Flash is not cosmetic. Until `supabase/migrations/20250101000018_flash_mode.sql`, no local parcel
  *   could be dispatched at all: a journey was forbidden from having the same
  *   city at both ends, and matching required both ends to equal the parcel's.
  *   Every local parcel went silently past the matcher onto the open board.
@@ -79,7 +79,7 @@ export type NewJourney = {
    * Replaces the `departsAfter`/`departsBefore` pair. A driver used to say
    * "leaving within 4 hours" and the form turned that into a window; they now
    * pick a time. The database derives `departs_before` from this — see
-   * `journey_departure_sync` in `supabase/26_departure_time.sql` — so there is
+   * `journey_departure_sync` in `supabase/migrations/20250101000026_departure_time.sql` — so there is
    * one value here and one on the row.
    */
   departureAt: Date;
@@ -109,7 +109,7 @@ const toJourney = (row: JourneyRow): Journey => ({
   destinationCity: row.destination_city as City,
   departsAfter: row.departs_after,
   departsBefore: row.departs_before,
-  // Absent on rows written before 26_departure_time.sql, and on flash shifts.
+  // Absent on rows written before 20250101000026_departure_time.sql, and on flash shifts.
   departureAt: row.departure_time ?? null,
   capacityKg: Number(row.capacity_kg),
   vehicleType: row.vehicle_type,
@@ -145,7 +145,7 @@ export function validateJourney(input: NewJourney, now: Date = new Date()): Jour
      * can take, decline them all, and look unreliable in the dispatch log for a
      * mistake the form let through.
      */
-    errors.capacityKg = 'That is more than any LOCI vehicle carries. Check the number.';
+    errors.capacityKg = 'That is more than any Package Relay vehicle carries. Check the number.';
   }
 
   if (!(input.departureAt instanceof Date) || Number.isNaN(input.departureAt.getTime())) {
@@ -227,7 +227,7 @@ export async function fetchJourneys(): Promise<Journey[]> {
  * Withdraws a route.
  *
  * Any offer still out on it is expired server-side and its parcel re-dispatched
- * at once — see `cancel_journey` in `supabase/27_journey_edit.sql`. Cancelling
+ * at once — see `cancel_journey` in `supabase/migrations/20250101000027_journey_edit.sql`. Cancelling
  * a route does not release a parcel already accepted; that is done on Assigned
  * Trip, where the parcel actually lives.
  */
@@ -279,7 +279,7 @@ export async function setJourneyStatus(id: string, status: JourneyStatus): Promi
 /**
  * How long a driver has to answer, by trip type.
  *
- * Mirrors `public.offer_hold` in `supabase/21_offer_windows.sql`, and the
+ * Mirrors `public.offer_hold` in `supabase/migrations/20250101000021_offer_windows.sql`, and the
  * verification suite asserts the two agree — a client that promised five
  * minutes on a ten-minute hold would have drivers giving up early.
  *
@@ -296,7 +296,7 @@ export const OFFER_HOLD_MINUTES: Record<'local' | 'interstate', number> = {
 /**
  * How long a parcel stays away from a driver who said no to it.
  *
- * Mirrors `public.offer_cooldown` in `supabase/23_offer_cooldown.sql`. Covers
+ * Mirrors `public.offer_cooldown` in `supabase/migrations/20250101000023_offer_cooldown.sql`. Covers
  * both kinds of no — an explicit decline and a countdown that ran out — because
  * from the parcel's point of view they are the same event: this driver is not
  * taking it right now.
@@ -383,13 +383,13 @@ export function secondsLeft(offer: DispatchOffer, now: Date = new Date()): numbe
  * created, held its five or ten minutes, expires, and rolls to somebody else
  * without the app ever having said anything.
  *
- * From inside the app that is indistinguishable from LOCI having no work — the
+ * From inside the app that is indistinguishable from Package Relay having no work — the
  * driver sits on "you're online" for an afternoon and concludes the platform is
  * empty or that they are being passed over. Counting the misses is what turns a
  * silent failure into one they can see and report.
  *
  * Deliberately not filtered to 'expired'. A sweeper that is not running leaves
- * lapsed rows marked 'offered' — the exact bug `20_dispatch_repair.sql` fixed —
+ * lapsed rows marked 'offered' — the exact bug `20250101000020_dispatch_repair.sql` fixed —
  * and reading only 'expired' would report zero misses precisely when dispatch is
  * most broken.
  */
@@ -554,7 +554,7 @@ export type ModeAction = {
 /**
  * The tail of a waiting message.
  *
- * ⚠ This used to be one fixed sentence: "Keep this screen open — LOCI cannot
+ * ⚠ This used to be one fixed sentence: "Keep this screen open — Package Relay cannot
  *   send you a phone notification yet." That was true of the product, so it was
  *   the right thing to say. Push is deployed now, so it is false for most
  *   drivers and the sentence had to go.
@@ -618,7 +618,7 @@ export function modeAction(input: {
     : {
         title: 'Nothing on your bike',
         message:
-          'No trip assigned. Tell LOCI where you are going and parcels on that route are offered to you.',
+          'No trip assigned. Tell Package Relay where you are going and parcels on that route are offered to you.',
         button: 'Schedule a Journey',
       };
 }

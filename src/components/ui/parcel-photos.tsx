@@ -26,7 +26,7 @@ import {
  *   The selfie and the NIN slip are hidden until somebody asks and says why.
  *   One is a face and the other a government identity document — both sensitive
  *   personal data under the NDPA, and the sender was told the photo is "stored
- *   privately, visible only to you and to LOCI staff". The reveal writes a line
+ *   privately, visible only to you and to Package Relay staff". The reveal writes a line
  *   naming who looked before it hands anything back, the same door
  *   `admin_reveal_parcel_contacts` puts in front of a phone number.
  *

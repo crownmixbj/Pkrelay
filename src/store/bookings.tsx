@@ -127,7 +127,7 @@ export function cityHubLabel(city: City): string {
 }
 
 /**
- * Reverse of `CITY_STATES`. Each state has exactly one LOCI city, so a driver
+ * Reverse of `CITY_STATES`. Each state has exactly one Package Relay city, so a driver
  * who registers a state of operation has an unambiguous base city — which is
  * what the jobs feed filters on.
  */
@@ -200,16 +200,16 @@ export const BOOKING_STAGES = [
  * 'Cancelled' is deliberately outside `BOOKING_STAGES`: it is where a parcel
  * stops, not a stage it passes through. Putting it in the array would make it
  * reachable from `nextStage`, so a driver could "advance" a delivery into
- * cancellation — see `supabase/11_cancellation.sql`.
+ * cancellation — see `supabase/migrations/20250101000011_cancellation.sql`.
  */
 export type BookingStage = (typeof BOOKING_STAGES)[number] | 'Cancelled';
 
 /**
  * Where a parcel changes hands at each end of the journey.
  *
- * - `hub` — a LOCI partner hub (see `app/(tabs)/locations.tsx`). The sender
+ * - `hub` — a Package Relay partner hub (see `app/(tabs)/locations.tsx`). The sender
  *   drops off there; at the far end the recipient collects in person. That
- *   collection is the OTP step described in the "How LOCI Works" copy. No code
+ *   collection is the OTP step described in the "How Package Relay Works" copy. No code
  *   is actually generated or checked anywhere in this codebase yet, so `hub`
  *   records intent, not an enforced handover.
  * - `meetpoint` — an agreed public place, away from a hub but not a private
@@ -230,9 +230,9 @@ export type HandoverMode = 'hub' | 'meetpoint' | 'doorstep';
  * Chargeability is a property of the *leg*, not of the mode, because the two
  * ends are priced for opposite reasons:
  *
- *   pickup, `hub`        charged. Not because it costs LOCI more — it costs
+ *   pickup, `hub`        charged. Not because it costs Package Relay more — it costs
  *                        less — but to discourage senders bringing parcels to
- *                        a hub, which is a queue LOCI has to staff.
+ *                        a hub, which is a queue Package Relay has to staff.
  *   pickup, anything     free. A driver collecting from a public location is
  *                        already passing.
  *   dropoff, `doorstep`  charged. A driver runs an extra leg to a private
@@ -325,7 +325,7 @@ export type Booking = {
    *   The photo is the record of who handed a driver a box. It used to be
    *   linked afterwards by a call whose failure was swallowed, which produced
    *   parcels with no evidence and nothing saying so. Now the server resolves
-   *   it in the same statement — see `44_selfie_with_the_parcel.sql`.
+   *   it in the same statement — see `20250101000044_selfie_with_the_parcel.sql`.
    *
    *   Null only for rows read back from the database, where the server has
    *   already turned it into `senderPhotoPath`.
@@ -342,7 +342,7 @@ export type Booking = {
 
   /**
    * When each irreversible step actually happened, and the evidence for the
-   * last one. See `supabase/10_delivery.sql`.
+   * last one. See `supabase/migrations/20250101000010_delivery.sql`.
    *
    * Null on every parcel that predates the delivery migration — the tracking
    * screen shows a timestamp only where one exists rather than inventing it.
@@ -1250,7 +1250,7 @@ export function handoverFeeLabel(
 }
 
 export function handoverModeLabel(mode: HandoverMode, end: 'pickup' | 'dropoff'): string {
-  if (mode === 'hub') return end === 'pickup' ? 'LOCI hub' : 'LOCI hub (OTP collection)';
+  if (mode === 'hub') return end === 'pickup' ? 'Package Relay hub' : 'Package Relay hub (OTP collection)';
   if (mode === 'meetpoint') return 'Public location';
   return end === 'pickup' ? 'Public location pickup' : 'Home/office drop-off';
 }
@@ -1266,7 +1266,7 @@ export function pickupSummaryLine(args: {
   return `${handoverModeLabel(args.mode, 'pickup')} · ${where || args.city}`;
 }
 
-/** "LOCI hub (OTP collection) · jalingo, Abakaliki" */
+/** "Package Relay hub (OTP collection) · jalingo, Abakaliki" */
 export function dropoffSummaryLine(args: {
   mode: HandoverMode;
   address: string;

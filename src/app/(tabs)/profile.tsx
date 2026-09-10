@@ -48,7 +48,7 @@ import { isValidNigerianPhone, nigerianPhoneError } from '@/utils/validation';
  *
  *   The layout this came from included Saved Addresses, Payment Methods and
  *   Delivery Preferences tiles, and a wallet with a "Top Up" button. None of
- *   those exist in LOCI: there is no saved-address table, no stored cards, no
+ *   those exist in Package Relay: there is no saved-address table, no stored cards, no
  *   preferences, and the wallet is a driver *earnings* ledger with payouts and
  *   security holds — money flows out of it, never in.
  *
@@ -229,7 +229,7 @@ export default function ProfileScreen() {
                 description={
                   role === 'driver'
                     ? 'Online — you see trips, offers and your wallet.'
-                    : 'Off — you are using LOCI as a sender.'
+                    : 'Off — you are using Package Relay as a sender.'
                 }
                 value={role === 'driver'}
                 onValueChange={(next) => setRole(next ? 'driver' : 'sender')}

@@ -1,7 +1,7 @@
 /**
  * Sends one queued email, and records what happened to it.
  *
- * Called by the `on_email_queued` trigger in `38_transactional_email.sql`, once
+ * Called by the `on_email_queued` trigger in `20250101000038_transactional_email.sql`, once
  * per row, with nothing but an outbox id.
  *
  * ⚠ The id, not the content.
@@ -15,14 +15,14 @@
  *
  * ⚠ It marks the row before deciding it succeeded, and never deletes it.
  *
- *   The outbox is the record of what LOCI told somebody. "Did the driver get
+ *   The outbox is the record of what Package Relay told somebody. "Did the driver get
  *   the rejection?" is a question that gets asked months later, and a queue
  *   that empties itself cannot answer it.
  *
  * Deploy:
  *   supabase functions deploy notify-events
  *   supabase secrets set RESEND_API_KEY="re_..."
- *   supabase secrets set LOCI_FROM_EMAIL="LOCI <noreply@yourdomain.com>"
+ *   supabase secrets set LOCI_FROM_EMAIL="Package Relay <noreply@yourdomain.com>"
  *   supabase secrets set LOCI_APP_URL="https://app.yourdomain.com"
  *   supabase secrets set LOCI_SUPPORT_EMAIL="support@yourdomain.com"
  */
@@ -150,6 +150,7 @@ Deno.serve(async (request: Request) => {
     html: rendered.html,
     text: rendered.text,
     replyTo: SUPPORT_EMAIL,
+    env: { LOCI_ENVIRONMENT: env('LOCI_ENVIRONMENT') ?? undefined, LOCI_STAGING_EMAIL: env('LOCI_STAGING_EMAIL') ?? undefined },
   });
 
   await recordOutcome(outboxId, result.ok ? null : result.error);

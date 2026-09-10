@@ -38,7 +38,7 @@ export type AuthShellProps = {
   title: string;
   subtitle?: string;
   children: React.ReactNode;
-  /** Rendered under the card, outside its border — "New to LOCI?" and similar. */
+  /** Rendered under the card, outside its border — "New to Package Relay?" and similar. */
   footer?: React.ReactNode;
   /** Where the back arrow goes. Defaults to `router.back()`. */
   onBack?: () => void;
@@ -59,7 +59,7 @@ export function AuthShell({ title, subtitle, children, footer, onBack }: AuthShe
     /*
      * The app header sits above the form here, same as everywhere else, so the
      * brand and navigation don't vanish when someone lands on sign-in. That
-     * makes the card's own LOCI wordmark a second brand mark stacked directly
+     * makes the card's own PKRELAY wordmark a second brand mark stacked directly
      * under the first, so it's gone — the header carries the brand now.
      */
     <StickyHeaderScreen>
@@ -111,7 +111,7 @@ export function AuthShell({ title, subtitle, children, footer, onBack }: AuthShe
   );
 }
 
-/** "New to LOCI? Create an account" — one consistent shape for both screens. */
+/** "New to Package Relay? Create an account" — one consistent shape for both screens. */
 export function AuthFooterLink({
   prompt,
   action,

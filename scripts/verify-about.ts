@@ -40,7 +40,7 @@ const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');
 const navSource = read('src/components/ui/app-nav-bar.tsx');
 
 const DROPDOWN: Record<string, string> = {
-  'About LOCI': 'about',
+  'About Package Relay': 'about',
   'Support / Contact Us': 'support',
   'Terms of Service & Privacy Policy': 'legal',
 };
@@ -177,12 +177,12 @@ check(
 
 // --------------------------------------- the privacy notice vs the schema ---
 
-const bookingsSql = read('supabase/01_bookings.sql');
-const applicationsSql = read('supabase/02_driver_applications.sql');
+const bookingsSql = read('supabase/migrations/20250101000001_bookings.sql');
+const applicationsSql = read('supabase/migrations/20250101000002_driver_applications.sql');
 // Coordinates arrived in 04, not 01 — the notice covers the schema as a whole,
 // so the check has to look where each column actually lives.
-const coordinatesSql = read('supabase/04_realtime_and_coordinates.sql');
-const storageSql = read('supabase/05_storage_and_alerts.sql');
+const coordinatesSql = read('supabase/migrations/20250101000004_realtime_and_coordinates.sql');
+const storageSql = read('supabase/migrations/20250101000005_storage_and_alerts.sql');
 const draftSource = read('src/hooks/use-form-draft.ts');
 
 const notice = DATA_COLLECTED.map((item) => `${item.what} ${item.why} ${item.who}`)
@@ -260,7 +260,7 @@ check(
   'the Slack alert is disclosed as excluding the sensitive fields',
   processorText.includes('slack') &&
     processorText.includes('not your nin') &&
-    read('supabase/05_storage_and_alerts.sql').includes('Deliberately NOT sent'),
+    read('supabase/migrations/20250101000005_storage_and_alerts.sql').includes('Deliberately NOT sent'),
   'the claim on the page must match what the trigger actually sends',
 );
 check(

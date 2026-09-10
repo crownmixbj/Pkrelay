@@ -1,7 +1,7 @@
 /**
  * Assertions for advancing a delivery and proving it happened.
  *
- * Weighted toward `supabase/10_delivery.sql`, because that is where the rules
+ * Weighted toward `supabase/migrations/20250101000010_delivery.sql`, because that is where the rules
  * actually live. The client can be modified by anyone holding the phone; the
  * things that must be true — only the carrier moves a parcel, stages never skip
  * or reverse, a delivery cannot be recorded without a name, and a proof photo
@@ -50,7 +50,7 @@ const code = (source: string) =>
 /** Collapses the line breaks Prettier introduces inside JSX text. */
 const flat = (source: string) => source.replace(/\s+/g, ' ');
 
-const sql = read('supabase/10_delivery.sql');
+const sql = read('supabase/migrations/20250101000010_delivery.sql');
 const sqlCode = code(sql);
 const hub = read('src/components/ui/driver-hub.tsx');
 const tracking = read('src/app/(tabs)/tracking.tsx');
@@ -652,7 +652,7 @@ check(
  * The claim under test changed when the ledger landed.
  *
  * This used to pin "does not track payouts", which is now false — there is a
- * ledger, in `supabase/30_driver_wallet.sql`. The risk moved rather than went
+ * ledger, in `supabase/migrations/20250101000030_driver_wallet.sql`. The risk moved rather than went
  * away: this sheet totals *gross* fares on parcels including ones still moving,
  * and the wallet is net of commission, delivered-only, less a hold. So the two
  * screens show different numbers for the same work, and the sheet's job is to
@@ -666,7 +666,7 @@ check(
  */
 check(
   'the sheet says these are gross quotes and names the wallet as the real balance',
-  /before LOCI(&apos;|')s commission/i.test(sheet) && /Driver Wallet/.test(sheet),
+  /before Package Relay(&apos;|')s commission/i.test(sheet) && /Driver Wallet/.test(sheet),
   'two screens showing different totals for the same work, with neither claiming to be the balance',
 );
 check(

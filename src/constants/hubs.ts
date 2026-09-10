@@ -1,10 +1,10 @@
 import type { City } from '@/store/bookings';
 
 /**
- * The LOCI partner hub network.
+ * The Package Relay partner hub network.
  *
  * Lives here rather than inside the locations screen because the booking form
- * also needs it: choosing "LOCI hub" as the pickup mode offers these, filtered
+ * also needs it: choosing "Package Relay hub" as the pickup mode offers these, filtered
  * to the selected city.
  */
 export type Hub = {
@@ -47,7 +47,7 @@ export type HubPosition = {
 /**
  * The network as first written, now only a seed and a fallback.
  *
- * The live list lives in `public.hubs` (see `supabase/08_hubs.sql`) so an admin
+ * The live list lives in `public.hubs` (see `supabase/migrations/20250101000008_hubs.sql`) so an admin
  * can correct an address without a deploy. This array stays for two reasons:
  * it is what seeds that table, and `store/hubs.tsx` falls back to it when
  * Supabase is unconfigured or the migration has not been run — so the app never
@@ -60,7 +60,7 @@ export const SEED_HUBS: Hub[] = [
   // ---- Lagos ----
   {
     id: 'lag-1',
-    name: 'LOCI Ikeja Hub',
+    name: 'Package Relay Ikeja Hub',
     area: 'Ikeja',
     city: 'Lagos',
     address: '45 Allen Avenue, Ikeja, Lagos',
@@ -71,7 +71,7 @@ export const SEED_HUBS: Hub[] = [
   },
   {
     id: 'lag-2',
-    name: 'LOCI Yaba Counter',
+    name: 'Package Relay Yaba Counter',
     area: 'Yaba',
     city: 'Lagos',
     address: '12 Herbert Macaulay Way, Yaba, Lagos',
@@ -81,7 +81,7 @@ export const SEED_HUBS: Hub[] = [
   },
   {
     id: 'lag-3',
-    name: 'LOCI Lekki Point',
+    name: 'Package Relay Lekki Point',
     area: 'Lekki',
     city: 'Lagos',
     address: '3 Admiralty Way, Lekki Phase 1, Lagos',
@@ -92,7 +92,7 @@ export const SEED_HUBS: Hub[] = [
   // ---- Ibadan ----
   {
     id: 'ib-1',
-    name: 'LOCI Bodija Hub',
+    name: 'Package Relay Bodija Hub',
     area: 'Bodija',
     city: 'Ibadan',
     address: '18 Awolowo Avenue, Old Bodija, Ibadan',
@@ -103,7 +103,7 @@ export const SEED_HUBS: Hub[] = [
   },
   {
     id: 'ib-2',
-    name: 'LOCI Dugbe Counter',
+    name: 'Package Relay Dugbe Counter',
     area: 'Dugbe',
     city: 'Ibadan',
     address: '8 Lebanon Street, Dugbe, Ibadan',
@@ -113,7 +113,7 @@ export const SEED_HUBS: Hub[] = [
   },
   {
     id: 'ib-3',
-    name: 'LOCI Ring Road Point',
+    name: 'Package Relay Ring Road Point',
     area: 'Ring Road',
     city: 'Ibadan',
     address: '22 Ring Road, Challenge, Ibadan',
@@ -123,7 +123,7 @@ export const SEED_HUBS: Hub[] = [
   },
   {
     id: 'ib-4',
-    name: 'LOCI Mokola Counter',
+    name: 'Package Relay Mokola Counter',
     area: 'Mokola',
     city: 'Ibadan',
     address: '5 Mokola Roundabout, Ibadan',
@@ -133,7 +133,7 @@ export const SEED_HUBS: Hub[] = [
   },
   {
     id: 'ib-5',
-    name: 'LOCI Challenge Point',
+    name: 'Package Relay Challenge Point',
     area: 'Challenge',
     city: 'Ibadan',
     address: '31 Challenge Road, Ibadan',
@@ -143,7 +143,7 @@ export const SEED_HUBS: Hub[] = [
   },
   {
     id: 'ib-6',
-    name: 'LOCI UI/Agbowo Counter',
+    name: 'Package Relay UI/Agbowo Counter',
     area: 'UI/Agbowo',
     city: 'Ibadan',
     address: '2 Agbowo Express, Beside UI Gate, Ibadan',
@@ -153,7 +153,7 @@ export const SEED_HUBS: Hub[] = [
   },
   {
     id: 'ib-7',
-    name: 'LOCI Iwo Road Hub',
+    name: 'Package Relay Iwo Road Hub',
     area: 'Iwo Road',
     city: 'Ibadan',
     address: '9 Iwo Road Interchange, Ibadan',
@@ -163,7 +163,7 @@ export const SEED_HUBS: Hub[] = [
   },
   {
     id: 'ib-8',
-    name: 'LOCI Apata Counter',
+    name: 'Package Relay Apata Counter',
     area: 'Apata',
     city: 'Ibadan',
     address: '16 Apata Ganga Road, Ibadan',
@@ -173,7 +173,7 @@ export const SEED_HUBS: Hub[] = [
   },
   {
     id: 'ib-9',
-    name: 'LOCI Sango Point',
+    name: 'Package Relay Sango Point',
     area: 'Sango',
     city: 'Ibadan',
     address: '4 Sango–Eleyele Road, Ibadan',
@@ -183,7 +183,7 @@ export const SEED_HUBS: Hub[] = [
   },
   {
     id: 'ib-10',
-    name: 'LOCI Akobo Counter',
+    name: 'Package Relay Akobo Counter',
     area: 'Akobo',
     city: 'Ibadan',
     address: '27 Akobo Ojurin Road, Ibadan',
@@ -194,7 +194,7 @@ export const SEED_HUBS: Hub[] = [
   // ---- Abuja ----
   {
     id: 'abj-1',
-    name: 'LOCI Wuse II Hub',
+    name: 'Package Relay Wuse II Hub',
     area: 'Wuse II',
     city: 'Abuja',
     address: '14 Aminu Kano Crescent, Wuse II, Abuja',
@@ -205,7 +205,7 @@ export const SEED_HUBS: Hub[] = [
   },
   {
     id: 'abj-2',
-    name: 'LOCI Garki Counter',
+    name: 'Package Relay Garki Counter',
     area: 'Garki',
     city: 'Abuja',
     address: '9 Moshood Abiola Way, Garki, Abuja',
@@ -215,7 +215,7 @@ export const SEED_HUBS: Hub[] = [
   },
   {
     id: 'abj-3',
-    name: 'LOCI Gwarinpa Point',
+    name: 'Package Relay Gwarinpa Point',
     area: 'Gwarinpa',
     city: 'Abuja',
     address: '5th Avenue, Gwarinpa Estate, Abuja',
@@ -226,7 +226,7 @@ export const SEED_HUBS: Hub[] = [
   // ---- Other hubs ----
   {
     id: 'ph-1',
-    name: 'LOCI Port Harcourt Hub',
+    name: 'Package Relay Port Harcourt Hub',
     area: 'GRA Phase 2',
     city: 'Port Harcourt',
     address: '3 Aba Road, GRA Phase 2, Port Harcourt',
@@ -345,7 +345,7 @@ export function findHub(hubs: Hub[], id: string): Hub | undefined {
   return hubs.find((hub) => hub.id === id);
 }
 
-/** "LOCI Ikeja Hub — Ikeja" */
+/** "Package Relay Ikeja Hub — Ikeja" */
 export function hubLabel(hub: Hub): string {
   return `${hub.name} — ${hub.area}`;
 }

@@ -597,7 +597,7 @@ export default function AdminUsersScreen() {
       {moderating?.action === 'ban' && (
         <ModerationDialog
           title={`Ban ${moderating.target.fullName} from driving?`}
-          body="They stay a LOCI customer. This only stops them taking on deliveries."
+          body="They stay a Package Relay customer. This only stops them taking on deliveries."
           consequences={[
             'They can no longer claim or accept any job.',
             'Jobs they have already accepted are left alone — a parcel mid-journey is not dropped back into the feed.',

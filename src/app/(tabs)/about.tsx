@@ -53,7 +53,7 @@ const VALUES = [
   {
     key: 'riders',
     title: 'Riders who earn well',
-    body: 'Drivers say where they are going and LOCI offers them parcels on that route. Every offer can be declined — nothing is assigned without a driver agreeing.',
+    body: 'Drivers say where they are going and Package Relay offers them parcels on that route. Every offer can be declined — nothing is assigned without a driver agreeing.',
     icon: (color: string, size: number) => <Users color={color} size={size} />,
   },
   {
@@ -76,10 +76,10 @@ export default function AboutScreen() {
         {/* ---------- Hero ---------- */}
         <View style={styles.hero}>
           <Text style={[styles.heroTitle, { color: theme.text }]}>
-            Why Choose <Text style={{ color: theme.primary }}>LOCI</Text> Courier Network
+            Why Choose <Text style={{ color: theme.primary }}>Package Relay</Text> Courier Network
           </Text>
           <Text style={[styles.heroBody, { color: theme.textSecondary }]}>
-            Nigerian commerce runs on things arriving when they were promised. LOCI exists to make
+            Nigerian commerce runs on things arriving when they were promised. Package Relay exists to make
             that promise keepable — a rider network you can see, prices you can check before you
             book, and cover on every parcel that carries real value.
           </Text>

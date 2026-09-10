@@ -358,7 +358,7 @@ check(
 check(
   'as does the live photo',
   /disabled=\{[\s\S]{0,120}!photoSession/.test(code(book)),
-  'every LOCI parcel is supposed to carry a photo of whoever posted it',
+  'every Package Relay parcel is supposed to carry a photo of whoever posted it',
 );
 
 /*

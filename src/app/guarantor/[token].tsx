@@ -19,7 +19,7 @@ import {
 } from '@/store/guarantor';
 
 /**
- * The guarantor portal — the only screen in LOCI meant for somebody with no
+ * The guarantor portal — the only screen in Package Relay meant for somebody with no
  * account.
  *
  * ⚠ It is opened by a stranger who was not expecting it.
@@ -27,7 +27,7 @@ import {
  *   They received an unsolicited email naming somebody, asking for a national
  *   identifier. The most reasonable thing for them to do is close the tab. So
  *   this page's first job is not to collect a NIN — it is to be legible: who
- *   listed them, what LOCI is, what happens if they do nothing, and what the
+ *   listed them, what Package Relay is, what happens if they do nothing, and what the
  *   number is for. The form is below all of that, not above it.
  *
  * ⚠ Outside `(tabs)`, so there is no app chrome.
@@ -101,7 +101,7 @@ export default function GuarantorPortal() {
   return (
     <ScrollView contentContainerStyle={[styles.screen, screenPadding]}>
       <View style={styles.content}>
-        <Text style={[styles.brand, { color: theme.primary }]}>LOCI</Text>
+        <Text style={[styles.brand, { color: theme.primary }]}>PKRELAY</Text>
 
         {view === null && (
           <View style={styles.centre}>
@@ -136,7 +136,7 @@ export default function GuarantorPortal() {
 
               <Text style={[styles.body, { color: theme.textSecondary }]}>
                 Hello {view.guarantorName || 'there'}. {view.driverName} has applied to drive with
-                LOCI and named you as their guarantor.
+                Package Relay and named you as their guarantor.
               </Text>
 
               {/*
@@ -241,14 +241,14 @@ function Unusable({ reason }: { reason: 'invalid' | 'expired' | 'completed' | 'u
     },
     expired: {
       title: 'This link has expired',
-      body: 'Links are valid for seven days. Ask the driver to send you a new one from their LOCI application.',
+      body: 'Links are valid for seven days. Ask the driver to send you a new one from their Package Relay application.',
     },
     invalid: {
       title: 'This link is not valid',
       body: 'Some mail apps shorten long links. Try opening it again directly from the email, or ask the driver to send a new one.',
     },
     unreachable: {
-      title: 'We could not reach LOCI',
+      title: 'We could not reach Package Relay',
       body: 'Something is wrong at our end, not yours. Please try again in a few minutes.',
     },
   }[reason];

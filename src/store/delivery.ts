@@ -12,7 +12,7 @@ import { BOOKING_STAGES, type Booking, type BookingStage } from '@/store/booking
 /**
  * Moving a delivery forward, and recording that it happened.
  *
- * The rule lives in `supabase/10_delivery.sql`; this is the client side of it.
+ * The rule lives in `supabase/migrations/20250101000010_delivery.sql`; this is the client side of it.
  * Every guard that matters — only the carrier, forwards only, a name before
  * Delivered — is enforced there, so a modified client gains nothing.
  */

@@ -126,7 +126,7 @@ export type ExpiryState = 'missing' | 'none' | 'ok' | 'expiring' | 'expired';
 /**
  * How urgent this document is, and what to say about it.
  *
- * Mirrors `document_state` in `supabase/31_document_expiry.sql`. The server is
+ * Mirrors `document_state` in `supabase/migrations/20250101000031_document_expiry.sql`. The server is
  * the authority — it is what actually gates dispatch — and this exists so a
  * screen can colour a row without a round trip. They are asserted to agree.
  */
@@ -169,7 +169,7 @@ export function expiryMessage(args: {
    * ⚠ Two different absences, and they must not share a sentence.
    *
    *   A NIN slip has no expiry because none exists to record. A licence with a
-   *   blank date has one printed on it that LOCI never asked for. "No expiry
+   *   blank date has one printed on it that Package Relay never asked for. "No expiry
    *   date recorded" is true of both and useful for neither: on the NIN it
    *   reads as a gap the driver should close and cannot, and on the licence it
    *   fails to say that closing it is exactly what is wanted.

@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 /**
  * A selfie from a browser's own camera.
  *
- * The fallback for a sender on the web dashboard who does not have the LOCI app
+ * The fallback for a sender on the web dashboard who does not have the Package Relay app
  * — without it, making the photo mandatory would mean anyone without the app
  * simply cannot post a parcel from a computer.
  *

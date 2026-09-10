@@ -4,7 +4,7 @@
  * Weighted heavily toward the SQL. This is the one part of the app where a
  * mistake hands someone else's NIN and bank details to an account that should
  * not have them, or lets a normal user make themselves an administrator — so
- * most of what follows reads `07_admin.sql` and checks the guards are actually
+ * most of what follows reads `20250101000007_admin.sql` and checks the guards are actually
  * present rather than merely intended.
  */
 import { readdirSync, readFileSync } from 'node:fs';
@@ -25,7 +25,7 @@ const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');
 /**
  * Comments stripped before searching.
  *
- * These files *discuss* the things being checked — `07_admin.sql` explains why
+ * These files *discuss* the things being checked — `20250101000007_admin.sql` explains why
  * `security definer` is used, and the shell explains why it does not say "you
  * are not an admin". Searching the raw text finds the explanation and reports
  * it as the problem.
@@ -39,8 +39,8 @@ const code = (source: string) =>
 /** Collapses the line breaks Prettier introduces inside JSX text. */
 const flat = (source: string) => source.replace(/\s+/g, ' ');
 
-const sql = read('supabase/07_admin.sql');
-const older = read('supabase/02_driver_applications.sql');
+const sql = read('supabase/migrations/20250101000007_admin.sql');
+const older = read('supabase/migrations/20250101000002_driver_applications.sql');
 const navSource = read('src/components/ui/app-nav-bar.tsx');
 
 // --------------------------------------------------------- route coverage ---
@@ -420,7 +420,7 @@ check(
 
 // ------------------------------------------------ bans and erasure ---------
 
-const bans = read('supabase/09_bans.sql');
+const bans = read('supabase/migrations/20250101000009_bans.sql');
 const dialog = read('src/components/ui/moderation-dialog.tsx');
 
 /*
@@ -536,7 +536,7 @@ check(
  * ---------- erasure, and the login it may or may not remove ----------
  *
  * This used to assert that the login always survives, and that the dialog said
- * so. Both were true and both stopped being true: `33_erase_repair.sql` makes
+ * so. Both were true and both stopped being true: `20250101000033_erase_repair.sql` makes
  * the delete non-destructive and `functions/erase-auth-user` performs it.
  *
  * What has to hold now is narrower and more important — the screen must report
@@ -545,7 +545,7 @@ check(
  * a login was removed when it was not. For an erasure request that is the one
  * detail somebody may later have to answer for.
  */
-const repair = read('supabase/33_erase_repair.sql');
+const repair = read('supabase/migrations/20250101000033_erase_repair.sql');
 const adminUsers = read('src/app/(tabs)/admin-users.tsx');
 
 check(
@@ -559,7 +559,7 @@ check(
   'the old both-or-neither rule raised for anyone who had ever carried a parcel',
 );
 check(
-  'the erase function reaches the tables added since 09_bans.sql',
+  'the erase function reaches the tables added since 20250101000009_bans.sql',
   [
     'sender_identity',
     'photo_capture_sessions',
@@ -583,7 +583,7 @@ check(
 check(
   'the ledger amounts survive the scrub',
   !/(delete from|update)\s+public\.driver_earnings/.test(code(repair)),
-  'deleting them would leave LOCI unable to reconcile its own bank statement',
+  'deleting them would leave Package Relay unable to reconcile its own bank statement',
 );
 /*
  * The guard, not its message.
@@ -846,7 +846,7 @@ check(
  * ⚠ Every `app_events` insert in every migration, checked against the CHECK
  *   constraint that will actually reject it.
  *
- *   `07_admin.sql` allows 'info' | 'warning' | 'error'. Twelve inserts across
+ *   `20250101000007_admin.sql` allows 'info' | 'warning' | 'error'. Twelve inserts across
  *   nine migrations wrote 'warn'. Each one was a statement that would abort at
  *   runtime — cancelling a parcel, changing a payout account, revealing a
  *   contact, recording an identity check, saving a high-risk profile edit,

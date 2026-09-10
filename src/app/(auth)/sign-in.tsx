@@ -72,7 +72,7 @@ export default function SignInScreen() {
       subtitle="Sign in to track parcels you've sent and jobs you're carrying."
       footer={
         <AuthFooterLink
-          prompt="New to LOCI?"
+          prompt="New to Package Relay?"
           action="Create an account"
           onPress={() => router.replace({ pathname: '/sign-up', params: next ? { next } : {} })}
         />

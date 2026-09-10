@@ -36,7 +36,7 @@ export type ExpoMessage = {
   /**
    * Android channel. Without one, Android 8+ drops the notification into a
    * default channel the user cannot tune separately — and a driver who mutes
-   * LOCI to stop marketing would also stop hearing about work.
+   * Package Relay to stop marketing would also stop hearing about work.
    */
   channelId: string;
   priority: 'high';
@@ -77,7 +77,7 @@ export function buildMessage(token: string, offer: OfferPayload, now = new Date(
      * deadline without naming an action.
      */
     body: `${route} · ${offer.weight} kg · ${naira(offer.fee)}. ${
-      minutes > 0 ? `Open LOCI to accept — ${minutes} min left.` : 'Expiring now.'
+      minutes > 0 ? `Open Package Relay to accept — ${minutes} min left.` : 'Expiring now.'
     }`,
     /*
      * Ids only in the data payload, for the same reason as the body. The app

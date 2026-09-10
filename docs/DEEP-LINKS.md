@@ -18,7 +18,7 @@ website when not. This is what Coinbase, Binance and Uber use for the same
 handoff.
 
 **Until a domain is configured the app knows it is on the weaker path and says
-so** — the instruction under the QR reads "open LOCI and scan from inside the
+so** — the instruction under the QR reads "open Package Relay and scan from inside the
 app" rather than "point your phone camera at it", because the second sentence
 would be false. See `captureInstruction()` in `src/constants/links.ts`.
 
@@ -26,7 +26,7 @@ would be false. See `captureInstruction()` in `src/constants/links.ts`.
 
 ## What I need from you
 
-**The domain.** A host you control and can put files on, e.g. `loci.ng`. Tell me
+**The domain.** A host you control and can put files on, e.g. `pkrelay.ng`. Tell me
 and I will fill in the placeholders — or do it yourself with the steps below.
 
 ---
@@ -34,8 +34,8 @@ and I will fill in the placeholders — or do it yourself with the steps below.
 ## Step 1 — set the domain
 
 ```bash
-npx eas-cli env:set --name EXPO_PUBLIC_LINK_DOMAIN --value "loci.ng" --environment preview --visibility plaintext
-npx eas-cli env:set --name EXPO_PUBLIC_LINK_DOMAIN --value "loci.ng" --environment production --visibility plaintext
+npx eas-cli env:set --name EXPO_PUBLIC_LINK_DOMAIN --value "pkrelay.ng" --environment preview --visibility plaintext
+npx eas-cli env:set --name EXPO_PUBLIC_LINK_DOMAIN --value "pkrelay.ng" --environment production --visibility plaintext
 ```
 
 Bare host. No `https://`, no trailing slash — it goes into both a URL and an
@@ -96,8 +96,8 @@ Verify the association files are being served correctly:
 - Android: <https://developers.google.com/digital-asset-links/tools/generator>
 - iOS: fetch the AASA URL and confirm it returns JSON with no redirect.
 
-Then scan the QR with the phone's ordinary camera app. If it opens LOCI, it is
-working. If it opens the browser and shows the "Open this in the LOCI app" page,
+Then scan the QR with the phone's ordinary camera app. If it opens Package Relay, it is
+working. If it opens the browser and shows the "Open this in the Package Relay app" page,
 the files are wrong or the build predates step 2.
 
 ---
@@ -108,7 +108,7 @@ the files are wrong or the build predates step 2.
 |---|---|---|---|
 | No domain set | `parcelmobile://` | Ignores it | Nothing happens |
 | Domain set, files not hosted | `https://` | Opens browser | Web fallback page |
-| Fully configured | `https://` | Opens LOCI | Web fallback page |
+| Fully configured | `https://` | Opens Package Relay | Web fallback page |
 
 The middle row is safe — a wrong or missing association file means the link
 opens the website instead of the app, which is a worse experience but not a

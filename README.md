@@ -1,4 +1,4 @@
-# LOCI
+# Package Relay
 
 Parcel delivery across Nigeria — senders post parcels, drivers claim them.
 
@@ -37,11 +37,18 @@ data, not the secrecy of this key.
 
 ## Supabase setup
 
-**Run the SQL first, in order.** Dashboard -> SQL Editor -> New query, paste,
-Run:
+**Run the SQL first, in order.**
 
-1. `supabase/01_bookings.sql` — the bookings table and its access policies.
-2. `supabase/02_driver_applications.sql` — profiles, the admin flag, driver
+The migrations live in `supabase/migrations/` under CLI-standard timestamped
+names, so the normal route is `supabase link --project-ref <ref> && supabase db
+push`. `docs/STAGING.md` has that flow, including the repair step an existing
+project needs the first time — it was set up by hand and has no migration
+history for the CLI to compare against.
+
+To do it by hand instead: Dashboard -> SQL Editor -> New query, paste, Run:
+
+1. `supabase/migrations/20250101000001_bookings.sql` — the bookings table and its access policies.
+2. `supabase/migrations/20250101000002_driver_applications.sql` — profiles, the admin flag, driver
    applications, and the "approved drivers only" rule on bookings.
 
 The second file extends the first, so running it alone fails with
@@ -58,9 +65,9 @@ where id = (select id from auth.users where email = 'your@email.com');
 caller is `authenticated` or `anon`, which is every request from the client. The
 SQL editor runs as `postgres` and is allowed, so admin is granted out-of-band.
 
-If you already ran an earlier version of `02_driver_applications.sql` and the
+If you already ran an earlier version of `20250101000002_driver_applications.sql` and the
 update above fails with `is_admin can only be changed by a database
-administrator`, run `supabase/03_fix_admin_guard.sql` — the first version of
+administrator`, run `supabase/migrations/20250101000003_fix_admin_guard.sql` — the first version of
 that trigger raised unconditionally and locked out the SQL editor too.
 
 Then, in the dashboard:
@@ -95,9 +102,16 @@ Connect the GitHub repo, then use these settings:
 | Build output directory | `dist`                       |
 | Node version           | `22` (also set in `.nvmrc`)  |
 
-Add both `EXPO_PUBLIC_` variables under **Settings → Environment variables**, for
-Production *and* Preview. They are not in the repo, so the build will produce an
-app that reports "accounts are not configured" without them.
+Add both `EXPO_PUBLIC_` variables under **Settings → Environment variables**. They
+are not in the repo, so the build will produce an app that reports "accounts are
+not configured" without them.
+
+**Production** takes the production project's values; **Preview** takes the
+staging project's — Preview covers every branch that is not the production
+branch. `docs/STAGING.md` has the full split. The two columns are edited on one
+page and set independently, so check both: a staging URL saved into Production
+points the live site at the test database and nothing about the deploy looks
+wrong.
 
 ### Why `public/_redirects` exists
 
@@ -145,7 +159,7 @@ Add that path to **Authentication → URL Configuration → Redirect URLs** for
 every origin you serve:
 
 ```
-https://loci-741.pages.dev/confirm
+https://pkrelay-741.pages.dev/confirm
 https://<production host>/confirm
 parcelmobile://confirm
 ```
@@ -180,7 +194,7 @@ hour.
 Without the secret the function answers `{ configured: false }` and the form
 shows the city picker instead, so a deployment with no key still quotes. The
 same fallback covers a network failure, Google rate-limiting, and an address in
-a state LOCI does not serve.
+a state Package Relay does not serve.
 
 ⚠ The address does not change the price. `estimateFee` charges by band — same
 city or not — with no distance term, so the address chooses the city and then

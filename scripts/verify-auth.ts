@@ -43,7 +43,7 @@ const code = (source: string) =>
 // --------------------------------------------------------------- parsing ---
 
 const EXPIRED_QUERY =
-  'https://loci.example/confirm?email=ada%40example.com&error=access_denied' +
+  'https://pkrelay.example/confirm?email=ada%40example.com&error=access_denied' +
   '&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired';
 
 const expiredParams = parseConfirmationParams(EXPIRED_QUERY);
@@ -64,7 +64,7 @@ check(
  *   change without knowing this file exists, so both are read.
  */
 const hashParams = parseConfirmationParams(
-  'https://loci.example/confirm#error=access_denied&error_code=otp_expired',
+  'https://pkrelay.example/confirm#error=access_denied&error_code=otp_expired',
 );
 check('a fragment is read too', hashParams.errorCode === 'otp_expired', hashParams.errorCode);
 
@@ -244,7 +244,7 @@ check(
 );
 check(
   'and the screen stays put rather than redirecting past itself',
-  /label="Continue to LOCI" onPress=\{\(\) => router\.replace\('\/'\)\}/.test(
+  /label="Continue to Package Relay" onPress=\{\(\) => router\.replace\('\/'\)\}/.test(
     confirm.replace(/\s+/g, ' '),
   ),
   'a success screen replaced on a timer flickers past, which is how people end up clicking the link twice',

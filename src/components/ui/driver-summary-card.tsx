@@ -199,7 +199,7 @@ export function complianceState(
    * Approved-but-not-active is the case worth separating.
    *
    * `isApprovedDriver` is false for a banned or erased account as well as for
-   * one still under review — see `is_approved_driver()` in 09_bans.sql. A
+   * one still under review — see `is_approved_driver()` in 20250101000009_bans.sql. A
    * banned driver told "under review" would wait for a decision that already
    * happened, so the two read differently.
    */

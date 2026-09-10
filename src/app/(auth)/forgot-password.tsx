@@ -20,7 +20,7 @@ const RESEND_COOLDOWN_SECONDS = 45;
  *
  * The success state is deliberately identical whether or not the address has an
  * account. Saying "no account with that email" would turn this form into a way
- * of testing which addresses are registered on LOCI, which is the standard
+ * of testing which addresses are registered on Package Relay, which is the standard
  * account-enumeration hole. The person who genuinely owns the address gets the
  * email; everyone else learns nothing.
  */

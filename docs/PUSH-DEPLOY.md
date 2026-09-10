@@ -10,10 +10,10 @@ Nothing here is destructive except step 5, which replaces a broken trigger.
 ## 0. Run migration 24 first, before anything else
 
 ```
-supabase/24_push_delivery.sql
+supabase/migrations/20250101000024_push_delivery.sql
 ```
 
-**Do not set `edge_url` before running this.** `19_push.sql` shipped a call to
+**Do not set `edge_url` before running this.** `20250101000019_push.sql` shipped a call to
 `extensions.net.http_post`, which Postgres rejects as a cross-database
 reference. The guard above it returns early whenever `edge_url` is unset, so the
 line has never run — the bug is armed by configuring push, not by writing it.

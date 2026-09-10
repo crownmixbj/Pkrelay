@@ -37,6 +37,14 @@ import { useSession } from '@/store/session';
  */
 const EXCHANGE_TIMEOUT_MS = 6_000;
 
+/**
+ * How long the success panel stays on screen before the app takes over.
+ *
+ * Long enough to read one line and register the tick, short enough that it
+ * never reads as a page that has stopped doing anything.
+ */
+const SUCCESS_REDIRECT_MS = 2_000;
+
 export default function ConfirmScreen() {
   const theme = useTheme();
   const router = useRouter();
@@ -101,6 +109,26 @@ export default function ConfirmScreen() {
     outcome?.kind === 'already-signed-in' ||
     (outcome?.kind === 'exchange' && status === 'signedIn');
 
+  /*
+   * Confirmed, then straight into the app — no button to press.
+   *
+   * ⚠ Gated on `verified`, which is the same condition the success panel
+   *   renders on, so the timer cannot start on an arrival that has not
+   *   produced a session. An exchange still waiting, or one that timed out,
+   *   never reaches here.
+   *
+   * ⚠ `replace`, not `push`. The URL this screen was opened with still carries
+   *   the confirmation code, and pushing would leave it one back gesture away —
+   *   returning to it re-resolves a token that is now spent, so somebody whose
+   *   account is perfectly fine would land on "that link has expired".
+   */
+  useEffect(() => {
+    if (!verified) return;
+
+    const timer = setTimeout(() => router.replace('/'), SUCCESS_REDIRECT_MS);
+    return () => clearTimeout(timer);
+  }, [verified, router]);
+
   /* ---------- verified ---------- */
   if (verified) {
     return (
@@ -109,7 +137,7 @@ export default function ConfirmScreen() {
         subtitle={
           outcome?.kind === 'already-signed-in'
             ? 'This address was already confirmed, and you are signed in. Nothing else to do.'
-            : 'Your address is confirmed and your account is active. Welcome to LOCI.'
+            : 'Your address is confirmed and your account is active. Welcome to Package Relay.'
         }>
         <View style={styles.form}>
           <View style={[styles.icon, { backgroundColor: theme.successSoft }]}>
@@ -117,14 +145,22 @@ export default function ConfirmScreen() {
           </View>
 
           {/*
-            A button rather than a redirect on a timer.
+            ⚠ The live region is not decoration.
 
-            This screen exists to be read. Replacing the route after a second
-            would mean the confirmation somebody waited for flickers past on the
-            way to a home page, which is how people end up unsure whether it
-            worked and clicking the link again.
+              With the button gone there is no control to take focus, so without
+              this a screen reader announces nothing between the tick appearing
+              and the route changing underneath it — the one case that most
+              needs telling that the confirmation worked.
           */}
-          <Button label="Continue to LOCI" onPress={() => router.replace('/')} />
+          <View style={styles.redirect}>
+            <ActivityIndicator color={theme.primary} />
+            <Text
+              accessibilityRole="alert"
+              accessibilityLiveRegion="polite"
+              style={[styles.redirectText, { color: theme.textSecondary }]}>
+              Taking you to Package Relay…
+            </Text>
+          </View>
         </View>
       </AuthShell>
     );
@@ -270,6 +306,14 @@ function Row({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   loading: {
     paddingVertical: Spacing.six,
+  },
+  redirect: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  redirectText: {
+    ...Typography.body,
   },
   form: {
     gap: Spacing.two + 2,

@@ -134,12 +134,13 @@ Deno.serve(async (request: Request) => {
     DOJAH_APP_ID: env('DOJAH_APP_ID') ?? undefined,
     DOJAH_SECRET_KEY: env('DOJAH_SECRET_KEY') ?? undefined,
     DOJAH_ENVIRONMENT: env('DOJAH_ENVIRONMENT') ?? undefined,
+    LOCI_ENVIRONMENT: env('LOCI_ENVIRONMENT') ?? undefined,
   });
 
   /*
    * No credentials is 'unavailable', not an error and not a pass.
    *
-   * A LOCI instance with no Dojah account still has to be able to post parcels
+   * A Package Relay instance with no Dojah account still has to be able to post parcels
    * — otherwise adding this integration would break every deployment that has
    * not bought one yet, including the preview builds testers are using.
    */
@@ -176,7 +177,7 @@ Deno.serve(async (request: Request) => {
    * The response carries no provider payload.
    *
    * Dojah's full response includes estimated age, gender, emotion and facial
-   * hair. None of that is needed to post a parcel, LOCI has no lawful basis to
+   * hair. None of that is needed to post a parcel, Package Relay has no lawful basis to
    * collect it, and shipping it to the client would put it in a place it can be
    * read. The verdict and a probability are the whole of what leaves here.
    */

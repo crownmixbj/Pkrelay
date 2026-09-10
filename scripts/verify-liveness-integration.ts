@@ -4,7 +4,7 @@
  * Three things carry real risk here, and everything below guards one of them:
  *
  *   1. The secret key. Anything reachable from the client bundle is readable by
- *      anyone who installs the app, and a leaked Dojah key spends LOCI's wallet.
+ *      anyone who installs the app, and a leaked Dojah key spends Package Relay's wallet.
  *   2. The sandbox/production distinction. Dojah's own docs: "Never use mock
  *      data to make a live trust decision." A sandbox pass rendered like a real
  *      one is exactly that mistake.
@@ -60,7 +60,7 @@ const flat = (source: string) => source.replace(/\s+/g, ' ');
 const fn = read('supabase/functions/verify-liveness/index.ts');
 const fnCode = code(fn);
 const dojahModule = read('supabase/functions/verify-liveness/dojah.ts');
-const sql = read('supabase/14_liveness.sql');
+const sql = read('supabase/migrations/20250101000014_liveness.sql');
 const sqlCode = code(sql);
 const store = read('src/store/capture-session.ts');
 const storeCode = code(store);
@@ -162,7 +162,7 @@ check(
 check(
   'missing credentials yield null rather than throwing',
   readCredentials({}) === null && readCredentials({ DOJAH_APP_ID: 'a' }) === null,
-  'a LOCI instance with no Dojah account still has to be able to post parcels',
+  'a Package Relay instance with no Dojah account still has to be able to post parcels',
 );
 
 check(
@@ -437,7 +437,7 @@ check(
 // ------------------------------- what a sender is shown, and never shown ---
 
 const onboarding = read('src/components/ui/identity-onboarding.tsx');
-const identitySql = read('supabase/28_sender_identity.sql');
+const identitySql = read('supabase/migrations/20250101000028_sender_identity.sql');
 const identityStore = read('src/store/identity.ts');
 
 check(
@@ -455,7 +455,7 @@ check(
   code(identityStore).includes('ninLast4: row.nin ? row.nin.slice(-4) : null'),
 );
 check(
-  'the sender is told the NIN leaves LOCI before they type it',
+  'the sender is told the NIN leaves Package Relay before they type it',
   /Used once, to check your NIN photo/.test(onboarding),
   'matching against a government record means telling the provider which record; that belongs on the form, not in a policy page',
 );
@@ -487,7 +487,7 @@ check(
 );
 /*
  * ⚠ Repointed. This pinned the sentence "Your parcel is not held up", which
- *   `42_verified_senders_only.sql` turned into a lie.
+ *   `20250101000042_verified_senders_only.sql` turned into a lie.
  *
  *   The property it was really defending is that an outage is an *outcome*
  *   rather than a refusal: the selfie is stored, the check can be re-run, and
@@ -739,7 +739,7 @@ async function faceMatchChecks() {
     'and an out-of-credit account is unavailable too',
     (await compareFaces('A', 'B', credentials, DEFAULT_FACE_MATCH_PATH, refused)).verdict ===
       'unavailable',
-    'a 402 says something about the LOCI account, not about the sender holding the phone',
+    'a 402 says something about the Package Relay account, not about the sender holding the phone',
   );
 }
 

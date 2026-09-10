@@ -120,7 +120,7 @@ check(
  *   where it used to let them through. What still separates the two is what
  *   the person is told and whether they can do anything: a flag is a machine's
  *   doubt awaiting a person, and saying "your photo did not match" before
- *   anybody has looked would be LOCI asserting something nobody checked. A
+ *   anybody has looked would be Package Relay asserting something nobody checked. A
  *   rejection is a person's decision and comes with a reason and a way back in.
  *
  *   `verify-posting-gate.ts` holds the full set; these two are here because
@@ -194,7 +194,7 @@ const panelCode = panel
  *   It shipped as a section of `/admin` beside Overview, Dispatch and Driver
  *   review, which made one control mean two unrelated things — and let the
  *   driver queue's subtitle, promising a seven-working-day review, render over
- *   a sender identity screen LOCI has never made that promise to.
+ *   a sender identity screen Package Relay has never made that promise to.
  */
 const screen = read('src/app/(tabs)/admin-identity.tsx');
 
@@ -231,7 +231,7 @@ check(
  * ⚠ The subtitle is about this queue, and it used to be about another.
  *
  *   The seven-working-day window is a promise the Drivers page makes to driver
- *   applicants. Repeating it here would be LOCI committing to a turnaround for
+ *   applicants. Repeating it here would be Package Relay committing to a turnaround for
  *   sender IDs that nothing in the product offers and nobody staffs.
  */
 check(
@@ -273,7 +273,7 @@ const missing = {
 
 check(
   'a missing function names the migration to run',
-  (schemaGapMessage(missing) ?? '').includes('41_sender_identity_review.sql'),
+  (schemaGapMessage(missing) ?? '').includes('20250101000041_sender_identity_review.sql'),
   `got: ${schemaGapMessage(missing) ?? 'null'}`,
 );
 check(
@@ -339,7 +339,7 @@ const missingColumn = {
 
 check(
   'a missing column names the migration too',
-  (schemaGapMessage(missingColumn) ?? '').includes('44_selfie_with_the_parcel.sql'),
+  (schemaGapMessage(missingColumn) ?? '').includes('20250101000044_selfie_with_the_parcel.sql'),
   `got: ${schemaGapMessage(missingColumn) ?? 'null'} — the same failure as a missing function, with the same remedy`,
 );
 check(
@@ -401,7 +401,7 @@ check(
  *   migration as missing for ever, on a database where it has been run.
  */
 for (const capability of CAPABILITIES) {
-  const path = `supabase/${capability.migration}`;
+  const path = `supabase/migrations/${capability.migration}`;
   check(`"${capability.label}" names a migration that exists`, existsSync(join(ROOT, path)), path);
 
   if (!existsSync(join(ROOT, path))) continue;
@@ -422,7 +422,7 @@ for (const capability of CAPABILITIES) {
  *   reassuring green tick. Checking the *newest* migration is covered is the
  *   cheapest way to make that fail on the day it happens.
  */
-const migrations = readdirSync(join(ROOT, 'supabase'))
+const migrations = readdirSync(join(ROOT, 'supabase/migrations'))
   .filter((name) => /^\d+_.*\.sql$/.test(name))
   .sort();
 const newest = migrations.at(-1) ?? '';
@@ -565,7 +565,7 @@ check(
 
 // ------------------------------------------------- what the sender is told ----
 
-const sql = read('supabase/41_sender_identity_review.sql');
+const sql = read('supabase/migrations/20250101000041_sender_identity_review.sql');
 const templates = read('supabase/functions/notify-events/templates.ts');
 
 check(
@@ -591,7 +591,7 @@ check(
 /*
  * ⚠ The outbox is a table an admin can read and a payload that reaches a mail
  *   provider. No sentence in this email needs a NIN or a photo, so neither
- *   travels — the same rule as every other LOCI email.
+ *   travels — the same rule as every other Package Relay email.
  */
 check(
   'and nothing else',

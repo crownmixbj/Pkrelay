@@ -20,7 +20,7 @@ import { CITIES, cityHubLabel, type City } from '@/store/bookings';
  *
  *   `estimateFee` prices by band — same city or not — with no distance term.
  *   So the address is a way of *choosing* among 37 names, for the many people
- *   who know their street but would hesitate over which LOCI city it belongs
+ *   who know their street but would hesitate over which Package Relay city it belongs
  *   to. The formatted address comes back too, for the booking form to carry
  *   forward to a driver, but it is not what sets the price.
  *
@@ -28,7 +28,7 @@ import { CITIES, cityHubLabel, type City } from '@/store/bookings';
  *   lookup cannot work.
  *
  *   No key on this deployment, no network, Google rate-limiting us, or an
- *   address in a state LOCI does not serve — none of those is the person's
+ *   address in a state Package Relay does not serve — none of those is the person's
  *   fault, and a quote form that becomes unusable because a third party is
  *   having a bad afternoon is worse than one that never had autocomplete. The
  *   fallback is the control this field replaced, so nothing is lost.
@@ -117,7 +117,7 @@ export function AddressField({
     if (resolution.kind !== 'served') {
       /*
         An address outside the network is not an error to argue with — the
-        picker appears so they can choose somewhere LOCI does reach, and the
+        picker appears so they can choose somewhere Package Relay does reach, and the
         note above says why.
       */
       setShowPicker(true);

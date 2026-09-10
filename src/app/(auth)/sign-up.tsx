@@ -165,7 +165,7 @@ export default function SignUpScreen() {
         <GoogleSignIn disabled={pending} />
 
         <Text style={[styles.legal, { color: theme.textMuted }]}>
-          By creating an account you agree to LOCI&apos;s terms of service and privacy policy.
+          By creating an account you agree to Package Relay&apos;s terms of service and privacy policy.
         </Text>
       </View>
     </AuthShell>

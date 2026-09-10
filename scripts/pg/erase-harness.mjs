@@ -11,7 +11,7 @@
  * Two failures it exists to catch, both of which were live:
  *
  *   · the phone-lock trigger refusing the scrub, so erasure never ran at all
- *   · erasure running happily while eight tables added since 09_bans.sql kept
+ *   · erasure running happily while eight tables added since 20250101000009_bans.sql kept
  *     everything they held
  *
  * ⚠ RLS is not exercised; the admin check inside the function is.
@@ -62,8 +62,8 @@ async function run(label, fn) {
 const db = await PGlite.create();
 const q = async (sql, params = []) => (await db.query(sql, params)).rows;
 
-const repair = read('supabase/33_erase_repair.sql');
-const identity = read('supabase/16_driver_identity.sql');
+const repair = read('supabase/migrations/20250101000033_erase_repair.sql');
+const identity = read('supabase/migrations/20250101000016_driver_identity.sql');
 
 console.log('\nrunning account erasure against Postgres…\n');
 
@@ -270,7 +270,7 @@ await run('3. and the lock is still armed for everybody else', async () => {
   /*
    * The exemption is transaction-local, so it must be gone the moment the
    * erasure statement ended. If it leaked, an applicant could put any number
-   * on an application — which is the control 16_driver_identity.sql exists for.
+   * on an application — which is the control 20250101000016_driver_identity.sql exists for.
    */
   await q("insert into auth.users (id, phone) values ($1, '+2348030000077')", [
     '44444444-4444-4444-4444-444444444444',
@@ -304,7 +304,7 @@ await run('4. the application keeps no identity, bank or guarantor detail', asyn
   check('nothing recognisable survives', leaked.length === 0, JSON.stringify(leaked));
 });
 
-await run('5. the tables added after 09_bans.sql are covered too', async () => {
+await run('5. the tables added after 20250101000009_bans.sql are covered too', async () => {
   const empty = async (table, column) =>
     (await q(`select count(*)::int as n from public.${table} where ${column} = $1`, [SUBJECT]))[0]
       .n;
@@ -338,7 +338,7 @@ await run('5. the tables added after 09_bans.sql are covered too', async () => {
   check(
     'and the ledger itself is untouched',
     earning && Number(earning.net) === 5000,
-    'deleting it would leave LOCI unable to reconcile its own bank statement',
+    'deleting it would leave Package Relay unable to reconcile its own bank statement',
   );
 
   const [history] = await q('select * from public.driver_edit_history where driver_id = $1', [
@@ -410,7 +410,7 @@ if (failures > 0) {
 console.log(
   'PASS — the phone lock no longer refuses an erasure and is still armed the moment it ends,\n' +
     '       nothing recognisable survives in the application, the eight tables added since\n' +
-    '       09_bans.sql are all covered, the payout ledger keeps its amounts and loses its\n' +
+    '       20250101000009_bans.sql are all covered, the payout ledger keeps its amounts and loses its\n' +
     '       account numbers, the recipient keeps their proof of delivery, and the audit row\n' +
     '       records the erasure without recording the person.',
 );

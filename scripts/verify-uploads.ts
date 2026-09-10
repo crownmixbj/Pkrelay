@@ -73,13 +73,13 @@ check('the document map parsed', documentTypes.size >= 5, [...documentTypes].joi
  * person actually runs rather than a list kept here.
  */
 const BUCKET_SOURCES: Record<string, string> = {
-  'driver-documents': 'supabase/05_storage_and_alerts.sql',
-  'delivery-proof': 'supabase/10_delivery.sql',
-  'sender-photo': 'supabase/12_sender_photo.sql',
-  'sender-identity': 'supabase/28_sender_identity.sql',
+  'driver-documents': 'supabase/migrations/20250101000005_storage_and_alerts.sql',
+  'delivery-proof': 'supabase/migrations/20250101000010_delivery.sql',
+  'sender-photo': 'supabase/migrations/20250101000012_sender_photo.sql',
+  'sender-identity': 'supabase/migrations/20250101000028_sender_identity.sql',
 };
 
-const WIDENED = 'supabase/35_heif_uploads.sql';
+const WIDENED = 'supabase/migrations/20250101000035_heif_uploads.sql';
 
 function bucketTypes(bucket: string): Set<string> {
   const source = read(BUCKET_SOURCES[bucket]);
@@ -182,7 +182,7 @@ for (const bucket of Object.keys(BUCKET_SOURCES)) {
   check(
     `${bucket} lost nothing when the list was rewritten`,
     lost.length === 0,
-    `${lost.join(', ')} was accepted before 35_heif_uploads.sql and is not now`,
+    `${lost.join(', ')} was accepted before 20250101000035_heif_uploads.sql and is not now`,
   );
 }
 
@@ -305,7 +305,7 @@ check(
  * otherwise the panel reports a permanent failure for something that was never
  * going to be there.
  */
-const migrations = readdirSync(join(ROOT, 'supabase')).filter((name) => name.endsWith('.sql'));
+const migrations = readdirSync(join(ROOT, 'supabase/migrations')).filter((name) => name.endsWith('.sql'));
 
 const claims = [...capabilityList.matchAll(/fn: '(\w+)'[\s\S]{0,80}?migration: '([\w.]+)'/g)].map(
   (match) => ({ fn: match[1], file: match[2] }),
@@ -321,7 +321,7 @@ for (const claim of claims) {
   );
   check(
     `and creates ${claim.fn}`,
-    read(`supabase/${claim.file}`).includes(`function public.${claim.fn}(`),
+    read(`supabase/migrations/${claim.file}`).includes(`function public.${claim.fn}(`),
     'the panel would report this as never applied, however many times it was run',
   );
 }

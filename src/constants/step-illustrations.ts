@@ -1,7 +1,7 @@
 import type { ImageSourcePropType } from 'react-native';
 
 /**
- * Illustrations for the three "How LOCI Works" cards.
+ * Illustrations for the three "How Package Relay Works" cards.
  *
  * Metro resolves bundled assets at build time, so these have to be static
  * `require`s — a runtime path string won't work. If an entry is ever set back

@@ -17,7 +17,7 @@ export const screenPadding = {
 export function ScreenHeader({
   title,
   subtitle,
-  /** Shows the LOCI wordmark above the title. */
+  /** Shows the PKRELAY wordmark above the title. */
   brand = true,
   /**
    * Renders a back arrow to the left of the title, on the same line.
@@ -40,7 +40,7 @@ export function ScreenHeader({
 
   return (
     <View style={styles.header}>
-      {brand && <Text style={[styles.brand, { color: theme.primary }]}>LOCI</Text>}
+      {brand && <Text style={[styles.brand, { color: theme.primary }]}>PKRELAY</Text>}
 
       {/*
         ⚠ The arrow and the title share a row and are centred against each

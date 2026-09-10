@@ -82,7 +82,7 @@ export const Colors = {
     shadow: '#000000',
 
     /**
-     * LOCI brand cyan. `primaryText` is deep navy rather than white: white on
+     * Package Relay brand cyan. `primaryText` is deep navy rather than white: white on
      * #19A7CE measures 2.81:1, below the 4.5:1 WCAG AA floor. Navy gives 5.81:1
      * and keeps the fill exactly on-brand.
      */
@@ -357,7 +357,7 @@ export const Typography = {
     letterSpacing: -0.5,
     lineHeight: lineHeightFor(FontSize.title),
   },
-  /** Centred section headers: How LOCI Works, My Sent Packages, Available Jobs. */
+  /** Centred section headers: How Package Relay Works, My Sent Packages, Available Jobs. */
   sectionHeading: {
     fontSize: FontSize.heading,
     ...font(700),
@@ -404,7 +404,7 @@ export const Typography = {
   micro: { fontSize: FontSize.micro, ...font(600), letterSpacing: 0.3 },
 
   /**
-   * The LOCI wordmark. Deliberately off the ramp.
+   * The PKRELAY wordmark. Deliberately off the ramp.
    *
    * A logotype is a drawn mark that happens to be set in type — it is sized to
    * look right next to the nav controls, not to sit in a reading hierarchy.

@@ -79,7 +79,7 @@ import {
 import { useSession } from '@/store/session';
 
 /**
- * Cyan glass section shared by How LOCI Works and My Sent Packages.
+ * Cyan glass section shared by How Package Relay Works and My Sent Packages.
  *
  * `action` is #005FC5 rather than the specified #007FFF: measured on this
  * gradient that blue reads 2.93:1, well under AA, where #005FC5 clears it at
@@ -313,7 +313,7 @@ export default function HomeScreen() {
 
             <View style={styles.heroCenter}>
               <Text style={[styles.heroEyebrow, { color: theme.textSecondary }]}>
-                Welcome to LOCI
+                Welcome to Package Relay
               </Text>
               <Text
                 style={[

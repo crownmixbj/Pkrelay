@@ -67,9 +67,9 @@ function extract(label, sql, pattern) {
   return found.join('\n');
 }
 
-const m02 = read('supabase/02_driver_applications.sql');
-const m39 = read('supabase/39_guarantor_verification.sql');
-const m40 = read('supabase/40_review_controls.sql');
+const m02 = read('supabase/migrations/20250101000002_driver_applications.sql');
+const m39 = read('supabase/migrations/20250101000039_guarantor_verification.sql');
+const m40 = read('supabase/migrations/20250101000040_review_controls.sql');
 
 const insertPolicy02 = extract(
   "02's insert policy",
@@ -395,7 +395,7 @@ await run('but may reject one on its face', async () => {
   /*
    * ⚠ Waiting on the guarantor is not a reason to hold an obviously bad
    *   application. It would leave it in the list for a week and ask a stranger
-   *   to vouch for somebody LOCI has already decided against.
+   *   to vouch for somebody Package Relay has already decided against.
    */
   check('the rejection is allowed', message === null, message ?? '');
 });

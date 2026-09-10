@@ -58,9 +58,9 @@ export type PhotoPurpose = 'sender' | 'driver';
 const PURPOSE_COPY: Record<PhotoPurpose, { title: string; body: string; why: string }> = {
   sender: {
     title: 'Photo of you, before you post',
-    body: 'Every LOCI parcel carries a photo of the person who sent it. It is stored privately, visible only to you and to LOCI staff — never to the driver.',
+    body: 'Every Package Relay parcel carries a photo of the person who sent it. It is stored privately, visible only to you and to Package Relay staff — never to the driver.',
     /*
-      ⚠ This used to end "It is a photo record, not an identity check — LOCI
+      ⚠ This used to end "It is a photo record, not an identity check — Package Relay
         does not match your face against any document or database."
 
         True when it was written, and false now: the sender photo is compared
@@ -72,7 +72,7 @@ const PURPOSE_COPY: Record<PhotoPurpose, { title: string; body: string; why: str
   },
   driver: {
     title: 'Photo of you, to finish your application',
-    body: 'LOCI checks this against the photo held on your NIN record. It is stored privately and seen only by you and LOCI staff.',
+    body: 'Package Relay checks this against the photo held on your NIN record. It is stored privately and seen only by you and Package Relay staff.',
     /*
       The driver copy says the opposite of the sender copy, and has to.
       This one *is* an identity check, and telling a driver it is not would be
@@ -183,7 +183,7 @@ export function SenderPhotoSheet({
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
       setError(
-        'LOCI needs the camera to take this photo. Allow camera access in your settings to post a parcel.',
+        'Package Relay needs the camera to take this photo. Allow camera access in your settings to post a parcel.',
       );
       return;
     }
@@ -341,7 +341,7 @@ export function SenderPhotoSheet({
 
               The phone is the intended route: it has the better camera, and it
               keeps face images off shared desktops. But a first-time sender on
-              a laptop has no LOCI account habit and no reason to have installed
+              a laptop has no Package Relay account habit and no reason to have installed
               anything — and with the photo required, no fallback means no
               parcel at all. So it stays, as a link rather than a button, which
               is the difference between an alternative and an equal option.

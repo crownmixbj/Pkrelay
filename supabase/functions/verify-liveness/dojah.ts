@@ -17,7 +17,7 @@
  *
  *   Dojah does offer active liveness, through the EasyOnboard widget rather
  *   than this endpoint. Moving to it means adopting their hosted UI in place of
- *   LOCI's own capture screen — a bigger change, and the right one if replay
+ *   Package Relay's own capture screen — a bigger change, and the right one if replay
  *   attacks turn out to matter.
  *
  * ⚠ AND WHAT SANDBOX IS.
@@ -27,6 +27,8 @@
  *   make a live trust decision." Every result carries the environment it came
  *   from for exactly that reason — see `LivenessResult.environment`.
  */
+
+import { isStaging } from '../_shared/environment.ts';
 
 export type DojahEnvironment = 'sandbox' | 'production';
 
@@ -44,7 +46,7 @@ export type DojahCredentials = {
 /**
  * Reads credentials out of a plain record.
  *
- * Returns null rather than throwing when they are absent: a LOCI instance with
+ * Returns null rather than throwing when they are absent: a Package Relay instance with
  * no Dojah account should degrade to "not checked" rather than refusing to post
  * parcels, and the caller decides what that means.
  */
@@ -61,8 +63,20 @@ export function readCredentials(env: Record<string, string | undefined>): DojahC
    * sandbox produces results clearly labelled as mock, which is a mistake
    * somebody notices.
    */
-  const environment: DojahEnvironment =
+  /*
+   * ⚠ Staging outranks DOJAH_ENVIRONMENT, in that order and not the other.
+   *
+   *   Every other guard here protects against a value being absent. This one
+   *   protects against a value being *present and wrong* — a production Dojah
+   *   secret pasted into the staging project "just to check the real flow",
+   *   which then spends the real wallet on every test parcel. Reading
+   *   LOCI_ENVIRONMENT last means no combination of DOJAH_* can talk the
+   *   staging deployment into calling api.dojah.io.
+   */
+  const configured: DojahEnvironment =
     (env.DOJAH_ENVIRONMENT ?? '').trim().toLowerCase() === 'production' ? 'production' : 'sandbox';
+
+  const environment: DojahEnvironment = isStaging(env) ? 'sandbox' : configured;
 
   return { appId, secretKey, environment };
 }
@@ -150,7 +164,7 @@ export function interpret(
    *
    * The difference decides whether a sender is blocked. Dojah being down, or
    * changing a field name, must not read as "this person is not real" — that
-   * would turn an outage at the provider into every LOCI sender being accused
+   * would turn an outage at the provider into every Package Relay sender being accused
    * of fraud.
    */
   if (!body.entity || (liveness?.liveness_check === undefined && probability === null)) {

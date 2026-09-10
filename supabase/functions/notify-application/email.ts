@@ -55,7 +55,7 @@ export function firstName(fullName: string): string {
 export function subjectFor(input: ApplicationEmailInput): string {
   // The reference belongs in the subject: it is what the applicant quotes back
   // when they ask about progress, and it makes the thread searchable later.
-  return headerSafe(`LOCI driver application received — ${input.reference}`);
+  return headerSafe(`Package Relay driver application received — ${input.reference}`);
 }
 
 /**
@@ -99,7 +99,7 @@ export function textBody(input: ApplicationEmailInput): string {
 
   lines.push(
     '',
-    'LOCI',
+    'Package Relay',
     '',
     `You are receiving this because a driver application was submitted with this address (${input.email}). If that was not you, reply and tell us — we will remove it.`,
   );
@@ -172,7 +172,7 @@ export function htmlBody(input: ApplicationEmailInput): string {
              style="max-width:560px;background:#FFFFFF;border-radius:16px;
                     font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
         <tr><td style="padding:28px 28px 0;">
-          <div style="font-size:24px;font-weight:800;letter-spacing:1px;color:#0077B6;">LOCI</div>
+          <div style="font-size:24px;font-weight:800;letter-spacing:1px;color:#0077B6;">PKRELAY</div>
         </td></tr>
 
         <tr><td style="padding:20px 28px 0;">
@@ -180,7 +180,7 @@ export function htmlBody(input: ApplicationEmailInput): string {
             Application received
           </h1>
           <p style="margin:12px 0 0;font-size:15px;line-height:1.6;color:#334155;">
-            Hi ${escapeHtml(firstName(input.fullName))}, thank you for applying to drive with LOCI.
+            Hi ${escapeHtml(firstName(input.fullName))}, thank you for applying to drive with Package Relay.
             Nothing else is needed from you right now.
           </p>
         </td></tr>

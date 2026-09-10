@@ -33,7 +33,7 @@ import { useSession } from '@/store/session';
  * itself from a standing start: what it is for, what happens next, and where to
  * go afterwards.
  *
- * Every rule that matters is in `supabase/13_capture_sessions.sql`. This screen
+ * Every rule that matters is in `supabase/migrations/20250101000013_capture_sessions.sql`. This screen
  * reads the session only to give a useful message — an expired code is a
  * sentence here rather than a failed upload thirty seconds later.
  */
@@ -87,7 +87,7 @@ export default function CaptureScreen() {
    * An https capture link opens the app when it is installed and this page when
    * it is not — which is the whole reason the link is https rather than a
    * private scheme. Somebody landing here has scanned the code on a phone with
-   * no LOCI on it, and the useful thing to tell them is how to finish, not that
+   * no Package Relay on it, and the useful thing to tell them is how to finish, not that
    * something went wrong.
    *
    * The browser cannot complete a session: `uploadCapturePhoto` would work, but
@@ -104,11 +104,11 @@ export default function CaptureScreen() {
             <View style={styles.row}>
               <ShieldAlert color={theme.warningOnSoft} size={20} />
               <Text style={[styles.cardTitle, { color: theme.text }]}>
-                Open this in the LOCI app
+                Open this in the Package Relay app
               </Text>
             </View>
             <Text style={[styles.body, { color: theme.textSecondary }]}>
-              You scanned the code on a phone that does not have LOCI installed. Install it and scan
+              You scanned the code on a phone that does not have Package Relay installed. Install it and scan
               again, or go back to the computer where you started — there is a link under the code
               to use that computer&apos;s camera instead.
             </Text>
@@ -141,7 +141,7 @@ export default function CaptureScreen() {
 
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
-      setError('LOCI needs the camera to take this photo. Allow camera access in your settings.');
+      setError('Package Relay needs the camera to take this photo. Allow camera access in your settings.');
       return;
     }
 
@@ -254,7 +254,7 @@ export default function CaptureScreen() {
 
             <View style={[styles.notice, { backgroundColor: theme.primarySoft }]}>
               <Text style={[styles.noticeText, { color: theme.primaryOnSoft }]}>
-                Stored privately and visible only to you and to LOCI staff — never to the driver. It
+                Stored privately and visible only to you and to Package Relay staff — never to the driver. It
                 is a photo record, not an identity check.
               </Text>
             </View>
