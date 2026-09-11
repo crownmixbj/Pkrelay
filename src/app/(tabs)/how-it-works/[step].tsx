@@ -39,7 +39,7 @@ export default function StepDetailScreen() {
           <EmptyState
             icon={(color, size) => <PackageSearch color={color} size={size} />}
             title="Step not found"
-            message="That step doesn't exist. Head back to see how LOCI works."
+            message="That step doesn't exist. Head back to see how Package Relay works."
           />
           <Button label="Back to Home" size="md" onPress={() => router.navigate('/')} />
         </Card>
@@ -60,7 +60,7 @@ export default function StepDetailScreen() {
         hitSlop={8}
         style={({ pressed }) => [styles.back, pressed && styles.pressed]}>
         <ArrowLeft color={theme.text} size={20} />
-        <Text style={[styles.backLabel, { color: theme.textSecondary }]}>How LOCI Works</Text>
+        <Text style={[styles.backLabel, { color: theme.textSecondary }]}>How Package Relay Works</Text>
       </Pressable>
 
       <Text style={styles.stepNumber}>

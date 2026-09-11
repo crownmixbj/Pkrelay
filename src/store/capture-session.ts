@@ -11,7 +11,7 @@ import { assertImageBytes, contentTypeFor, extensionOf, readFileBytes } from '@/
  * bridges both: the browser opens one, shows its id in a QR code, and waits;
  * the phone opens the deep link, takes the photo, and writes the path back.
  *
- * The rules live in `supabase/13_capture_sessions.sql`. The session is bound to
+ * The rules live in `supabase/migrations/20250101000013_capture_sessions.sql`. The session is bound to
  * one account, expires in ten minutes, and can be spent on one parcel — so the
  * id in the QR code is not enough on its own for someone who photographs it off
  * a screen.
@@ -132,7 +132,7 @@ export async function completeCaptureSession(sessionId: string, fileName: string
 /**
  * ⚠ No longer on the posting path, and kept deliberately.
  *
- *   `44_selfie_with_the_parcel.sql` attaches the selfie inside the booking
+ *   `20250101000044_selfie_with_the_parcel.sql` attaches the selfie inside the booking
  *   insert, because doing it afterwards meant a second call whose failure the
  *   booking form swallowed — producing parcels with no record of who posted
  *   them. Nothing in the app calls this now.
@@ -269,7 +269,7 @@ export async function runLivenessCheck(sessionId: string): Promise<LivenessOutco
  * Only an outright failure does. 'unavailable' lets the parcel through with the
  * reason recorded against it — an outage at a third party is not grounds to
  * refuse every parcel in the country, and the alternative is that a lapsed
- * Dojah wallet silently takes LOCI offline.
+ * Dojah wallet silently takes Package Relay offline.
  */
 export function livenessBlocks(outcome: LivenessOutcome): boolean {
   return outcome.status === 'failed';

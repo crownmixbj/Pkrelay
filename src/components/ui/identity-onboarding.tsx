@@ -127,7 +127,7 @@ export function IdentityOnboarding({
         <ShieldAlert color={theme.primaryOnSoft} size={16} />
         <Text style={[styles.privacyText, { color: theme.primaryOnSoft }]}>
           Your selfie is kept as your reference photo so later parcels only need a quick selfie. It
-          is visible to you and to LOCI staff reviewing an issue — never to a driver or a recipient.
+          is visible to you and to Package Relay staff reviewing an issue — never to a driver or a recipient.
         </Text>
       </View>
     </Card>

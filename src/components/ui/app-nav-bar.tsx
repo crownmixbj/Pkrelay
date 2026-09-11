@@ -73,7 +73,7 @@ function initials(name: string | undefined): string {
  * Rendering the type in Plus Jakarta Sans and adding up the capsule gives a
  * minimum width for each arrangement:
  *
- *   labelled links   997px   LOCI + seven words + role pill + avatar + menu
+ *   labelled links   997px   PKRELAY + seven words + role pill + avatar + menu
  *   icon-only links  671px   the same links as 34px circles
  *   drawer only      335px   logo and actions; the hamburger carries the links
  *
@@ -380,7 +380,7 @@ const NAV_LINKS: NavLink[] = [
     /*
       Filtered out for everyone but admins. Hiding it is a courtesy, not the
       control — every screen behind it refuses non-admins, and the RLS policies
-      and `security definer` functions in `07_admin.sql` refuse the data.
+      and `security definer` functions in `20250101000007_admin.sql` refuse the data.
 
       This was a single "Applications" entry pointing at the review queue. That
       queue is now one of five, so it moved inside rather than sitting in the
@@ -443,7 +443,7 @@ const NAV_LINKS: NavLink[] = [
     children: [
       {
         key: 'about',
-        label: 'About LOCI',
+        label: 'About Package Relay',
         href: '/about',
         icon: (color, size) => <Info color={color} size={size} />,
       },
@@ -559,7 +559,7 @@ export function AppNavBar() {
   const handleSignOut = () => {
     setMenuOpen(false);
     showDialog(
-      'Sign out of LOCI?',
+      'Sign out of Package Relay?',
       `You are signed in as ${user?.email ?? user?.name ?? 'this account'}. You'll need your password to sign back in.`,
       [
         { text: 'Stay signed in', style: 'cancel' },
@@ -568,7 +568,7 @@ export function AppNavBar() {
           style: 'destructive',
           onPress: () => {
             void signOut();
-            showToast('Signed out', { message: 'You can browse LOCI without an account.' });
+            showToast('Signed out', { message: 'You can browse Package Relay without an account.' });
             router.replace('/');
           },
         },
@@ -632,9 +632,9 @@ export function AppNavBar() {
           <Pressable
             onPress={() => router.push('/')}
             accessibilityRole="button"
-            accessibilityLabel="LOCI, go to home"
+            accessibilityLabel="PKRELAY, go to home"
             style={({ pressed }) => [styles.logo, pressed && styles.pressed]}>
-            <Text style={[styles.logoText, { color: theme.primary }]}>LOCI</Text>
+            <Text style={[styles.logoText, { color: theme.primary }]}>PKRELAY</Text>
           </Pressable>
 
           {/*
@@ -759,7 +759,7 @@ export function AppNavBar() {
  * pointing at its own `href`, and every one of those four hrefs was the same
  * destination as the entry's *first child*: Jobs & Drivers → Schedule My Journey,
  * Shipments → New Shipment, Hubs → Drop-off / Pickup Locations, About Us →
- * About LOCI. So clicking a heading looked exactly like the app choosing item
+ * About Package Relay. So clicking a heading looked exactly like the app choosing item
  * one for you, which is what it was doing.
  *
  * That also collapses the caret into the label. Two controls made sense while
@@ -1029,7 +1029,7 @@ function SideMenu({
             Elevation.raised,
           ]}>
           <View style={styles.drawerHeader}>
-            <Text style={[styles.logoText, { color: theme.primary }]}>LOCI</Text>
+            <Text style={[styles.logoText, { color: theme.primary }]}>PKRELAY</Text>
             <Pressable
               onPress={onClose}
               hitSlop={10}
@@ -1226,7 +1226,7 @@ function SideMenu({
               <View style={styles.drawerItemText}>
                 <Text style={[styles.drawerLabel, { color: theme.text }]}>Get the App</Text>
                 <Text style={[styles.drawerDescription, { color: theme.textMuted }]}>
-                  25% off your first booking in the LOCI app
+                  25% off your first booking in the Package Relay app
                 </Text>
               </View>
             </Pressable>

@@ -69,7 +69,7 @@ export function AppStoreModal({ visible, onClose, detected }: AppStoreModalProps
             <View style={styles.headerText}>
               <Text style={[styles.title, { color: theme.text }]}>Which device are you using?</Text>
               <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-                We&apos;ll take you to the right store to download the LOCI app.
+                We&apos;ll take you to the right store to download the Package Relay app.
               </Text>
             </View>
             <Pressable

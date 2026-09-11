@@ -1,7 +1,7 @@
 /**
  * Runs the offer-notification trigger against a real Postgres.
  *
- * This exists because `19_push.sql` shipped a call to
+ * This exists because `20250101000019_push.sql` shipped a call to
  * `extensions.net.http_post`, which Postgres rejects outright as a
  * cross-database reference — and nobody found out, because the guard above it
  * returns early whenever `edge_url` is unset, which it is on every deployment
@@ -87,7 +87,7 @@ await db.exec(`
   create table public.app_events (
     id uuid primary key default gen_random_uuid(),
     /*
-      ⚠ The real CHECK constraint, copied from 07_admin.sql, and it belongs here.
+      ⚠ The real CHECK constraint, copied from 20250101000007_admin.sql, and it belongs here.
 
         This stub used to say 'level text' with nothing else. Every harness did.
         So twelve inserts across nine migrations wrote 'warn' — which the real
@@ -115,7 +115,7 @@ await db.exec(`
   $fn$;
 `);
 
-const push = read('supabase/24_push_delivery.sql');
+const push = read('supabase/migrations/20250101000024_push_delivery.sql');
 await db.exec(extractFunction(push, 'create or replace function private.pg_net_post_fn('));
 await db.exec(extractFunction(push, 'create or replace function public.notify_dispatch_offer('));
 await db.exec(`

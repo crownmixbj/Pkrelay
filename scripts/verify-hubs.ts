@@ -229,7 +229,7 @@ check(
 // ------------------------------------------------- editable hubs -----------
 
 const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8');
-const hubsSql = read('supabase/08_hubs.sql');
+const hubsSql = read('supabase/migrations/20250101000008_hubs.sql');
 const hubsStore = read('src/store/hubs.tsx');
 
 /*
@@ -423,7 +423,7 @@ check(
 );
 check(
   'a filled-in new hub passes',
-  validateHubEdit({ ...blank, name: 'LOCI Kano Hub', area: 'Nassarawa', address: '1 Zoo Road' }) ===
+  validateHubEdit({ ...blank, name: 'Package Relay Kano Hub', area: 'Nassarawa', address: '1 Zoo Road' }) ===
     null,
 );
 check(

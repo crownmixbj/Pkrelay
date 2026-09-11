@@ -153,6 +153,7 @@ Deno.serve(async (request: Request) => {
     DOJAH_APP_ID: env('DOJAH_APP_ID') ?? undefined,
     DOJAH_SECRET_KEY: env('DOJAH_SECRET_KEY') ?? undefined,
     DOJAH_ENVIRONMENT: env('DOJAH_ENVIRONMENT') ?? undefined,
+    LOCI_ENVIRONMENT: env('LOCI_ENVIRONMENT') ?? undefined,
   });
 
   /*
@@ -190,7 +191,7 @@ Deno.serve(async (request: Request) => {
    * The identity record Dojah returns — name, date of birth, gender, and the
    * NIMC photo itself — is deliberately not stored and not returned.
    *
-   * LOCI already has the applicant's name from the form. Keeping a second copy
+   * Package Relay already has the applicant's name from the form. Keeping a second copy
    * pulled from a government database, plus their photograph, would be
    * collecting sensitive data for no purpose anyone could state.
    */

@@ -8,7 +8,7 @@ import { useTheme } from '@/hooks/use-theme';
 /**
  * The pieces both long forms are built from.
  *
- * LOCI has two forms that ask for thirty-odd fields: the driver application and
+ * Package Relay has two forms that ask for thirty-odd fields: the driver application and
  * Post a Parcel. They are unrelated in content and identical in shape — a
  * progress indicator, per-step validation, Back and Next, and one confirmation
  * before the irreversible button. Written twice they would drift, and the half

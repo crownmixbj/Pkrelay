@@ -5,10 +5,10 @@ import { supabase } from '@/lib/supabase';
  *
  * The switch is one row in `private.app_settings`, read by `dispatch_mode()`
  * and enforced inside `dispatch_booking` itself — see the header of
- * `supabase/32_dispatch_mode.sql` for why the gate is in the function rather
+ * `supabase/migrations/20250101000032_dispatch_mode.sql` for why the gate is in the function rather
  * than on the insert trigger.
  *
- * ⚠ Manual does not pause LOCI. Senders keep booking, drivers keep delivering,
+ * ⚠ Manual does not pause Package Relay. Senders keep booking, drivers keep delivering,
  *   and offers already live keep their countdowns. The only thing that stops is
  *   the making of *new* offers. Every string in this file says so, because the
  *   opposite assumption is easy to form and expensive to hold.
@@ -49,7 +49,7 @@ function readableError(error: { code?: string; message: string }): string {
 
   return (
     'This database does not have the dispatch functions yet. Run ' +
-    'supabase/31_document_expiry.sql and 32_dispatch_mode.sql, then reload the API ' +
+    'supabase/migrations/20250101000031_document_expiry.sql and 20250101000032_dispatch_mode.sql, then reload the API ' +
     "schema cache (notify pgrst, 'reload schema')."
   );
 }
@@ -247,8 +247,8 @@ export function modeBanner(health: DispatchHealth): {
       title: 'Automatic matching is on',
       body:
         health.unassigned > 0
-          ? `LOCI is offering parcels to drivers as they are booked. ${health.unassigned} parcel${health.unassigned === 1 ? ' has' : 's have'} found nobody yet — oldest waiting ${waitLabel(health.oldestWaitMinutes)}.`
-          : 'LOCI is offering parcels to drivers as they are booked. Nothing is waiting.',
+          ? `Package Relay is offering parcels to drivers as they are booked. ${health.unassigned} parcel${health.unassigned === 1 ? ' has' : 's have'} found nobody yet — oldest waiting ${waitLabel(health.oldestWaitMinutes)}.`
+          : 'Package Relay is offering parcels to drivers as they are booked. Nothing is waiting.',
     };
   }
 

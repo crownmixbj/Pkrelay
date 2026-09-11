@@ -51,7 +51,7 @@ export function HowItWorks() {
   return (
     <View style={styles.section}>
       <Text style={styles.heading}>
-        How <Text style={{ color: theme.primary }}>LOCI</Text> Works
+        How <Text style={{ color: theme.primary }}>Package Relay</Text> Works
       </Text>
       <Text style={[styles.subheading, { color: theme.textSecondary }]}>
         Three steps from your hands to theirs.

@@ -141,7 +141,7 @@ await db.exec(`
   $fn$;
 `);
 
-await db.exec(read('supabase/38_transactional_email.sql'));
+await db.exec(read('supabase/migrations/20250101000038_transactional_email.sql'));
 
 /*
  * The settings the dispatcher reads. Set here so the pg_net path is actually
@@ -197,7 +197,7 @@ await run('a driver approval queues exactly one email', async () => {
    * ⚠ The assertion this whole design exists for.
    *
    *   An admin pressing Approve twice, or any later write to an approved
-   *   application — `29_driver_profile_edits.sql` writes to this table whenever
+   *   application — `20250101000029_driver_profile_edits.sql` writes to this table whenever
    *   a driver edits their profile — must not produce a second email.
    */
   await q(`update public.driver_applications set status = 'approved' where id = $1`, [app.id]);

@@ -1,4 +1,4 @@
--- LOCI — why is no parcel being offered right now?
+-- Package Relay — why is no parcel being offered right now?
 --
 -- Read-only. Changes nothing. Safe to run on production, any number of times.
 --
@@ -108,7 +108,7 @@ select
     else 'ELIGIBLE — this pair should have an offer'
   end as verdict,
   -- What the matcher itself says, for comparison. If this disagrees with the
-  -- verdict above, the matcher is the problem — see 22_matcher_volatility.sql.
+  -- verdict above, the matcher is the problem — see 20250101000022_matcher_volatility.sql.
   public.journey_matches(
     j.origin_city::text, j.destination_city::text, j.departs_after, j.departs_before,
     j.capacity_kg, w.oc, w.dc, w.weight, j.mode
@@ -131,7 +131,7 @@ select jobname,
        (select status from cron.job_run_details d where d.jobid = j.jobid
          order by start_time desc limit 1) as last_status
 from cron.job j
-where jobname like 'loci-%'
+where jobname like 'pkrelay-%'
 order by jobname;
 
 -- ===========================================================================

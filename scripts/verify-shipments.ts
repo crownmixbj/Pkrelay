@@ -135,7 +135,7 @@ check(
 const bookingsStore = read('src/store/bookings.tsx');
 
 /*
- * Proof of delivery now exists — see `supabase/10_delivery.sql`. These
+ * Proof of delivery now exists — see `supabase/migrations/20250101000010_delivery.sql`. These
  * assertions changed direction on purpose: they used to require the fields to
  * be absent and the page to say so. Now they require the fields to be present
  * and the page to distinguish an evidenced delivery from a bare one, because
@@ -158,7 +158,7 @@ check(
 check(
   'a delivery with no handover record is still called out',
   tracking.includes('Marked delivered, but not evidenced'),
-  'every parcel completed before 10_delivery.sql looks like this, and a green tick against it would be false',
+  'every parcel completed before 20250101000010_delivery.sql looks like this, and a green tick against it would be false',
 );
 check(
   'an evidenced handover names who took it and when',

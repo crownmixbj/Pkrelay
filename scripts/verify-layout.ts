@@ -694,7 +694,7 @@ check(
 /*
  * ⚠ A stretched wrapper is not a stretched card.
  *
- *   The three "How LOCI Works" cards sit in wrappers with `flex: 1`, and the
+ *   The three "How Package Relay Works" cards sit in wrappers with `flex: 1`, and the
  *   panel's default `align-items: stretch` makes every wrapper as tall as the
  *   tallest. The Pressable *inside* each wrapper still sizes to its own
  *   content, so three cards with two, two and three lines of body text ended on

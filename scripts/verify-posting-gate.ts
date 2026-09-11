@@ -148,7 +148,7 @@ check(
  * ⚠ Four blocks, four different sentences, and none of them a dead end.
  *
  *   This is what makes the rule defensible rather than merely strict. Two of
- *   these people have done everything asked and are waiting on LOCI.
+ *   these people have done everything asked and are waiting on Package Relay.
  */
 const messages = (['unverified', 'pending', 'flagged', 'rejected'] as const).map((status) =>
   blockedMessage(postingGate(identity(status)), identity(status).reviewNote),
@@ -208,7 +208,7 @@ check(
  * ⚠ The machine's opinion is not repeated to the customer as a verdict.
  *
  *   A flag is frequently wrong about an old NIMC photo or a dark room. Telling
- *   somebody their photo did not match, before any person has looked, is LOCI
+ *   somebody their photo did not match, before any person has looked, is Package Relay
  *   asserting something nobody has checked.
  */
 check(
@@ -309,7 +309,7 @@ check(
  * ⚠ A machine's doubt is not reported as a verdict.
  *
  *   No person has looked at a flagged photo yet, so telling the customer it did
- *   not match is LOCI asserting something nobody has checked.
+ *   not match is Package Relay asserting something nobody has checked.
  */
 check(
   'a flagged outcome does not tell the sender their photo failed',
@@ -400,7 +400,7 @@ check(
  *   could POST to /rest/v1/bookings. `verified-senders-harness.mjs` proves the
  *   policy refuses; this only proves it ships.
  */
-const gateMigration = read('supabase/42_verified_senders_only.sql');
+const gateMigration = read('supabase/migrations/20250101000042_verified_senders_only.sql');
 
 check(
   'the insert policy requires a verified sender',
@@ -536,7 +536,7 @@ check(
 
 // ------------------------------------------------- the submission email ----
 
-const migration = read('supabase/38_transactional_email.sql');
+const migration = read('supabase/migrations/20250101000038_transactional_email.sql');
 const templates = read('supabase/functions/notify-events/templates.ts');
 
 check(

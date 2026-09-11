@@ -109,8 +109,8 @@ for (const capability of CAPABILITIES) {
   );
 
   check(
-    `the ${capability.name} description says what LOCI does with it`,
-    !used || /LOCI/.test(declared),
+    `the ${capability.name} description says what Package Relay does with it`,
+    !used || /Package Relay/.test(declared),
     'Apple rejects boilerplate that does not name the app’s own reason',
   );
 }
@@ -143,7 +143,7 @@ check(
  * No permission the app cannot justify.
  *
  * expo-image-picker asks for RECORD_AUDIO by default, because it can record
- * video. LOCI never does — every call passes `mediaTypes: ['images']`. A
+ * video. Package Relay never does — every call passes `mediaTypes: ['images']`. A
  * microphone permission on a delivery app is a question at Play review and a
  * scary line on the install screen, for a capability that is never used.
  */

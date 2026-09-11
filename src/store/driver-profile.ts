@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
  * What an approved driver may change about themselves.
  *
  * The classification below mirrors `public.driver_field_risk` in
- * `supabase/29_driver_profile_edits.sql`, and the verification suite asserts
+ * `supabase/migrations/20250101000029_driver_profile_edits.sql`, and the verification suite asserts
  * the two agree field for field. The client copy exists so a form can grey out
  * a locked field and warn before a high-risk one — not so it can decide. The
  * server refuses independently, and a client that disagreed would simply get an

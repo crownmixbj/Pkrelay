@@ -7,7 +7,7 @@ senders use it.
 
 ## What the feature actually is
 
-Every parcel posted through LOCI now carries a photograph of the sender, taken
+Every parcel posted through Package Relay now carries a photograph of the sender, taken
 at the moment of posting. It is **required** — there is no way to post without
 one.
 
@@ -60,7 +60,7 @@ interest you have not documented is one you cannot demonstrate.
 **One correction to an earlier note in this repo.** I previously wrote that a
 face photo is "likely biometric data" under the NDPA. That was too strong. The
 Act treats biometric data as *sensitive* personal data where it is processed
-**for the purpose of uniquely identifying** a person. LOCI does no matching, so
+**for the purpose of uniquely identifying** a person. Package Relay does no matching, so
 this is ordinary personal data. That stops being true the day a face-matching
 vendor is wired into this column, and the sensitive-data obligations would
 attach at that point.
@@ -82,7 +82,7 @@ whether it shows a real, live person**. Two consequences:
 2. **Dojah is a data processor.** That needs a processing agreement, and the
    published privacy notice has to name them as a recipient of the data.
 
-What Dojah returns and LOCI deliberately does *not* keep: estimated age, gender,
+What Dojah returns and Package Relay deliberately does *not* keep: estimated age, gender,
 emotion, facial hair, image quality. None is needed to post a parcel and there
 is no basis to collect it, so only the verdict, the probability and the
 environment ever leave the edge function.
@@ -97,7 +97,7 @@ environment ever leave the edge function.
    one and nobody chose to give it.
 2. **An erasure path.** There is no delete policy on the bucket, so a sender
    exercising a right to erasure cannot currently have these removed.
-   `erase_person` in `09_bans.sql` has the same gap.
+   `erase_person` in `20250101000009_bans.sql` has the same gap.
 3. **The privacy notice itself.** The in-app copy explains the purpose in a
    sentence. A published notice has to say who holds the data, on what basis,
    for how long, who it is shared with, and how to complain to the NDPC.

@@ -26,7 +26,7 @@ import { fetchDeployment, missingCount, type Deployment } from '@/store/deployme
  *   The panel answers both halves at a glance. That it renders at all proves
  *   the bundle is recent enough to contain it; the list proves what the
  *   database has. When something is missing it names the file to run, which is
- *   the same thing the hub notice below already does for `08_hubs.sql`.
+ *   the same thing the hub notice below already does for `20250101000008_hubs.sql`.
  */
 export function DeploymentPanel() {
   const theme = useTheme();

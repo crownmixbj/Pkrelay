@@ -27,7 +27,7 @@ const LEVEL_LABELS: Record<Filter, string> = {
  * System Logs & Errors.
  *
  * Reads `public.app_events`, which is insert-only for clients and readable only
- * by an admin — see `supabase/07_admin.sql`. A log the app could read back is a
+ * by an admin — see `supabase/migrations/20250101000007_admin.sql`. A log the app could read back is a
  * log an attacker could read back, and error text is often the most revealing
  * string in a system.
  *

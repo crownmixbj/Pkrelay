@@ -139,7 +139,7 @@ check(
 /*
  * ⚠ The important assertion in this file.
  *
- *   `29_driver_profile_edits.sql` classes name and phone as high risk: for a
+ *   `20250101000029_driver_profile_edits.sql` classes name and phone as high risk: for a
  *   driver, changing either suspends approval and files both values for an
  *   admin. `auth.updateUser` writes `user_metadata` with none of that. An
  *   inline editor calling it directly would change the name a sender sees on

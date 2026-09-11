@@ -18,7 +18,7 @@ replay is a route that stays open.
 
 **Active liveness exists**, but through Dojah's EasyOnboard widget rather than
 this endpoint — their dashboard calls it Basic and Advanced Liveness. Adopting
-it means replacing LOCI's own capture screen with Dojah's hosted UI, which is a
+it means replacing Package Relay's own capture screen with Dojah's hosted UI, which is a
 bigger change to the flow you designed. Worth doing if replay attacks turn out
 to matter; not worth doing on a guess.
 
@@ -72,7 +72,7 @@ supabase secrets set DOJAH_SECRET_KEY="..."
 supabase secrets set DOJAH_ENVIRONMENT="sandbox"
 ```
 
-Run `supabase/14_liveness.sql` as well — the function writes columns that file
+Run `supabase/migrations/20250101000014_liveness.sql` as well — the function writes columns that file
 creates.
 
 `DOJAH_ENVIRONMENT` **defaults to sandbox when unset**, and only the exact word
@@ -108,7 +108,7 @@ before a photo passes.
 | `unavailable` | Dojah down, key wrong, wallet empty, not configured | No |
 
 **This distinction is the most important thing in the integration.** A 401 from
-a wrong key and a 402 from an empty wallet are statements about LOCI, not about
+a wrong key and a 402 from an empty wallet are statements about Package Relay, not about
 the person holding the phone. Treating them as failures would mean a lapsed
 Dojah subscription silently stops every parcel in the country.
 

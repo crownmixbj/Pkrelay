@@ -53,7 +53,7 @@ export function jobAcceptedEmail(booking: Booking, driverName: string) {
     body: [
       `Hi ${driverName},`,
       '',
-      `You've accepted a LOCI delivery.`,
+      `You've accepted a Package Relay delivery.`,
       '',
       `Reference:  #${booking.trackingId}`,
       `Item:       ${booking.itemDescription} (${booking.weight} kg)`,
@@ -66,7 +66,7 @@ export function jobAcceptedEmail(booking: Booking, driverName: string) {
       `Recipient: ${booking.recipientName} — ${booking.recipientPhone}`,
       booking.fragile ? '\nThis parcel is marked FRAGILE. Pack it separately.' : '',
       '',
-      'Open the LOCI app to start the pickup.',
+      'Open the Package Relay app to start the pickup.',
     ]
       .filter((line) => line !== undefined)
       .join('\n'),
@@ -76,7 +76,7 @@ export function jobAcceptedEmail(booking: Booking, driverName: string) {
 /** Kept under 160 characters so it lands as a single SMS segment. */
 export function jobAcceptedSms(booking: Booking): string {
   return (
-    `LOCI: job #${booking.trackingId} accepted. ${routeLabel(booking)}. ` +
+    `Package Relay: job #${booking.trackingId} accepted. ${routeLabel(booking)}. ` +
     `Payout ${formatNaira(booking.estimatedFee)}. Pickup: ${booking.pickupArea}, ${booking.originCity}.`
   );
 }

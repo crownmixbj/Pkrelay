@@ -21,7 +21,7 @@ export type ResolvedAddress = {
  *
  * ⚠ Not `AddressField`, and the difference is what each one returns.
  *
- *   `AddressField` resolves what you type down to one of 37 LOCI cities,
+ *   `AddressField` resolves what you type down to one of 37 Package Relay cities,
  *   because the quote is priced per city band. That is wrong for a driver's
  *   home address, a guarantor's, or a hub's: those are read by a human being
  *   who has to arrive at the door, and reducing "14 Bode Thomas, Surulere" to

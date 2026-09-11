@@ -63,7 +63,7 @@ async function run(label, fn) {
 const db = await PGlite.create();
 const q = async (sql, params = []) => (await db.query(sql, params)).rows;
 
-const edits = read('supabase/29_driver_profile_edits.sql');
+const edits = read('supabase/migrations/20250101000029_driver_profile_edits.sql');
 
 await db.exec(`
   create schema auth;
@@ -78,7 +78,7 @@ await db.exec(`
   create table public.app_events (
     id uuid primary key default gen_random_uuid(),
     /*
-      ⚠ The real CHECK constraint, copied from 07_admin.sql, and it belongs here.
+      ⚠ The real CHECK constraint, copied from 20250101000007_admin.sql, and it belongs here.
 
         This stub used to say 'level text' with nothing else. Every harness did.
         So twelve inserts across nine migrations wrote 'warn' — which the real

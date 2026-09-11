@@ -13,7 +13,7 @@ import { isCarrier, isFinished, type Booking } from '@/store/bookings';
  * ⚠ There is now a ledger, and that made this file *more* dangerous rather than
  *   less.
  *
- *   `supabase/30_driver_wallet.sql` credits `driver_earnings` on delivery, net
+ *   `supabase/migrations/20250101000030_driver_wallet.sql` credits `driver_earnings` on delivery, net
  *   of the commission rate recorded on the row, and `driver_balance` subtracts
  *   a security hold and any open payout. So the wallet and this module will
  *   routinely disagree, in three compounding ways at once:

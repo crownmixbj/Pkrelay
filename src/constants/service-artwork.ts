@@ -5,7 +5,7 @@ import type { ImageSourcePropType } from 'react-native';
  *
  * These are the `-tile` renders of the supplied designs: trimmed to each one's
  * own panel so the app card *is* the panel rather than a card inside a card,
- * recoloured onto the same warm paper the "How LOCI Works" artwork uses
+ * recoloured onto the same warm paper the "How Package Relay Works" artwork uses
  * (246,245,239 — measured, not guessed), and padded to a taller shared aspect.
  *
  * The recolour is a per-channel gain that maps each design's own paper onto the

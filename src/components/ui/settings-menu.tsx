@@ -154,7 +154,7 @@ export function SettingsMenu({ open, onClose }: { open: boolean; onClose: () => 
                   ⚠ The helper text names what is actually on that screen.
 
                     The wording asked for was "personal info, NIN &
-                    preferences". There are no preferences in LOCI, and the
+                    preferences". There are no preferences in Package Relay, and the
                     NIN was not on the profile screen until this change put it
                     there. Copy is a promise about where a tap leads, and the
                     cheapest way to keep it was to add the row.
@@ -214,7 +214,7 @@ export function SettingsMenu({ open, onClose }: { open: boolean; onClose: () => 
                       onClose();
                       void signOut();
                       showToast('Signed out', {
-                        message: 'You can browse LOCI without an account.',
+                        message: 'You can browse Package Relay without an account.',
                       });
                       router.replace('/');
                     }}
@@ -260,7 +260,7 @@ export function SettingsMenu({ open, onClose }: { open: boolean; onClose: () => 
               the line we ask people to copy into a bug report.
             */}
             <Text style={[styles.buildLine, { color: theme.textMuted }]} selectable>
-              LOCI {buildLabel()}
+              PKRELAY {buildLabel()}
             </Text>
           </ScrollView>
         </Pressable>

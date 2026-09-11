@@ -36,7 +36,7 @@ import {
 /**
  * Edit Profile — the driver's own details, grouped by what a mistake costs.
  *
- * The structure is the argument. `supabase/29_driver_profile_edits.sql` sorts
+ * The structure is the argument. `supabase/migrations/20250101000029_driver_profile_edits.sql` sorts
  * every field into low, high or locked, and a driver who cannot see which is
  * which will eventually change their legal name to fix a typo and find
  * themselves suspended mid-shift. So the form has three tiers, visually
@@ -114,7 +114,7 @@ const EDITABLE_SECTIONS: Section[] = [
   {
     key: 'kin',
     title: 'Next of kin',
-    caption: 'Who LOCI contacts if something happens to you on a trip.',
+    caption: 'Who Package Relay contacts if something happens to you on a trip.',
     icon: (color, size) => <Phone color={color} size={size} />,
     fields: [
       { key: 'kin_name', label: 'Full name', placeholder: 'Noah Adedapo' },
@@ -185,7 +185,7 @@ type LockedRow = {
 /**
  * Contact details. Locked for an operational reason.
  *
- * `guard_application_phone` in 16_driver_identity.sql pins the phone to the
+ * `guard_application_phone` in 20250101000016_driver_identity.sql pins the phone to the
  * number the account signed up with, and `driver_field_risk` classifies both of
  * these as locked.
  */
@@ -237,7 +237,7 @@ const PAYOUT_ROWS: LockedRow[] = [
  *
  * Not in `driver_field_risk` at all, so `fieldRisk` defaults it to locked and
  * the server refuses it — correctly. Shown here because it *was* submitted, and
- * a driver who has moved needs to see what LOCI still has rather than wonder
+ * a driver who has moved needs to see what Package Relay still has rather than wonder
  * why the form omits it. Base city, which is the one that actually decides
  * dispatch, is editable directly above it.
  */
@@ -360,7 +360,7 @@ export function ProfileEditSheet({
         <View style={styles.header}>
           <Text style={[styles.title, { color: theme.text }]}>Edit your details</Text>
           <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-            Everyday details save immediately. Anything LOCI verified during your application is
+            Everyday details save immediately. Anything Package Relay verified during your application is
             handled separately below.
           </Text>
         </View>
@@ -450,7 +450,7 @@ export function ProfileEditSheet({
             <View style={[styles.notice, { backgroundColor: theme.warningSoft }]}>
               <Info color={theme.warningOnSoft} size={16} />
               <Text style={[styles.noticeText, { color: theme.warningOnSoft }]}>
-                These are the details LOCI approved you on. Saving a change here returns your
+                These are the details Package Relay approved you on. Saving a change here returns your
                 account to review, and you will not be offered new trips until an administrator
                 approves it. It cannot be done while you are carrying a parcel.
               </Text>
@@ -475,7 +475,7 @@ export function ProfileEditSheet({
           What was uploaded, alongside what was typed.
 
           The application is a form *and* five files, and a sheet showing only
-          the form answers a driver's question by half — "what does LOCI have
+          the form answers a driver's question by half — "what does Package Relay have
           for me" includes the licence they photographed at 11pm eighteen months
           ago. The list is read-only apart from the expiry date, which is the one
           thing on it a driver can correct without sending a new file.
@@ -488,7 +488,7 @@ export function ProfileEditSheet({
 
           These were two prose banners explaining that bank and contact details
           are managed elsewhere. That answered "can I change this here?" and left
-          the more common question — "what does LOCI actually have for me?" —
+          the more common question — "what does Package Relay actually have for me?" —
           unanswered, so a driver who suspected a wrong phone number on file had
           no way to check it from the one screen about their own details.
 
@@ -503,14 +503,14 @@ export function ProfileEditSheet({
 
         <LockedCard
           title="Contact details"
-          caption="How LOCI reaches you about a parcel."
+          caption="How Package Relay reaches you about a parcel."
           icon={(color, size) => <Lock color={color} size={size} />}
           tint={theme.neutralSoft}
           tintOn={theme.neutralOnSoft}
           rows={CONTACT_ROWS}
           application={application}
           reason={
-            'Locked because LOCI uses these to reach you about parcels already assigned to you — ' +
+            'Locked because Package Relay uses these to reach you about parcels already assigned to you — ' +
             'a change mid-delivery can send a pickup alert to a number that no longer belongs to ' +
             'you. If you do need them updated, please contact support and the team will make the ' +
             'change with you.'
@@ -590,7 +590,7 @@ export function ProfileEditSheet({
  * One titled group of fields.
  *
  * The caption is load-bearing rather than decorative: "Next of kin" is a form
- * label people fill in without reading, and "who LOCI contacts if something
+ * label people fill in without reading, and "who Package Relay contacts if something
  * happens to you on a trip" is the sentence that makes somebody check the
  * number is current.
  */

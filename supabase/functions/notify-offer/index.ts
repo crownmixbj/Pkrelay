@@ -1,7 +1,7 @@
 /**
  * Tells a driver an offer is waiting.
  *
- * Called by the `dispatch_offers_notify` trigger in `19_push.sql`, the moment an
+ * Called by the `dispatch_offers_notify` trigger in `20250101000019_push.sql`, the moment an
  * offer row appears — which covers every path that creates one: a parcel being
  * posted, an offer expiring, a decline, and a flash shift going online.
  *

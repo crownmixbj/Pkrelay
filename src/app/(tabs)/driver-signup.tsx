@@ -153,13 +153,13 @@ const DOCUMENTS = [
     hint: 'The side with your photo. All four corners in frame.',
     file: 'drivers-licence-front',
     /*
-      `expiry` mirrors `public.document_kinds` in 31_document_expiry.sql, and
+      `expiry` mirrors `public.document_kinds` in 20250101000031_document_expiry.sql, and
       the server is the authority — `record_document` refuses a missing required
       date and refuses a date on a slot that has none. This copy exists so the
       form can show the right field rather than discover the rule by being told
       off after an upload.
 
-        'required'  a lapsed one stops dispatch, so LOCI must know the date
+        'required'  a lapsed one stops dispatch, so Package Relay must know the date
         'optional'  it expires, but nothing breaks if it does
         'none'      no meaningful date; asking invites an invented one
     */
@@ -174,7 +174,7 @@ const DOCUMENTS = [
         One licence has one expiry, and it is already collected on the front
         slot above — which is also the row `document_kinds` marks as blocking
         dispatch. Asking again here would give a driver two boxes for one date
-        and LOCI two answers to reconcile.
+        and Package Relay two answers to reconcile.
     */
     expiry: 'none',
     key: 'licenseBack',
@@ -211,7 +211,7 @@ const DOCUMENTS = [
       benefits from having one — with an obvious incentive to produce something
       if the real guarantor is reluctant, and with no consent notice ever shown
       to the guarantor. They upload their own now, through an invitation sent to
-      their own address. See `39_guarantor_verification.sql`.
+      their own address. See `20250101000039_guarantor_verification.sql`.
   */
   {
     expiry: 'none',
@@ -586,7 +586,7 @@ export default function DriverSignupScreen() {
    *   The phone above *is* locked, because `guard_application_phone` refuses an
    *   application whose number differs from the account's — so offering an
    *   editable field there would be offering a refusal. Email has no such
-   *   trigger: somebody who signed up with a personal address and wants LOCI's
+   *   trigger: somebody who signed up with a personal address and wants Package Relay's
    *   decision sent to a work one is making a reasonable request, and there is
    *   nothing on the server that objects.
    *
@@ -907,7 +907,7 @@ export default function DriverSignupScreen() {
       setStep(STEPS.length - 1);
       showDialog(
         'Take your live photo first',
-        'It is the last item on this page. LOCI compares it with the photo on your NIN record before a reviewer sees your application.',
+        'It is the last item on this page. Package Relay compares it with the photo on your NIN record before a reviewer sees your application.',
       );
       return;
     }
@@ -915,7 +915,7 @@ export default function DriverSignupScreen() {
     /*
      * Validate first, then ask for an account — the same order as the booking
      * form. Gating on entry would send someone away before they'd seen what
-     * driving for LOCI involves, and would throw away everything they'd typed.
+     * driving for Package Relay involves, and would throw away everything they'd typed.
      * Here the application is already complete and the state survives the trip
      * to sign-in, because this screen stays mounted underneath.
      */
@@ -1198,7 +1198,7 @@ export default function DriverSignupScreen() {
             <View style={[styles.authNotice, { backgroundColor: theme.primarySoft }]}>
               <LogIn color={theme.primaryOnSoft} size={16} />
               <Text style={[styles.authNoticeText, { color: theme.primaryOnSoft }]}>
-                You&apos;ll need a LOCI account to submit this application. Fill it in first —
+                You&apos;ll need a Package Relay account to submit this application. Fill it in first —
                 we&apos;ll ask you to sign in at the end. Your answers are saved on this device as
                 you type, so they survive the trip.
               </Text>
@@ -1237,7 +1237,7 @@ export default function DriverSignupScreen() {
               somewhere the applicant can act on it.
 
               `editable={false}` is the visible half; the trigger in
-              `16_driver_identity.sql` is the half that actually holds, because
+              `20250101000016_driver_identity.sql` is the half that actually holds, because
               a disabled input still sends its value.
             */}
                 <ValidatedPhoneInput
@@ -1255,7 +1255,7 @@ export default function DriverSignupScreen() {
                   showError={Boolean(errors.phone)}
                   hint={
                     phoneLocked
-                      ? 'From your LOCI account. Tap to see why this cannot be changed here.'
+                      ? 'From your Package Relay account. Tap to see why this cannot be changed here.'
                       : undefined
                   }
                 />
@@ -1538,7 +1538,7 @@ export default function DriverSignupScreen() {
                   title="Documents"
                 />
                 <Text style={[styles.helper, { color: theme.textMuted }]}>
-                  Your licence and insurance need the expiry date printed on them. LOCI reminds you
+                  Your licence and insurance need the expiry date printed on them. Package Relay reminds you
                   a month before either lapses — once one has, we have to stop offering you parcels
                   until it is renewed.
                 </Text>
@@ -1878,7 +1878,7 @@ function ReviewStatus({
           )}
 
           <Text style={[styles.statusBody, { color: theme.textSecondary }]}>
-            Thank you for joining the LOCI network, {firstName}. Your application has been received.
+            Thank you for joining the Package Relay network, {firstName}. Your application has been received.
           </Text>
 
           {/* Application ID, in a pill of its own so it can be read back over the phone. */}

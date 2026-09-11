@@ -8,7 +8,7 @@ import type { ApplicationStatus } from '@/store/driver-applications';
  * Everything here goes through Row Level Security or a `security definer`
  * function that checks `is_admin()` server-side. Nothing in this file is the
  * security boundary — hiding the Admin nav entry is a courtesy, and these calls
- * simply fail for a non-admin. See `supabase/07_admin.sql`.
+ * simply fail for a non-admin. See `supabase/migrations/20250101000007_admin.sql`.
  */
 
 // ------------------------------------------------------------- overview -----
@@ -90,7 +90,7 @@ export type AdminUser = {
 /**
  * Every account.
  *
- * Readable only because `07_admin.sql` adds an admin-only select policy on
+ * Readable only because `20250101000007_admin.sql` adds an admin-only select policy on
  * `profiles`. Without it this returns exactly one row — the caller's own — which
  * is what it did before, and why this screen could not exist.
  */
@@ -426,7 +426,7 @@ export function waitedLabel(hours: number): string {
  * What an operator sees about a parcel.
  *
  * No names and no phone numbers. `admin_parcel_detail` in
- * `supabase/17_admin_parcel_detail.sql` returns a fixed shape that excludes
+ * `supabase/migrations/20250101000017_admin_parcel_detail.sql` returns a fixed shape that excludes
  * them — there is still no admin read policy on `bookings`, so this is the only
  * way in, and it decides what "the whole parcel" means rather than the caller.
  */
@@ -460,7 +460,7 @@ export type AdminParcelDetail = {
 
     Unlike the sender's face this is operational — a box on a table — so it
     comes back with the rest of the detail rather than through the audited
-    reveal. See `36_parcel_photos.sql` for the split.
+    reveal. See `20250101000036_parcel_photos.sql` for the split.
   */
   itemPhotoPath: string | null;
   livenessStatus: string | null;

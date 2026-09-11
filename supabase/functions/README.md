@@ -7,7 +7,7 @@ produces nonsense like "Cannot find name 'Deno'".
 ## notify-application
 
 Runs the moment a driver application is inserted, called by the
-`on_driver_application_created` trigger in `../05_storage_and_alerts.sql`. It
+`on_driver_application_created` trigger in `../20250101000005_storage_and_alerts.sql`. It
 does two independent things:
 
 1. **Emails the applicant a confirmation.** The app tells them on screen to
@@ -51,7 +51,7 @@ supabase functions deploy notify-application
 ```bash
 # --- Applicant confirmation email -------------------------------------------
 supabase secrets set RESEND_API_KEY="re_..."
-supabase secrets set LOCI_FROM_EMAIL="LOCI <noreply@yourdomain.com>"
+supabase secrets set LOCI_FROM_EMAIL="Package Relay <noreply@yourdomain.com>"
 
 # Optional but strongly recommended: replies land somewhere a human reads.
 supabase secrets set LOCI_SUPPORT_EMAIL="support@yourdomain.com"
@@ -132,5 +132,5 @@ must never roll back an application — so look in three places:
    application arrived. Both columns null means no provider is configured yet —
    that is a deployment state, not a delivery failure.
 
-Requires `../06_application_email.sql`, which adds those two columns and the
+Requires `../20250101000006_application_email.sql`, which adds those two columns and the
 trigger that stops a client writing to them.

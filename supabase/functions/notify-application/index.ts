@@ -14,11 +14,13 @@
  *
  *   supabase functions deploy notify-application
  *   supabase secrets set RESEND_API_KEY="re_..."
- *   supabase secrets set LOCI_FROM_EMAIL="LOCI <noreply@yourdomain.com>"
+ *   supabase secrets set LOCI_FROM_EMAIL="Package Relay <noreply@yourdomain.com>"
  *
  * Called by the `on_driver_application_created` trigger in
- * `05_storage_and_alerts.sql`.
+ * `20250101000005_storage_and_alerts.sql`.
  */
+
+import { resolveRecipient, slackEnabled } from '../_shared/environment.ts';
 
 import { renderApplicationEmail, headerSafe } from './email.ts';
 
@@ -145,6 +147,22 @@ async function sendApplicantEmail(payload: ApplicationPayload): Promise<Outcome>
   const to = payload.email?.trim();
   if (!to) return { ok: false, error: 'application has no email address' };
 
+  /*
+   * ⚠ Staging must not confirm anything to a real applicant.
+   *
+   *   This is the one email in the system sent to somebody who did not ask for
+   *   a test — a driver who filled in the real form. On staging it goes to the
+   *   test inbox instead, and if no test inbox is configured it goes nowhere.
+   */
+  const destination = resolveRecipient(to, {
+    LOCI_ENVIRONMENT: env('LOCI_ENVIRONMENT') ?? undefined,
+    LOCI_STAGING_EMAIL: env('LOCI_STAGING_EMAIL') ?? undefined,
+  });
+  if (!destination) {
+    console.warn('staging has no LOCI_STAGING_EMAIL — confirmation email skipped.');
+    return { skipped: 'staging has no test inbox configured' };
+  }
+
   const { subject, text, html } = renderApplicationEmail({
     fullName: payload.full_name ?? '',
     reference: payload.reference ?? '',
@@ -166,8 +184,8 @@ async function sendApplicantEmail(payload: ApplicationPayload): Promise<Outcome>
       },
       body: JSON.stringify({
         from: headerSafe(from),
-        to: [headerSafe(to)],
-        subject,
+        to: [headerSafe(destination.to)],
+        subject: headerSafe(`${destination.subjectPrefix}${subject}`),
         text,
         html,
         /*
@@ -211,10 +229,21 @@ const field = (label: string, value: string | null | undefined) => ({
 async function postSlackAlert(payload: ApplicationPayload): Promise<Outcome> {
   const webhook = env('SLACK_WEBHOOK_URL');
 
-  if (!webhook) {
-    console.warn('SLACK_WEBHOOK_URL is not set — alert skipped.');
-    return { skipped: 'no webhook configured' };
+  /*
+   * ⚠ Slack is skipped on staging even when a webhook is set.
+   *
+   *   An ops channel carrying test alerts is a channel people learn to scroll
+   *   past, and the cost of that is the real alert three weeks later that
+   *   nobody opens. Checking the environment rather than only the webhook also
+   *   means a webhook copied into the staging project by accident stays inert.
+   */
+  if (!slackEnabled(webhook, { LOCI_ENVIRONMENT: env('LOCI_ENVIRONMENT') ?? undefined })) {
+    console.warn('Slack alert skipped — staging, or no webhook configured.');
+    return { skipped: 'slack disabled for this environment' };
   }
+
+  /* Narrowed by slackEnabled above, which returns false on an empty webhook. */
+  const endpoint = webhook as string;
 
   const dashboardUrl = env('LOCI_APP_URL');
 
@@ -247,7 +276,7 @@ async function postSlackAlert(payload: ApplicationPayload): Promise<Outcome> {
              */
             text: dashboardUrl
               ? `Review within ${REVIEW_WORKING_DAYS} working days — <${dashboardUrl}/admin|open the dashboard>`
-              : `Review within ${REVIEW_WORKING_DAYS} working days — open the Applications tab in LOCI`,
+              : `Review within ${REVIEW_WORKING_DAYS} working days — open the Applications tab in Package Relay`,
           },
         ],
       },
@@ -255,7 +284,7 @@ async function postSlackAlert(payload: ApplicationPayload): Promise<Outcome> {
   };
 
   try {
-    const response = await fetch(webhook, {
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(message),

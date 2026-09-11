@@ -23,7 +23,7 @@ import { IdentityReviewPanel } from '@/components/ui/identity-review-panel';
  *   It hides the screen from a non-admin and sends a signed-out visitor to sign
  *   in. What actually refuses the data is `is_admin()` inside
  *   `admin_identity_queue` and `admin_review_identity` — see
- *   `41_sender_identity_review.sql`. Somebody who navigates here directly gets
+ *   `20250101000041_sender_identity_review.sql`. Somebody who navigates here directly gets
  *   an empty list, not somebody else's NIN.
  */
 export default function AdminIdentityScreen() {
@@ -35,7 +35,7 @@ export default function AdminIdentityScreen() {
        *
        *   The tab version read "Review within 7 working days, as the Drivers
        *   page promises" — copy that fell through from the driver queue's
-       *   header. LOCI makes that promise to driver applicants on the Drivers
+       *   header. Package Relay makes that promise to driver applicants on the Drivers
        *   page. It has never made it to a sender about their ID, and a screen
        *   that invents a commitment is one support has to defend.
        */

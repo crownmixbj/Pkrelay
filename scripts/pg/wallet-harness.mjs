@@ -1,7 +1,7 @@
 /**
  * Runs the driver wallet ledger against a real Postgres.
  *
- * This is the first thing in LOCI that counts money, and every failure mode is
+ * This is the first thing in Package Relay that counts money, and every failure mode is
  * a number somebody believes. Paying twice for one delivery, letting a balance
  * be withdrawn twice, or rewriting historic earnings when the commission rate
  * changes are all silent — the app keeps working and the arithmetic is wrong.
@@ -68,7 +68,7 @@ async function run(label, fn) {
 const db = await PGlite.create();
 const q = async (sql, params = []) => (await db.query(sql, params)).rows;
 
-const wallet = read('supabase/30_driver_wallet.sql');
+const wallet = read('supabase/migrations/20250101000030_driver_wallet.sql');
 
 await db.exec(`
   create schema auth;
@@ -85,7 +85,7 @@ await db.exec(`
   create table public.app_events (
     id uuid primary key default gen_random_uuid(),
     /*
-      ⚠ The real CHECK constraint, copied from 07_admin.sql, and it belongs here.
+      ⚠ The real CHECK constraint, copied from 20250101000007_admin.sql, and it belongs here.
 
         This stub used to say 'level text' with nothing else. Every harness did.
         So twelve inserts across nine migrations wrote 'warn' — which the real

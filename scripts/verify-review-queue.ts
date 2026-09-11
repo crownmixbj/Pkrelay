@@ -15,7 +15,7 @@
  *
  * ⚠ And an application waiting on a guarantor is not backlog.
  *
- *   Nobody at LOCI may touch it. Counting it as overdue would inflate the
+ *   Nobody at Package Relay may touch it. Counting it as overdue would inflate the
  *   figure an ops team staffs against with work that hiring cannot clear.
  */
 import { readFileSync } from 'node:fs';
@@ -134,7 +134,7 @@ check(
  *   An application can be bad on its face — a licence that is not a licence, an
  *   account already banned. Holding it until a stranger opens an email leaves
  *   it in the queue for a week and asks that stranger to vouch for somebody
- *   LOCI has already decided against.
+ *   Package Relay has already decided against.
  */
 check(
   'an application held on a guarantor can still be rejected',
@@ -323,7 +323,7 @@ check(
  */
 check(
   'the same rule exists in the database',
-  /a rejection must record a reason/.test(read('supabase/40_review_controls.sql')),
+  /a rejection must record a reason/.test(read('supabase/migrations/20250101000040_review_controls.sql')),
   'the SQL editor, a script and every future component bypass the screen',
 );
 
@@ -412,7 +412,7 @@ check(
   'the metric has to work at all',
 );
 /*
- * ⚠ The one that matters. Nobody at LOCI is late here.
+ * ⚠ The one that matters. Nobody at Package Relay is late here.
  *
  *   Hiring against a number inflated by applications held on strangers fixes
  *   nothing, and the real remedy — the driver re-inviting — is invisible to the
@@ -470,7 +470,7 @@ const reviewStep = timeline.find((entry) => entry.key === 'review');
 check(
   'and the review step says it has not started',
   /starts once your guarantor confirms/i.test(reviewStep?.detail ?? ''),
-  'a day count and a promise of seven working days would be LOCI claiming a clock that is not running',
+  'a day count and a promise of seven working days would be Package Relay claiming a clock that is not running',
 );
 check(
   'nor is it shown as in progress',
@@ -478,7 +478,7 @@ check(
   'a step drawn as current is one somebody believes is being worked on',
 );
 check(
-  'and does not tell them LOCI is late',
+  'and does not tell them Package Relay is late',
   !timeline.some((entry) => /chase us/i.test(entry.detail ?? '')),
   'telling somebody to chase support about a guarantor who has not replied sends them where nobody can help',
 );
@@ -549,6 +549,6 @@ if (failures > 0) {
 console.log(
   'PASS — every status is reachable through a filter and carries a label, the queue counts\n' +
     '       pending and ready_for_review as one set, an application held on a guarantor is\n' +
-    '       visible without being counted as backlog or told that LOCI is late, the driver\n' +
+    '       visible without being counted as backlog or told that Package Relay is late, the driver\n' +
     '       is told when their guarantor comes through, and the queue updates live.',
 );

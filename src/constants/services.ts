@@ -105,7 +105,7 @@ export const SERVICES: Record<ServiceId, Service> = {
     sections: [
       {
         heading: 'Routes and transit times',
-        body: 'Collection is scheduled for the time you request, and the parcel travels on the next departure covering your route. Hand it over at a LOCI hub or meet the driver at an agreed public location — the same choice applies at the destination. Longer pairs such as Port Harcourt → Kano are scheduled on request.',
+        body: 'Collection is scheduled for the time you request, and the parcel travels on the next departure covering your route. Hand it over at a Package Relay hub or meet the driver at an agreed public location — the same choice applies at the destination. Longer pairs such as Port Harcourt → Kano are scheduled on request.',
       },
       {
         heading: 'Vehicle and traveller options',

@@ -73,8 +73,8 @@ async function run(label, fn) {
 const db = await PGlite.create();
 const q = async (sql, params = []) => (await db.query(sql, params)).rows;
 
-const identity = read('supabase/28_sender_identity.sql');
-const handoff = read('supabase/34_identity_handoff.sql');
+const identity = read('supabase/migrations/20250101000028_sender_identity.sql');
+const handoff = read('supabase/migrations/20250101000034_identity_handoff.sql');
 
 await db.exec(`
   create schema auth;
@@ -89,7 +89,7 @@ await db.exec(`
   create table public.app_events (
     id uuid primary key default gen_random_uuid(),
     /*
-      ⚠ The real CHECK constraint, copied from 07_admin.sql, and it belongs here.
+      ⚠ The real CHECK constraint, copied from 20250101000007_admin.sql, and it belongs here.
 
         This stub used to say 'level text' with nothing else. Every harness did.
         So twelve inserts across nine migrations wrote 'warn' — which the real
@@ -320,7 +320,7 @@ await run('scenario 10 — the admin queue carries no identifiers', async () => 
 // ------------------------------------- the driver verdict, and its handoff ---
 
 /*
- * Scenario 11 covers the bug 34_identity_handoff.sql exists to fix.
+ * Scenario 11 covers the bug 20250101000034_identity_handoff.sql exists to fix.
  *
  * `verify-identity` used to write the verdict *only* onto
  * `driver_applications ... status = pending`, and the form called it before
@@ -328,7 +328,7 @@ await run('scenario 10 — the admin queue carries no identifiers', async () => 
  * applicant's identity columns stayed null while the code, the comments and an
  * assertion all said the check had run.
  *
- * ⚠ The stubs below carry the real guard trigger from 16_driver_identity.sql.
+ * ⚠ The stubs below carry the real guard trigger from 20250101000016_driver_identity.sql.
  *
  *   Without it this would prove nothing: the whole question is whether the copy
  *   gets *past* a trigger that refuses client writes to those columns, and a

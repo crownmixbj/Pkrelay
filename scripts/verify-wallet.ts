@@ -41,7 +41,7 @@ const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8');
 const screen = read('src/app/(tabs)/driver-wallet.tsx');
 const store = read('src/store/wallet.ts');
 const navBar = read('src/components/ui/app-nav-bar.tsx');
-const sql = read('supabase/30_driver_wallet.sql');
+const sql = read('supabase/migrations/20250101000030_driver_wallet.sql');
 
 /** Strips comments, so an assertion cannot be satisfied by prose about it. */
 const code = (source: string) =>
@@ -105,7 +105,7 @@ check(
   payoutStatusLine(balance({ earned: 500, available: 500 }), null, 24, 1000).includes(naira(1000)),
 );
 check(
-  'an open request says LOCI transfers by hand',
+  'an open request says Package Relay transfers by hand',
   /manually|by hand/i.test(payoutStatusLine(balance(), openPayout, 24, 1000)),
   'a "Processing" chip with no sentence reads as an automated payout rail',
 );
@@ -139,19 +139,19 @@ check('the five situations produce five different sentences', lines.size === 5, 
 /*
  * The one claim this screen must never make.
  *
- * `settle_payout` records that a human sent money; nothing in LOCI moves it. A
+ * `settle_payout` records that a human sent money; nothing in Package Relay moves it. A
  * balance, a button and a tidy status chip read exactly like an automated rail,
  * so the manual step is stated in the schedule line, the confirmation and the
  * footnote. Asserted on stripped code so a comment saying so cannot pass it.
  */
 check(
-  'the screen states that LOCI transfers by hand',
+  'the screen states that Package Relay transfers by hand',
   /by hand|manually/i.test(code(screen)),
   'a wallet that shows a balance and a button implies an automated payout rail',
 );
 check(
   'and says what "paid" actually means, with a way to challenge it',
-  /someone at LOCI made\s+the transfer/.test(code(screen)) && /contact support/i.test(code(screen)),
+  /someone at Package Relay made\s+the transfer/.test(code(screen)) && /contact support/i.test(code(screen)),
   'a driver whose bank disagrees with a row marked paid needs to know the row is a human claim',
 );
 check(
@@ -162,7 +162,7 @@ check(
 // --------------------------------------------- one bank-change path, not two --
 
 /*
- * The 48-hour cooling window in `16_driver_identity.sql` is the only control
+ * The 48-hour cooling window in `20250101000016_driver_identity.sql` is the only control
  * stopping a hijacked session redirecting the next payout. A wallet screen with
  * its own bank form would be a second door past it.
  */
@@ -411,6 +411,6 @@ if (failures > 0) {
 console.log(
   'PASS — the wallet reads its balance from the ledger rather than from quoted fares, the\n' +
     '       button matches the server at the exact minimum, every disabled state says why,\n' +
-    '       the screen never implies LOCI moves money on its own, bank changes still go\n' +
+    '       the screen never implies Package Relay moves money on its own, bank changes still go\n' +
     '       through the 48-hour window, and a driver on a phone can actually reach it.',
 );

@@ -147,7 +147,7 @@ await db.exec(`
   create table public.app_events (
     id uuid primary key default gen_random_uuid(),
     /*
-      ⚠ The real CHECK constraint, copied from 07_admin.sql, and it belongs here.
+      ⚠ The real CHECK constraint, copied from 20250101000007_admin.sql, and it belongs here.
 
         This stub used to say 'level text' with nothing else. Every harness did.
         So twelve inserts across nine migrations wrote 'warn' — which the real
@@ -167,11 +167,11 @@ await db.exec(`
 `);
 
 // The real functions, lifted out of the real migrations.
-const windows = read('supabase/21_offer_windows.sql');
-const volatility = read('supabase/22_matcher_volatility.sql');
-const cooldownSql = read('supabase/23_offer_cooldown.sql');
-const departureSql = read('supabase/26_departure_time.sql');
-const editSql = read('supabase/27_journey_edit.sql');
+const windows = read('supabase/migrations/20250101000021_offer_windows.sql');
+const volatility = read('supabase/migrations/20250101000022_matcher_volatility.sql');
+const cooldownSql = read('supabase/migrations/20250101000023_offer_cooldown.sql');
+const departureSql = read('supabase/migrations/20250101000026_departure_time.sql');
+const editSql = read('supabase/migrations/20250101000027_journey_edit.sql');
 
 await db.exec(extractFunction(windows, 'create or replace function public.offer_hold('));
 await db.exec(extractFunction(volatility, 'create or replace function public.journey_matches('));

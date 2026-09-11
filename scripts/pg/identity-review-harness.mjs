@@ -56,7 +56,7 @@ const refusal = async (fn) => {
 console.log('\nrunning the sender identity review against Postgres…\n');
 const KIND_CHECK = (() => {
   const found = /kind text not null (check \(kind in \([\s\S]*?\)\))/.exec(
-    read('supabase/38_transactional_email.sql'),
+    read('supabase/migrations/20250101000038_transactional_email.sql'),
   );
   if (!found) {
     console.error('FAIL — could not lift the kind constraint out of 38');
@@ -176,8 +176,8 @@ await db.exec(`
   insert into public.admins (id) values ('${ADMIN}');
 `);
 
-await db.exec(read('supabase/41_sender_identity_review.sql'));
-await db.exec(read('supabase/43_review_sees_the_selfie.sql').replace(/notify pgrst[^;]*;/g, ''));
+await db.exec(read('supabase/migrations/20250101000041_sender_identity_review.sql'));
+await db.exec(read('supabase/migrations/20250101000043_review_sees_the_selfie.sql').replace(/notify pgrst[^;]*;/g, ''));
 
 const beAdmin = () =>
   db.exec(`delete from public.who; insert into public.who values ('${ADMIN}');`);
@@ -313,7 +313,7 @@ await run('opening the documents writes an audit line', async () => {
   check('and why', /Reviewing the ID queue/.test(JSON.stringify(events[0]?.context)), '');
   check(
     'the reason is capped rather than stored whole',
-    /left\(coalesce\(reason, ''\), 200\)/.test(read('supabase/41_sender_identity_review.sql')),
+    /left\(coalesce\(reason, ''\), 200\)/.test(read('supabase/migrations/20250101000041_sender_identity_review.sql')),
     'an unbounded free-text field written by an operator into an audit table is a place to hide things',
   );
 

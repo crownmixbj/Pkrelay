@@ -214,7 +214,7 @@ export function DriverHub() {
   /*
    * Quoted fares on parcels held and delivered — gross, and not a balance.
    *
-   * The ledger in `supabase/30_driver_wallet.sql` is the balance, and it is
+   * The ledger in `supabase/migrations/20250101000030_driver_wallet.sql` is the balance, and it is
    * deliberately a different number: net of commission, delivered parcels only,
    * less a security hold. The card says "Expected" for that reason, and the
    * sheet it opens links to the Wallet.
@@ -299,7 +299,7 @@ export function DriverHub() {
       /*
        * The city comes from the approved application, not from a picker.
        *
-       * It is the city LOCI vetted this driver to work in, and a driver who
+       * It is the city Package Relay vetted this driver to work in, and a driver who
        * could type any city could go online somewhere they have never been.
        */
       const city = application?.baseCity;
@@ -593,7 +593,7 @@ export function DriverHub() {
             Only when there is nothing live — during an offer the countdown is
             the only thing that should be competing for attention. It is a plain
             line rather than a warning card because the driver did nothing
-            wrong: LOCI could not reach them. What follows it depends on whether
+            wrong: Package Relay could not reach them. What follows it depends on whether
             this phone can be reached now — telling somebody with notifications
             refused that the next one will find them would be the same false
             reassurance in the opposite direction.
@@ -624,7 +624,7 @@ export function DriverHub() {
               <View style={styles.emptyWrap}>
                 {/*
                 Both the message and the button follow the mode. A driver in
-                Flash being told to "tell LOCI where you are going" would be
+                Flash being told to "tell Package Relay where you are going" would be
                 being asked for the one thing Flash exists to avoid.
 
                 And neither appears at all while an offer is pending. "Nothing

@@ -6,7 +6,7 @@ import type { IdentityStatus, SenderIdentity } from '@/store/identity';
  * ⚠ Verified, or nothing. This is the second reversal, and both are recorded
  *   because the reasoning is the point.
  *
- *   First LOCI let everyone post and recorded a selfie afterwards. Then a
+ *   First Package Relay let everyone post and recorded a selfie afterwards. Then a
  *   just-in-time gate stopped only accounts that had never submitted a NIN,
  *   deliberately letting `pending` and `flagged` through. Now only `verified`
  *   passes.
@@ -38,7 +38,7 @@ import type { IdentityStatus, SenderIdentity } from '@/store/identity';
  *   accepted-and-ignored: an argument a function quietly discards is how a call
  *   site goes on looking like it handles an outage years after it stopped.
  *
- * ⚠ `42_verified_senders_only.sql` holds the same rule in the insert policy.
+ * ⚠ `20250101000042_verified_senders_only.sql` holds the same rule in the insert policy.
  *
  *   Nothing here is the security boundary. This exists so somebody is told
  *   *before* filling a form that the server will refuse the submit, and told
@@ -124,7 +124,7 @@ export function gateTitle(decision: GateDecision): string {
  *
  *   This is the part that makes the block defensible rather than merely
  *   strict. Two of these people have done everything asked and are waiting on
- *   LOCI — telling them to "complete your verification" would be a lie, and
+ *   Package Relay — telling them to "complete your verification" would be a lie, and
  *   telling them nothing would leave them refreshing a form that will keep
  *   refusing. So the waiting cases say who is waiting and roughly how they
  *   find out, and the actionable cases say exactly what to do.
@@ -151,7 +151,7 @@ export function blockedMessage(decision: GateDecision, reviewNote: string | null
      *
      *   The confidence score is a machine's opinion, frequently wrong about an
      *   old NIMC photo or a badly lit room, and repeating it to the customer
-     *   as a verdict would be LOCI asserting something no person has checked.
+     *   as a verdict would be Package Relay asserting something no person has checked.
      */
     case 'flagged':
       return 'Your ID needs to be checked by a person before you can send parcels. We will email you as soon as that is done.';

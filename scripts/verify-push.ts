@@ -42,12 +42,12 @@ const code = (source: string) =>
 
 const flat = (source: string) => source.replace(/\s+/g, ' ');
 
-const sql = read('supabase/19_push.sql');
+const sql = read('supabase/migrations/20250101000019_push.sql');
 const sqlCode = code(sql);
 const fn = read('supabase/functions/notify-offer/index.ts');
 const fnCode = code(fn);
 const client = read('src/store/push.ts');
-const flashSql = code(read('supabase/18_flash_mode.sql'));
+const flashSql = code(read('supabase/migrations/20250101000018_flash_mode.sql'));
 
 // ------------------------------------------------- 1. the unified matcher --
 
@@ -70,7 +70,7 @@ check(
 );
 check(
   'only approved drivers hold journeys at all',
-  flat(read('supabase/15_dispatch.sql')).includes(
+  flat(read('supabase/migrations/20250101000015_dispatch.sql')).includes(
     'with check (driver_id = (select auth.uid()) and public.is_approved_driver())',
   ),
   'city credentials are the approved application; nothing else grants a driver a city',
@@ -96,8 +96,8 @@ check(
 );
 check(
   'going offline takes effect without anything to invalidate',
-  flat(read('supabase/18_flash_mode.sql')).includes("set status = 'completed'") &&
-    flat(read('supabase/15_dispatch.sql')).includes("where j.status = 'open'"),
+  flat(read('supabase/migrations/20250101000018_flash_mode.sql')).includes("set status = 'completed'") &&
+    flat(read('supabase/migrations/20250101000015_dispatch.sql')).includes("where j.status = 'open'"),
   'the matcher reads status live, so a mode change is visible on the next match',
 );
 
@@ -105,7 +105,7 @@ check(
 
 check(
   'a posted parcel is dispatched by a trigger',
-  flat(read('supabase/15_dispatch.sql')).includes('create trigger bookings_dispatch_on_insert'),
+  flat(read('supabase/migrations/20250101000015_dispatch.sql')).includes('create trigger bookings_dispatch_on_insert'),
 );
 check(
   'and every created offer notifies, from the row rather than the caller',
@@ -164,14 +164,14 @@ check(
 
 // ------------------------------------ the notifier cannot take dispatch down --
 
-const delivery = read('supabase/24_push_delivery.sql');
+const delivery = read('supabase/migrations/20250101000024_push_delivery.sql');
 const deliveryCode = code(delivery);
 
 check(
   'pg_net is resolved at runtime, not hard-coded',
   flat(deliveryCode).includes('post_fn := private.pg_net_post_fn();') &&
     flat(deliveryCode).includes("where p.proname = 'http_post'"),
-  'Supabase puts pg_net in net on some projects and extensions on others; 19_push.sql guessed a third thing that is not valid SQL at all',
+  'Supabase puts pg_net in net on some projects and extensions on others; 20250101000019_push.sql guessed a third thing that is not valid SQL at all',
 );
 check(
   'the broken three-part name is gone',
@@ -283,7 +283,7 @@ check('and the fee and weight', rendered.includes('4 kg') && rendered.includes('
 check('and how long is left', /5 min left/.test(rendered));
 check(
   'and says what to do about it',
-  /Open LOCI to accept/.test(rendered),
+  /Open Package Relay to accept/.test(rendered),
   'a deadline with no named action tells a driver they are late without telling them for what',
 );
 check(

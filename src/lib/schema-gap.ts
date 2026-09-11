@@ -22,16 +22,16 @@
 export type CapabilityDef = { label: string; fn: string; migration: string };
 
 export const CAPABILITIES: readonly CapabilityDef[] = [
-  { label: 'Parcel photos', fn: 'attach_parcel_photo', migration: '36_parcel_photos.sql' },
+  { label: 'Parcel photos', fn: 'attach_parcel_photo', migration: '20250101000036_parcel_photos.sql' },
   {
     label: 'Sender identity reveal',
     fn: 'admin_reveal_sender_identity',
-    migration: '37_admin_sender_identity.sql',
+    migration: '20250101000037_admin_sender_identity.sql',
   },
-  { label: 'Driver wallet', fn: 'request_payout', migration: '30_driver_wallet.sql' },
-  { label: 'Document expiry', fn: 'record_document', migration: '31_document_expiry.sql' },
-  { label: 'Manual dispatch', fn: 'set_dispatch_mode', migration: '32_dispatch_mode.sql' },
-  { label: 'Account erasure', fn: 'attach_identity_result', migration: '34_identity_handoff.sql' },
+  { label: 'Driver wallet', fn: 'request_payout', migration: '20250101000030_driver_wallet.sql' },
+  { label: 'Document expiry', fn: 'record_document', migration: '20250101000031_document_expiry.sql' },
+  { label: 'Manual dispatch', fn: 'set_dispatch_mode', migration: '20250101000032_dispatch_mode.sql' },
+  { label: 'Account erasure', fn: 'attach_identity_result', migration: '20250101000034_identity_handoff.sql' },
 
   /*
    * ⚠ These four were missing, and their absence is why the panel could report
@@ -42,21 +42,21 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
    *   when it is itself behind the code — it turns a question somebody would
    *   have investigated into a reassuring green tick.
    */
-  { label: 'Transactional email', fn: 'queue_email', migration: '38_transactional_email.sql' },
+  { label: 'Transactional email', fn: 'queue_email', migration: '20250101000038_transactional_email.sql' },
   {
     label: 'Guarantor verification',
     fn: 'open_guarantor_invitation',
-    migration: '39_guarantor_verification.sql',
+    migration: '20250101000039_guarantor_verification.sql',
   },
   {
     label: 'Driver review controls',
     fn: 'guard_application_decision',
-    migration: '40_review_controls.sql',
+    migration: '20250101000040_review_controls.sql',
   },
   {
     label: 'Sender ID review',
     fn: 'admin_identity_queue',
-    migration: '41_sender_identity_review.sql',
+    migration: '20250101000041_sender_identity_review.sql',
   },
   /*
    * ⚠ Added on the same commit as the migration, because the assertion
@@ -70,17 +70,17 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
   {
     label: 'Verified senders only',
     fn: 'is_verified_sender',
-    migration: '42_verified_senders_only.sql',
+    migration: '20250101000042_verified_senders_only.sql',
   },
   {
     label: 'Review sees the selfie',
     fn: 'sender_selfie_path',
-    migration: '43_review_sees_the_selfie.sql',
+    migration: '20250101000043_review_sees_the_selfie.sql',
   },
   {
     label: 'Selfie with the parcel',
     fn: 'attach_capture_on_insert',
-    migration: '44_selfie_with_the_parcel.sql',
+    migration: '20250101000044_selfie_with_the_parcel.sql',
   },
   /*
    * ⚠ 45 replaces a function that already exists, so its absence cannot be
@@ -98,7 +98,27 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
   {
     label: 'Account profiles (02; 45 refines it)',
     fn: 'handle_new_user',
-    migration: '45_google_identities.sql',
+    migration: '20250101000045_google_identities.sql',
+  },
+  /*
+   * ⚠ This one is not a feature, and its absence is not a broken screen.
+   *
+   *   48 closes gaps: the missing half of 44's insert policy, a trigger that
+   *   stops a client writing the delivery record `advance_booking` owns, and a
+   *   handful of policies rewritten to stop calling `is_admin()` once per row.
+   *   Nothing in the app calls a function that only 48 provides, so no
+   *   PGRST202 will ever name it and no message here will ever be shown.
+   *
+   *   It is listed because the panel's question is "is this database behind the
+   *   code", and on a project missing 48 the honest answer is yes — a parcel
+   *   can be posted with no selfie and a driver can mark one delivered without
+   *   delivering it. A capability list that omitted the security migrations
+   *   would answer that question with a green tick.
+   */
+  {
+    label: 'RLS hardening',
+    fn: 'guard_delivery_state',
+    migration: '20250101000048_rls_hardening.sql',
   },
 ];
 
@@ -120,7 +140,7 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
 const COLUMN_MIGRATIONS: Readonly<Record<string, { label: string; migration: string }>> = {
   capture_session_id: {
     label: 'Posting a parcel with its selfie',
-    migration: '44_selfie_with_the_parcel.sql',
+    migration: '20250101000044_selfie_with_the_parcel.sql',
   },
 };
 

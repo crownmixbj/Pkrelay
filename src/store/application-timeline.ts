@@ -64,7 +64,7 @@ export function reviewTimeline(
    *   nothing today — proved by mutating it and watching the suite stay green.
    *
    *   It stays because the branches below are copy, and copy gets reordered.
-   *   The claim it guards against is a real one: telling somebody LOCI is past
+   *   The claim it guards against is a real one: telling somebody Package Relay is past
    *   the seven working days it promised, when the clock has not started and
    *   support can do nothing, points them away from the one thing that would
    *   help. The clock starts when the queue takes it.

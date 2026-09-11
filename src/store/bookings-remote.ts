@@ -121,7 +121,7 @@ export function rowToBooking(row: BookingRow): Booking {
  *   who posted them and nothing anywhere saying so.
  *
  *   Sent with the insert, a BEFORE INSERT trigger resolves it and the policy
- *   requires the result — see `44_selfie_with_the_parcel.sql`. There is no
+ *   requires the result — see `20250101000044_selfie_with_the_parcel.sql`. There is no
  *   window where one exists without the other.
  */
 export function bookingToInsert(

@@ -3,7 +3,7 @@
  *
  * A delivery app cannot do turn-by-turn navigation well — it needs live traffic,
  * road data and a routing engine, and a half-built version of that is worse than
- * none. So LOCI does not try: it hands the destination to Google Maps and the
+ * none. So Package Relay does not try: it hands the destination to Google Maps and the
  * number to the dialler, which are already installed, already trusted with
  * location, and already what the driver uses.
  *

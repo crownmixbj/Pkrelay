@@ -13,12 +13,12 @@ import type { City } from '@/store/bookings';
  * Hubs used to be a constant compiled into the app, which meant correcting a
  * wrong address needed a deploy — and the Hubs & Operations screen had to
  * admit it could not edit anything. They now live in `public.hubs`: readable by
- * everyone, writable only by an admin. See `supabase/08_hubs.sql`.
+ * everyone, writable only by an admin. See `supabase/migrations/20250101000008_hubs.sql`.
  *
  * The seed array is still the fallback. If Supabase is unconfigured, or the
  * migration has not been run yet, the app shows the original network rather
  * than an empty page — a missing table should not make the Hubs page look like
- * LOCI has no hubs.
+ * Package Relay has no hubs.
  */
 
 type HubRow = Record<string, unknown>;
@@ -190,7 +190,7 @@ export function HubsProvider({ children }: { children: ReactNode }) {
        * An empty table is treated as "not seeded", not as "no hubs". The seed
        * runs in the same migration that creates the table, so empty almost
        * always means something went wrong — and showing nothing would make the
-       * public Hubs page claim LOCI has no network at all.
+       * public Hubs page claim Package Relay has no network at all.
        */
       if (!data || data.length === 0) {
         setAllHubs(SEED_HUBS);
@@ -208,7 +208,7 @@ export function HubsProvider({ children }: { children: ReactNode }) {
       setUsingSeed(true);
       setError(
         /does not exist|schema cache|relation/i.test(message)
-          ? 'Showing the built-in hub list. Run supabase/08_hubs.sql to make hubs editable.'
+          ? 'Showing the built-in hub list. Run supabase/migrations/20250101000008_hubs.sql to make hubs editable.'
           : message,
       );
     } finally {

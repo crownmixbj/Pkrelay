@@ -54,7 +54,7 @@ export const CONDUCT: Guideline[] = [
   {
     key: 'handling',
     title: 'Treat a fragile parcel as fragile',
-    body: 'LOCI does not charge extra for fragile items, which means there is no insurance premium behind them. If a parcel is marked fragile, it travels upright, secured, and not under anything.',
+    body: 'Package Relay does not charge extra for fragile items, which means there is no insurance premium behind them. If a parcel is marked fragile, it travels upright, secured, and not under anything.',
   },
   {
     key: 'handover',
@@ -109,7 +109,7 @@ export const FAQS: Faq[] = [
     key: 'paid',
     question: 'When and how do I get paid?',
     answer:
-      'Delivering a parcel credits your Driver Wallet, net of LOCI’s commission. New money sits on a short security hold, then you can request a payout to the bank account on your application — LOCI makes that transfer by hand, so it is not instant. The figure shown on a job is the gross fare quoted to the sender and will always be higher than what lands in your wallet; the Wallet balance is the one to trust.',
+      'Delivering a parcel credits your Driver Wallet, net of Package Relay’s commission. New money sits on a short security hold, then you can request a payout to the bank account on your application — Package Relay makes that transfer by hand, so it is not instant. The figure shown on a job is the gross fare quoted to the sender and will always be higher than what lands in your wallet; the Wallet balance is the one to trust.',
   },
   {
     key: 'edit-details',
@@ -127,7 +127,7 @@ export const FAQS: Faq[] = [
     key: 'documents',
     question: 'Who can see the documents I uploaded?',
     answer:
-      'You and LOCI reviewers, nobody else. They are held in a private store and opened through short-lived links, so a URL that leaks does not stay usable. Other drivers cannot see them.',
+      'You and Package Relay reviewers, nobody else. They are held in a private store and opened through short-lived links, so a URL that leaks does not stay usable. Other drivers cannot see them.',
   },
   {
     key: 'stop',

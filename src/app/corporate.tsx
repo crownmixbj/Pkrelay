@@ -96,7 +96,7 @@ export default function CorporateScreen() {
           <Button
             label="Email the business team"
             icon={(color, size) => <Mail color={color} size={size} />}
-            onPress={() => Linking.openURL('mailto:business@loci.ng?subject=Corporate%20Delivery')}
+            onPress={() => Linking.openURL('mailto:business@pkrelay.ng?subject=Corporate%20Delivery')}
           />
           <Button label="Close" variant="secondary" onPress={() => router.back()} />
         </Card>

@@ -47,14 +47,14 @@ export function AdminOverview({ onReview }: { onReview: () => void }) {
       setError(null);
     } catch (thrown) {
       /*
-       * The most likely cause by far is that `07_admin.sql` has not been run,
+       * The most likely cause by far is that `20250101000007_admin.sql` has not been run,
        * and "function admin_overview does not exist" is not a message anyone
        * should have to decode.
        */
       const message = errorMessage(thrown, 'Could not load the overview.');
       setError(
         /does not exist|schema cache|404/i.test(message)
-          ? 'The admin functions are missing. Run supabase/07_admin.sql in the SQL editor, then reload.'
+          ? 'The admin functions are missing. Run supabase/migrations/20250101000007_admin.sql in the SQL editor, then reload.'
           : message,
       );
     } finally {

@@ -4,7 +4,7 @@
  * The last step of erasure, and the only one that cannot be done from SQL: no
  * role a client can reach may write `auth.users`.
  *
- * ⚠ THIS IS THE MOST DANGEROUS ENDPOINT IN LOCI.
+ * ⚠ THIS IS THE MOST DANGEROUS ENDPOINT IN PACKAGE RELAY.
  *
  *   It holds the service key, and the service key bypasses every Row Level
  *   Security policy in the database. Three guards stand between a request and a
@@ -22,7 +22,7 @@
  *
  *   So this endpoint cannot start an erasure. It can only finish one.
  *
- * ⚠ Requires the foreign-key repair in `supabase/33_erase_repair.sql`.
+ * ⚠ Requires the foreign-key repair in `supabase/migrations/20250101000033_erase_repair.sql`.
  *
  *   Without it, deleting the login cascades away every parcel the person ever
  *   sent — taking the recipients' delivery history with it — or raises on
@@ -130,7 +130,7 @@ Deno.serve(async (request: Request) => {
   /*
     The foreign-key repair, checked rather than assumed.
 
-    `bookings.sender_id` must be nullable. If 33_erase_repair.sql has not been
+    `bookings.sender_id` must be nullable. If 20250101000033_erase_repair.sql has not been
     run, it is `not null` with `on delete cascade`, and this delete would take
     every parcel the person sent — and their recipients' history — with it.
 
@@ -151,7 +151,7 @@ Deno.serve(async (request: Request) => {
       return json(
         {
           error:
-            'Run supabase/33_erase_repair.sql first. Until bookings.sender_id is nullable, ' +
+            'Run supabase/migrations/20250101000033_erase_repair.sql first. Until bookings.sender_id is nullable, ' +
             'removing this login would delete every parcel this person sent, along with the ' +
             "recipients' delivery history.",
         },

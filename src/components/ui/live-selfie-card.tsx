@@ -59,7 +59,7 @@ const COPY: Record<PhotoPurpose, { title: string; body: string; done: string; pe
   },
   driver: {
     title: 'Live photo of you',
-    body: 'Taken now, with your camera — a saved picture cannot be used. LOCI compares it with the photo on your NIN record.',
+    body: 'Taken now, with your camera — a saved picture cannot be used. Package Relay compares it with the photo on your NIN record.',
     done: 'Live photo captured and checked.',
     pending: 'Live photo captured.',
   },

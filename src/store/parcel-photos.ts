@@ -15,10 +15,10 @@ import { maskNin } from '@/store/identity';
  *
  *   The sender photo is a human face: sensitive personal data under the NDPA,
  *   and the sender is told it is "stored privately, visible only to you and to
- *   LOCI staff". Reaching it — and the NIN slip beside it — goes through
+ *   Package Relay staff". Reaching it — and the NIN slip beside it — goes through
  *   `admin_reveal_sender_identity`, which writes a line naming who looked in the
  *   same transaction that returns the paths. Same shape as the contact reveal in
- *   `17_admin_parcel_detail.sql`.
+ *   `20250101000017_admin_parcel_detail.sql`.
  *
  *   Putting the parcel behind the reveal too would be worse, not safer: staff
  *   would type something into a reason box several times a day to see a

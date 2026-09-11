@@ -60,10 +60,10 @@ const code = (source: string) =>
 
 const flat = (source: string) => source.replace(/\s+/g, ' ');
 
-const sql = read('supabase/16_driver_identity.sql');
+const sql = read('supabase/migrations/20250101000016_driver_identity.sql');
 const sqlCode = code(sql);
 /* The handoff that carries the verdict from the session onto the application. */
-const handoffCode = code(read('supabase/34_identity_handoff.sql'));
+const handoffCode = code(read('supabase/migrations/20250101000034_identity_handoff.sql'));
 const signup = read('src/app/(tabs)/driver-signup.tsx');
 const identityFn = read('supabase/functions/verify-identity/index.ts');
 
@@ -120,7 +120,7 @@ check(
 check(
   'the modal names the registered number',
   flat(read('src/store/registered-phone.ts')).includes(
-    'This application has to use the phone number on your LOCI account: ${displayRegisteredPhone(',
+    'This application has to use the phone number on your Package Relay account: ${displayRegisteredPhone(',
   ),
   '"that number does not match" leaves someone guessing which of their SIMs the account uses',
 );
@@ -372,7 +372,7 @@ check(
 check(
   'the government identity record is not stored',
   !/first_name|date_of_birth|birthdate/.test(code(identityFn)),
-  'LOCI has the name from the form; a second copy pulled from NIMC plus their photo serves no stateable purpose',
+  'Package Relay has the name from the form; a second copy pulled from NIMC plus their photo serves no stateable purpose',
 );
 check(
   'the sensitive-data escalation is flagged',
@@ -452,7 +452,7 @@ check(
 
 // ------------------------------------------ what a driver may change later --
 
-const editsSql = read('supabase/29_driver_profile_edits.sql');
+const editsSql = read('supabase/migrations/20250101000029_driver_profile_edits.sql');
 const editsCode = code(editsSql);
 const profile = read('src/store/driver-profile.ts');
 
@@ -658,7 +658,7 @@ check(
  *
  * The first version of this sheet had two prose banners saying bank and contact
  * details are managed elsewhere. That answers "can I change this here?" and
- * leaves the commoner question — "what does LOCI actually have on file for me?"
+ * leaves the commoner question — "what does Package Relay actually have on file for me?"
  * — unanswered, so a driver who suspected a wrong phone number had no way to
  * check it from the one screen about their own details.
  *

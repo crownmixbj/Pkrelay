@@ -59,8 +59,8 @@ async function run(label, fn) {
 const db = await PGlite.create();
 const q = async (sql, params = []) => (await db.query(sql, params)).rows;
 
-const photos = read('supabase/36_parcel_photos.sql');
-const identity = read('supabase/37_admin_sender_identity.sql');
+const photos = read('supabase/migrations/20250101000036_parcel_photos.sql');
+const identity = read('supabase/migrations/20250101000037_admin_sender_identity.sql');
 
 console.log('\nrunning parcel photo rules against Postgres…\n');
 
@@ -80,7 +80,7 @@ await db.exec(`
   create table public.app_events (
     id bigserial primary key,
     /*
-      ⚠ The real CHECK constraint, copied from 07_admin.sql.
+      ⚠ The real CHECK constraint, copied from 20250101000007_admin.sql.
 
         Every harness once stubbed this as a bare \`level text\`, so twelve
         inserts across nine migrations wrote 'warn' — which the real table

@@ -4,7 +4,7 @@
  * ⚠ The failure this guards is a whole class of account the phone lock does not
  *   cover.
  *
- *   `guard_application_phone` in `16_driver_identity.sql` stops a driver
+ *   `guard_application_phone` in `20250101000016_driver_identity.sql` stops a driver
  *   applicant claiming a number that is not their account's. It deliberately
  *   passes accounts that have *no* number, because some predate the field —
  *   which was safe while every account came from a sign-up form that refuses to
@@ -230,7 +230,7 @@ check(
 
 // ------------------------------------------------ the name Google sends -----
 
-const migration = read('supabase/45_google_identities.sql');
+const migration = read('supabase/migrations/20250101000045_google_identities.sql');
 
 check(
   'the profile trigger reads the key Google documents',

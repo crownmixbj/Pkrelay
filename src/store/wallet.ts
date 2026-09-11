@@ -4,12 +4,12 @@ import { supabase } from '@/lib/supabase';
  * The driver's money.
  *
  * ⚠ Every figure here comes from `public.driver_earnings` and
- *   `public.payout_requests` (`supabase/30_driver_wallet.sql`) — a real ledger,
+ *   `public.payout_requests` (`supabase/migrations/20250101000030_driver_wallet.sql`) — a real ledger,
  *   not a sum of quoted fares. That distinction is the reason this module
  *   exists: `earnings.ts` deliberately labels its totals "Expected" because it
  *   has no ledger behind it. This one does, so it may say "balance".
  *
- * ⚠ What it still cannot say is that money *moved*. Nothing in LOCI talks to a
+ * ⚠ What it still cannot say is that money *moved*. Nothing in Package Relay talks to a
  *   bank. A payout marked `paid` means a person recorded making a transfer.
  */
 
@@ -203,7 +203,7 @@ export function payoutStatusLine(
   minimum: number,
 ): string {
   if (open) {
-    return `${naira(open.amount)} is being processed. LOCI transfers it to your account manually — you will see it here when it is done.`;
+    return `${naira(open.amount)} is being processed. Package Relay transfers it to your account manually — you will see it here when it is done.`;
   }
 
   if (balance.onHold > 0 && balance.available <= 0) {

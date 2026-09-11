@@ -6,11 +6,11 @@ import { supabase } from '@/lib/supabase';
  * Everything here is subject to Row Level Security: an applicant's queries can
  * only ever return their own row, and the review calls only succeed for an
  * account whose profile has `is_admin`. The client code below is therefore a
- * convenience, not the security boundary — see `supabase/02_driver_applications.sql`.
+ * convenience, not the security boundary — see `supabase/migrations/20250101000002_driver_applications.sql`.
  */
 export type ApplicationStatus =
   /**
-   * ⚠ Submitted, but waiting on somebody outside LOCI.
+   * ⚠ Submitted, but waiting on somebody outside Package Relay.
    *
    *   The guarantor has been emailed a link and has not used it. No admin can
    *   act on this and no amount of staffing clears it, which is why it is kept
@@ -51,7 +51,7 @@ export function isAwaitingReview(status: ApplicationStatus): boolean {
   return AWAITING_REVIEW.includes(status);
 }
 
-/** True when nobody at LOCI can move it — it is held on a third party. */
+/** True when nobody at Package Relay can move it — it is held on a third party. */
 export function isWaitingOnGuarantor(status: ApplicationStatus): boolean {
   return status === 'pending_guarantor';
 }
@@ -68,7 +68,7 @@ export function isWaitingOnGuarantor(status: ApplicationStatus): boolean {
  *   one that went through properly: `approved`, with no guarantor record and
  *   nothing to say the step was skipped.
  *
- *   `40_review_controls.sql` refuses that update as well. This is the half that
+ *   `20250101000040_review_controls.sql` refuses that update as well. This is the half that
  *   stops an admin being offered it in the first place.
  */
 export function canApprove(status: ApplicationStatus): boolean {
@@ -84,7 +84,7 @@ export function canApprove(status: ApplicationStatus): boolean {
  *   licence, an account already banned. Making the reviewer wait on an email to
  *   a stranger before they may say so would leave an unusable application in
  *   the list for a week, and the guarantor would be asked to vouch for somebody
- *   LOCI has already decided against.
+ *   Package Relay has already decided against.
  */
 export function canReject(status: ApplicationStatus): boolean {
   return status !== 'approved' && status !== 'rejected';
@@ -108,7 +108,7 @@ export type DriverApplication = {
 
   vehicleType: string;
   /**
-   * Added by `29_driver_profile_edits.sql`, so it is absent on every row
+   * Added by `20250101000029_driver_profile_edits.sql`, so it is absent on every row
    * created before it. Nullable rather than `string` for that reason — an
    * application submitted last month genuinely has no colour, and defaulting it
    * to `''` here would make "not recorded" indistinguishable from "cleared".
@@ -126,7 +126,7 @@ export type DriverApplication = {
    * ⚠ Still read, never written any more.
    *
    *   The guarantor supplies their own NIN through an invitation now — see
-   *   `39_guarantor_verification.sql`. These three stay on the *read* type
+   *   `20250101000039_guarantor_verification.sql`. These three stay on the *read* type
    *   because applications submitted before that change hold values in them,
    *   and an admin reviewing a driver approved last year should still see what
    *   was recorded at the time. `NewApplication` omits them, so nothing can
@@ -158,7 +158,7 @@ export type DriverApplication = {
    *
    * Both null means never attempted — no email provider is configured yet.
    * Written only by the Edge Function running as the service role; a trigger in
-   * `06_application_email.sql` refuses client writes, so an applicant cannot
+   * `20250101000006_application_email.sql` refuses client writes, so an applicant cannot
    * mark their own row as delivered.
    */
   confirmationEmailSentAt: string | null;
@@ -387,7 +387,7 @@ export function isOverdue(application: DriverApplication, now: Date = new Date()
    * ⚠ An application held on a guarantor is not a backlog.
    *
    *   `isOverdue` feeds the "past N days" figure an ops team is judged on and
-   *   staffs against. An application nobody at LOCI is permitted to touch,
+   *   staffs against. An application nobody at Package Relay is permitted to touch,
    *   ageing because a stranger has not opened an email, would inflate that
    *   number with work that does not exist — and hiring against it would fix
    *   nothing. The driver's own lever for this is `reinvite_guarantor`.
@@ -567,7 +567,7 @@ export type PayoutChange = {
  * driver two days to notice, and the *old* account keeps receiving transfers
  * throughout — so the theft window never opens at all.
  *
- * The rules are in `supabase/16_driver_identity.sql`. There is no client write
+ * The rules are in `supabase/migrations/20250101000016_driver_identity.sql`. There is no client write
  * path to `payout_change_requests`: a driver who could write the row could set
  * `effective_at` to now and skip the wait entirely.
  */

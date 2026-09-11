@@ -1,7 +1,7 @@
 import { cityForState, CITIES, type City } from '@/store/bookings';
 
 /**
- * Turning "14 Allen Avenue, Ikeja" into a city LOCI actually serves.
+ * Turning "14 Allen Avenue, Ikeja" into a city Package Relay actually serves.
  *
  * ⚠ The quote is banded, not measured, and this is the whole reason this file
  *   is small.
@@ -27,7 +27,7 @@ export type AddressComponent = {
 export type PlaceResolution =
   /** A city the pricing knows, and how confident we are about it. */
   | { kind: 'served'; city: City; via: 'locality' | 'state' }
-  /** In Nigeria, but nowhere LOCI operates. */
+  /** In Nigeria, but nowhere Package Relay operates. */
   | { kind: 'unserved'; describedAs: string }
   /** Nothing usable in the components at all. */
   | { kind: 'unknown' };
@@ -62,7 +62,7 @@ function pick(components: AddressComponent[], type: string): AddressComponent | 
  *   A Nigerian address usually reports the town in `locality` and the state in
  *   `administrative_area_level_1`. Reading the state first would send every
  *   address in Oyo to Ibadan — correct for most of the state and wrong for
- *   anybody in a town LOCI also serves separately.
+ *   anybody in a town Package Relay also serves separately.
  *
  *   `administrative_area_level_2` is consulted between the two because Google
  *   frequently files Nigerian towns there rather than in `locality`, and
@@ -129,7 +129,7 @@ export function resolutionSummary(resolution: PlaceResolution): string {
   }
 
   if (resolution.kind === 'unserved') {
-    return `LOCI does not deliver in ${resolution.describedAs} yet — pick a city instead.`;
+    return `Package Relay does not deliver in ${resolution.describedAs} yet — pick a city instead.`;
   }
 
   return 'That address could not be matched to a city — pick one instead.';

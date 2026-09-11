@@ -4,7 +4,7 @@ import type { Booking, BookingStage } from '@/store/bookings';
 /**
  * Who can call off a parcel, and until when.
  *
- * The rule lives in `supabase/11_cancellation.sql` — `cancellation_allowed`.
+ * The rule lives in `supabase/migrations/20250101000011_cancellation.sql` — `cancellation_allowed`.
  * This is the client's copy of it, used only to decide whether to *show* a
  * button. Every attempt is re-checked on the server, so a modified client gains
  * nothing but a button that returns an error.

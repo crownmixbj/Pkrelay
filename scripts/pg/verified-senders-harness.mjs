@@ -149,7 +149,7 @@ const policyFrom = (sql, label) => {
   return found[0];
 };
 
-await db.exec(policyFrom(read('supabase/09_bans.sql'), '09_bans.sql'));
+await db.exec(policyFrom(read('supabase/migrations/20250101000009_bans.sql'), '20250101000009_bans.sql'));
 
 const asSender = () => db.exec(`set role authenticated;`);
 const asOwner = () => db.exec('reset role;');
@@ -228,7 +228,7 @@ await run('before 42, an unverified account can post', async () => {
 
 /* Now apply 42, in the order a deployment would. */
 await asOwner();
-await db.exec(read('supabase/42_verified_senders_only.sql').replace(/notify pgrst[^;]*;/g, ''));
+await db.exec(read('supabase/migrations/20250101000042_verified_senders_only.sql').replace(/notify pgrst[^;]*;/g, ''));
 await db.exec('grant execute on function public.is_verified_sender() to authenticated;');
 await db.exec('delete from public.bookings;');
 
@@ -385,7 +385,7 @@ await run('the predicate cannot be asked about somebody else', async () => {
  *   taken one.
  */
 await asOwner();
-await db.exec(read('supabase/44_selfie_with_the_parcel.sql').replace(/notify pgrst[^;]*;/g, ''));
+await db.exec(read('supabase/migrations/20250101000044_selfie_with_the_parcel.sql').replace(/notify pgrst[^;]*;/g, ''));
 await db.exec('delete from public.bookings;');
 hasCaptureColumn = true;
 
@@ -454,7 +454,7 @@ await run('somebody else’s selfie cannot authorise your parcel', async () => {
   check(
     'the insert is refused',
     message !== null && /not yours|already been used/i.test(message ?? ''),
-    message ?? 'a parcel could then carry a photograph of somebody who has never used LOCI',
+    message ?? 'a parcel could then carry a photograph of somebody who has never used Package Relay',
   );
 });
 
@@ -502,7 +502,7 @@ await run('an unfinished capture cannot authorise anything', async () => {
 /*
  * ⚠ A failed liveness check stops the parcel; an unavailable one does not.
  *
- *   14_liveness.sql made this call and it still holds. A provider outage is not
+ *   20250101000014_liveness.sql made this call and it still holds. A provider outage is not
  *   the sender's fault, and blocking every parcel in the country over one would
  *   be a worse failure than recording an unchecked photo. A photo that was
  *   checked and *failed* is a different thing — something was held up to the

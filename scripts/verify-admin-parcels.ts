@@ -11,7 +11,7 @@
  *   - every reveal is logged before the data is returned
  *   - the open board is no longer readable by any signed-in account
  */
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { ageLabel } from '../src/store/admin';
@@ -36,7 +36,7 @@ const code = (source: string) =>
 
 const flat = (source: string) => source.replace(/\s+/g, ' ');
 
-const sql = read('supabase/17_admin_parcel_detail.sql');
+const sql = read('supabase/migrations/20250101000017_admin_parcel_detail.sql');
 const sqlCode = code(sql);
 const drawer = read('src/components/ui/admin-parcel-drawer.tsx');
 const overview = read('src/components/ui/admin-overview.tsx');
@@ -71,26 +71,35 @@ check(
  * quietly making all of the redaction below pointless. This assertion fails the
  * day that happens.
  */
-const allSql = ['01', '07', '09', '11', '15', '16', '17']
-  .map((n) => {
-    const match = [
-      `supabase/${n}_bookings.sql`,
-      `supabase/${n}_admin.sql`,
-      `supabase/${n}_bans.sql`,
-      `supabase/${n}_cancellation.sql`,
-      `supabase/${n}_dispatch.sql`,
-      `supabase/${n}_driver_identity.sql`,
-      `supabase/${n}_admin_parcel_detail.sql`,
-    ];
-    for (const path of match) {
-      try {
-        return code(read(path));
-      } catch {
-        /* not this name */
-      }
-    }
-    return '';
-  })
+/*
+ * Read by suffix, not by ordinal.
+ *
+ * Migrations live in \`supabase/migrations/\` under a timestamped version prefix,
+ * so the old '01', '07', … lookup no longer names a file. Worse, it failed
+ * *open*: a miss returned an empty string and every assertion below passed on
+ * nothing. Matching on the descriptive tail survives a renumber, and an
+ * unmatched name is now a thrown error rather than a silent pass.
+ */
+const MIGRATION_DIR = 'supabase/migrations';
+
+const migrationBySuffix = (suffix: string): string => {
+  const match = readdirSync(join(ROOT, MIGRATION_DIR)).find((name) =>
+    name.endsWith(`_${suffix}.sql`),
+  );
+  if (!match) throw new Error(`no migration ending in _${suffix}.sql`);
+  return read(`${MIGRATION_DIR}/${match}`);
+};
+
+const allSql = [
+  'bookings',
+  'admin',
+  'bans',
+  'cancellation',
+  'dispatch',
+  'driver_identity',
+  'admin_parcel_detail',
+]
+  .map((suffix) => code(migrationBySuffix(suffix)))
   .join('\n');
 
 check(

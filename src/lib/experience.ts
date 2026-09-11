@@ -1,7 +1,7 @@
 /**
  * Which interface a given person gets, on a given device.
  *
- * LOCI runs three:
+ * Package Relay runs three:
  *
  *   web           the full dashboard — everything, including admin
  *   sender        the phone app for someone posting parcels
@@ -198,7 +198,7 @@ const COMPLETION_EXEMPT = ['/complete-profile', '/sign-in', '/sign-up', '/confir
  * ⚠ Every email sign-up has a valid Nigerian number, and a rule elsewhere rests
  *   on that.
  *
- *   `guard_application_phone` in `16_driver_identity.sql` stops a driver
+ *   `guard_application_phone` in `20250101000016_driver_identity.sql` stops a driver
  *   applicant claiming a number that is not their account's — and it
  *   deliberately passes accounts with *no* number, because some predate the
  *   field. Google accounts arrive with none, so without this every one of them

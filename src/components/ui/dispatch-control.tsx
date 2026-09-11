@@ -119,7 +119,7 @@ export function DispatchControl() {
 
     showDialog(
       'Switch to manual assignment?',
-      `LOCI will stop offering parcels to drivers. Nothing already in progress is affected — live offers keep their countdowns and drivers carry on delivering — but every new parcel will wait for you.${
+      `Package Relay will stop offering parcels to drivers. Nothing already in progress is affected — live offers keep their countdowns and drivers carry on delivering — but every new parcel will wait for you.${
         health.unassigned > 0 ? `\n\n${health.unassigned} parcel(s) are already waiting.` : ''
       }`,
       [
@@ -167,7 +167,7 @@ export function DispatchControl() {
         <View style={[styles.segmented, { backgroundColor: theme.surfaceMuted }]}>
           <ModeButton
             label="Automatic matching"
-            caption="LOCI offers each parcel to the best driver"
+            caption="Package Relay offers each parcel to the best driver"
             icon={(color) => <Radio color={color} size={16} />}
             active={!unavailable && health.mode === 'auto'}
             disabled={switching || unavailable !== null}

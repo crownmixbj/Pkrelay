@@ -7,7 +7,7 @@ import { contentTypeFor, extensionOf, readFileBytes } from '@/lib/upload';
  * Sender identity: one full check, then a face.
  *
  * ⚠ Everything here processes biometric data to identify a person, which the
- *   NDPA treats as sensitive personal data. `supabase/28_sender_identity.sql`
+ *   NDPA treats as sensitive personal data. `supabase/migrations/20250101000028_sender_identity.sql`
  *   carries the full note, including the fact that nothing deletes a reference
  *   photo and that this is LEGAL_REVIEW_REQUIRED.
  */
@@ -21,7 +21,7 @@ import { contentTypeFor, extensionOf, readFileBytes } from '@/lib/upload';
  *   reached with the slip and the face side by side, and it does stop them —
  *   until they submit again.
  *
- *   28_sender_identity.sql explains why the automated path deliberately has no
+ *   20250101000028_sender_identity.sql explains why the automated path deliberately has no
  *   `rejected`; 41 explains why the human one does.
  */
 export type IdentityStatus = 'unverified' | 'pending' | 'verified' | 'flagged' | 'rejected';
@@ -198,7 +198,7 @@ export type OnboardingInput = {
  * What came back, and what to say about it.
  *
  * ⚠ Every one of these sentences used to promise the parcel went ahead, and
- *   `42_verified_senders_only.sql` made all of them false.
+ *   `20250101000042_verified_senders_only.sql` made all of them false.
  *
  *   They were written when a check outcome gated nothing: a flag or an outage
  *   was recorded and the shipment continued, so "your parcel is not held up"
@@ -278,7 +278,7 @@ let verificationReachable = true;
  *
  *   This existed so a Dojah outage would open the gate rather than close it —
  *   the argument being that a third-party outage must not become a total
- *   outage of the product. `42_verified_senders_only.sql` ends that: an outage
+ *   outage of the product. `20250101000042_verified_senders_only.sql` ends that: an outage
  *   is exactly when an unverified account would slip through. The flag is kept
  *   because the onboarding flow still uses it to tell a sender their
  *   submission failed for reasons that are not theirs, but nothing decides who

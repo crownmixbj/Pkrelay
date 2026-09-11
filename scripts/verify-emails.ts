@@ -46,8 +46,8 @@ const ROOT = process.cwd();
 const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');
 
 const CONTEXT: Context = {
-  appUrl: 'https://app.loci.test',
-  supportEmail: 'support@loci.test',
+  appUrl: 'https://app.pkrelay.test',
+  supportEmail: 'support@pkrelay.test',
 };
 
 /*
@@ -168,10 +168,10 @@ const templatesSource = stripComments(read('supabase/functions/notify-events/tem
  *
  *   Ordered by filename so the *last* kind constraint found is the one in force.
  */
-const migration = readdirSync(join(ROOT, 'supabase'))
+const migration = readdirSync(join(ROOT, 'supabase/migrations'))
   .filter((name) => /^\d+_.*\.sql$/.test(name))
   .sort()
-  .map((name) => read(`supabase/${name}`))
+  .map((name) => read(`supabase/migrations/${name}`))
   .join('\n');
 const migrationCode = migration.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*--.*$/gm, '');
 
@@ -236,7 +236,7 @@ check(
 const delivered = render('delivery_completed', HOSTILE, CONTEXT);
 check(
   'the delivery email links into the app rather than to the image',
-  Boolean(delivered) && delivered!.html.includes('https://app.loci.test/parcel/'),
+  Boolean(delivered) && delivered!.html.includes('https://app.pkrelay.test/parcel/'),
   '',
 );
 check(
@@ -248,7 +248,7 @@ check(
 /*
  * ⚠ Never the word "receipt".
  *
- *   LOCI has no payment provider, no charge record and no paid state on a
+ *   Package Relay has no payment provider, no charge record and no paid state on a
  *   booking. A document headed "Receipt" is one somebody may hand to an
  *   accountant, an insurer or a court for money this system never witnessed.
  */

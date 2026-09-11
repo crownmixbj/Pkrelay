@@ -7,7 +7,7 @@ import type { IdentityStatus } from '@/store/identity';
  * ⚠ Nothing here is the security boundary.
  *
  *   Every call is a `security definer` function that checks `is_admin()`
- *   itself — see `41_sender_identity_review.sql`. Hiding the section from the
+ *   itself — see `20250101000041_sender_identity_review.sql`. Hiding the section from the
  *   nav is a courtesy; these fail for a non-admin.
  *
  * ⚠ And nothing here carries a NIN or a photo path.

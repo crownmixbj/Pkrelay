@@ -29,7 +29,7 @@ import {
  * receiving transfers the whole time**. Nobody misses a payment for a change
  * they did not ask for.
  *
- * The rule is in `supabase/16_driver_identity.sql` and enforced by a scheduled
+ * The rule is in `supabase/migrations/20250101000016_driver_identity.sql` and enforced by a scheduled
  * sweep, not by this screen.
  */
 export function PayoutAccountCard({

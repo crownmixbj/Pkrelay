@@ -12,7 +12,7 @@ import { saveProfile } from '@/store/driver-profile';
  *   `user_metadata`. Nobody is vetting them and nothing depends on them, so
  *   `auth.updateUser` is the whole story.
  *
- *   For a driver, they are not. `supabase/29_driver_profile_edits.sql` classes
+ *   For a driver, they are not. `supabase/migrations/20250101000029_driver_profile_edits.sql` classes
  *   both as high risk: changing them suspends approval and files the old and
  *   new values for an admin, because a name change on an approved account is
  *   either a typo fix or somebody taking the account over, and only a person

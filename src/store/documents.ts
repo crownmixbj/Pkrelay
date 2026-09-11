@@ -139,7 +139,7 @@ export async function setDocumentExpiry(kind: string, iso: string): Promise<Docu
  * convenience:
  *
  *   · no date has ever been recorded — every document that predates
- *     `31_document_expiry.sql` is in this state, because the backfill could not
+ *     `20250101000031_document_expiry.sql` is in this state, because the backfill could not
  *     invent dates. Without this the reminder ladder can never start for any
  *     existing driver, and the dispatch block never covers them.
  *
@@ -151,7 +151,7 @@ export async function setDocumentExpiry(kind: string, iso: string): Promise<Docu
  *   to reverse: delete `state === 'expiring'` below.
  *
  *   "Not editable until it has expired" read strictly means a driver who
- *   renews their licence three weeks early cannot tell LOCI until the old one
+ *   renews their licence three weeks early cannot tell Package Relay until the old one
  *   lapses — so dispatch stops, they lose at least a day's work, and they lose
  *   it for having been organised. That directly contradicts what the reminder
  *   says to them ("renew before the date and nothing changes"), and the warning

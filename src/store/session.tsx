@@ -86,13 +86,13 @@ export const SESSION_USER: SessionUser = {
  * What a submitted driver application leaves behind.
  *
  * `baseCity` is derived from `state` at submit rather than stored twice — see
- * `cityForState`. It is null when the state has no LOCI city, which cannot
+ * `cityForState`. It is null when the state has no Package Relay city, which cannot
  * happen today but would the moment the two lists drift apart.
  */
 export type DriverRegistration = {
   /** As picked in "State of operation". */
   state: string;
-  /** The LOCI city that state operates out of. Null when unmapped. */
+  /** The Package Relay city that state operates out of. Null when unmapped. */
   baseCity: City | null;
   /** Residential address, from "Your details". */
   address: string;
@@ -291,7 +291,7 @@ function thrownMessage(thrown: unknown): string {
 
 /**
  * An account created within this window is treated as brand new, so the first
- * greeting says "welcome to LOCI" rather than "welcome back".
+ * greeting says "welcome to Package Relay" rather than "welcome back".
  *
  * Five minutes rather than seconds: with email confirmation on, the account is
  * created when the form is submitted but the first sign-in happens whenever the
@@ -312,7 +312,7 @@ function welcome(user: User) {
   const isNew = Number.isFinite(createdAt) && Date.now() - createdAt < NEW_ACCOUNT_WINDOW_MS;
 
   if (isNew) {
-    showToast(`Welcome to LOCI, ${firstName(user)}`, {
+    showToast(`Welcome to Package Relay, ${firstName(user)}`, {
       message: 'Your account is ready. You can post a parcel or start carrying jobs.',
     });
     return;
@@ -469,7 +469,7 @@ export function SessionProvider({
      *   The rule exists because a prompt in front of somebody who has not yet
      *   seen what an app does gets refused, and on iOS a refusal is close to
      *   permanent. An approved driver is the opposite case: they have filled in
-     *   an application, been vetted, and are opening LOCI to find work. The
+     *   an application, been vetted, and are opening Package Relay to find work. The
      *   prompt is the app doing the thing they came for.
      *
      *   Everyone else — senders, applicants, rejected drivers — is untouched.

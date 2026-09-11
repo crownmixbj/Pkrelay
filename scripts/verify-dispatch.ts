@@ -64,7 +64,7 @@ const code = (source: string) =>
 
 const flat = (source: string) => source.replace(/\s+/g, ' ');
 
-const sql = read('supabase/15_dispatch.sql');
+const sql = read('supabase/migrations/20250101000015_dispatch.sql');
 const sqlCode = code(sql);
 const store = read('src/store/dispatch.ts');
 const planner = read('src/components/ui/journey-planner.tsx');
@@ -80,7 +80,7 @@ check(
 );
 
 /*
- * This assertion changed shape in `20_dispatch_repair.sql`.
+ * This assertion changed shape in `20250101000020_dispatch_repair.sql`.
  *
  * It used to require that a parcel never returned to the same driver at all.
  * That conflated two different things: a decline, which is an answer, and an
@@ -89,9 +89,9 @@ check(
  * one-driver city is the first offer.
  */
 check(
-  'the original blanket rule is present in 15_dispatch.sql',
+  'the original blanket rule is present in 20250101000015_dispatch.sql',
   flat(sqlCode).includes('create unique index if not exists dispatch_offers_once_per_driver'),
-  'kept as history — 20_dispatch_repair.sql drops it and replaces it with a decline-only index',
+  'kept as history — 20250101000020_dispatch_repair.sql drops it and replaces it with a decline-only index',
 );
 check(
   'and the matcher excludes them explicitly too',
@@ -263,7 +263,7 @@ check(
 
 // -------------------------------------- changing your mind about a route ---
 
-const editSql = read('supabase/27_journey_edit.sql');
+const editSql = read('supabase/migrations/20250101000027_journey_edit.sql');
 const editCode = code(editSql);
 
 check(
@@ -366,7 +366,7 @@ check(
 
 // ------------------------------------------- the departure on the row ------
 
-const departureSql = read('supabase/26_departure_time.sql');
+const departureSql = read('supabase/migrations/20250101000026_departure_time.sql');
 const departureCode = code(departureSql);
 
 check(
@@ -589,7 +589,7 @@ check('and in the client module', /no push notification/i.test(store));
  * This pair used to require the opposite.
  *
  * They asserted both waiting messages contained "Keep this screen open", which
- * was right while LOCI could not send a notification at all. Push is deployed
+ * was right while Package Relay could not send a notification at all. Push is deployed
  * now, so that sentence is false for most drivers — but still true for a phone
  * where the permission was refused. The assertion follows the same split the
  * copy does.
@@ -604,7 +604,7 @@ check(
   waiting(true).every(
     (message) => /alert you the moment/i.test(message) && !/keep this screen open/i.test(message),
   ),
-  'the old copy claimed LOCI could not send a notification, which stopped being true',
+  'the old copy claimed Package Relay could not send a notification, which stopped being true',
 );
 check(
   'and a phone that cannot be reached is still warned, on both modes',
@@ -644,7 +644,7 @@ check(
  *
  * It read "the manual board survives as a fallback — a parcel no journey
  * matched still has to be claimable by somebody". That was true while dispatch
- * was new and browsing was the safety net. 25_dispatch_only.sql makes the offer
+ * was new and browsing was the safety net. 20250101000025_dispatch_only.sql makes the offer
  * the only route, so the claim it protected is now the thing to prevent; the
  * fallback moved to `admin_assign_parcel`, which is asserted further down.
  */
@@ -656,7 +656,7 @@ check(
 
 // ----------------------------------------------------------- flash mode ----
 
-const flashSql = read('supabase/18_flash_mode.sql');
+const flashSql = read('supabase/migrations/20250101000018_flash_mode.sql');
 const flashCode = code(flashSql);
 const hub = read('src/components/ui/driver-hub.tsx');
 const modeCard = read('src/components/ui/operating-mode-card.tsx');
@@ -841,7 +841,7 @@ check(
  * unanswered the insert hit the index, the function raised, and the parcel was
  * never offered again — silently, on a board where it still looked normal.
  */
-const repairSql = read('supabase/20_dispatch_repair.sql');
+const repairSql = read('supabase/migrations/20250101000020_dispatch_repair.sql');
 const repairCode = code(repairSql);
 
 check(
@@ -859,7 +859,7 @@ check(
 );
 
 check(
-  'a decline was permanent when 20_dispatch_repair.sql was written',
+  'a decline was permanent when 20250101000020_dispatch_repair.sql was written',
   flat(repairCode).includes('dispatch_offers_no_repeat_decline') &&
     flat(repairCode).includes("where status = 'declined'"),
   'rotating back to somebody who said no is how a driver learns to ignore dispatch',
@@ -892,7 +892,7 @@ check(
 check(
   'the payout sweep got scheduled too',
   flat(repairCode).includes("cron.schedule( 'loci-apply-payout-changes'"),
-  '16_driver_identity.sql documented that one and stopped there as well',
+  '20250101000016_driver_identity.sql documented that one and stopped there as well',
 );
 check(
   'a project without pg_cron is warned, not broken',
@@ -918,7 +918,7 @@ check(
 
 // ------------------------------------------------ the offer window by type --
 
-const windowSql = read('supabase/21_offer_windows.sql');
+const windowSql = read('supabase/migrations/20250101000021_offer_windows.sql');
 const windowCode = code(windowSql);
 
 check(
@@ -1073,7 +1073,7 @@ check(
   'the driver is told about offers that expired unseen',
   flat(hub).includes('offers.length === 0 && missed.length > 0') &&
     /expired before you saw/i.test(hub),
-  'four offers came and went on the test phone and the app said nothing — from inside, that is indistinguishable from LOCI having no work',
+  'four offers came and went on the test phone and the app said nothing — from inside, that is indistinguishable from Package Relay having no work',
 );
 check(
   'the notice stands down while something is live',
@@ -1089,7 +1089,7 @@ check(
 
 // -------------------------------------------------------- the matcher lies --
 
-const volatility = read('supabase/22_matcher_volatility.sql');
+const volatility = read('supabase/migrations/20250101000022_matcher_volatility.sql');
 
 check(
   'journey_matches is STABLE, not IMMUTABLE',
@@ -1098,7 +1098,7 @@ check(
 );
 check(
   'and the original mislabelling is still on record',
-  flat(code(read('supabase/18_flash_mode.sql'))).includes(
+  flat(code(read('supabase/migrations/20250101000018_flash_mode.sql'))).includes(
     'returns boolean language sql immutable set search_path',
   ),
   'kept as history — 22 replaces it, and a reader should be able to see what changed',
@@ -1119,7 +1119,7 @@ check(
 
 // ------------------------------------------------ one cooldown, both noes --
 
-const cooldownSql = read('supabase/23_offer_cooldown.sql');
+const cooldownSql = read('supabase/migrations/20250101000023_offer_cooldown.sql');
 const cooldownCode = code(cooldownSql);
 
 check(
@@ -1192,7 +1192,7 @@ check(
 
 // --------------------------------------- an offer is the only way in -------
 
-const only = read('supabase/25_dispatch_only.sql');
+const only = read('supabase/migrations/20250101000025_dispatch_only.sql');
 const onlyCode = code(only);
 const board = read('src/app/(tabs)/available-packages.tsx');
 
@@ -1253,7 +1253,7 @@ check(
   flat(onlyCode).includes(
     "update public.dispatch_offers set status = 'expired', responded_at = coalesce(responded_at, now()) where booking_id = parcel and status = 'offered'",
   ),
-  'a live offer row plus an assigned parcel is the index-versus-guard disagreement from 20_dispatch_repair.sql',
+  'a live offer row plus an assigned parcel is the index-versus-guard disagreement from 20250101000020_dispatch_repair.sql',
 );
 check(
   'every manual assignment is logged as a warning against the admin',

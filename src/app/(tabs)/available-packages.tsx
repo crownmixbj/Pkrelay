@@ -30,7 +30,7 @@ import { MaxContentWidth, Spacing } from '@/constants/theme';
  *
  *   The board was the only thing that still moved parcels when dispatch broke,
  *   and dispatch has broken twice. The replacement is `admin_assign_parcel`
- *   (25_dispatch_only.sql) — one audited human path, held by an admin, rather
+ *   (20250101000025_dispatch_only.sql) — one audited human path, held by an admin, rather
  *   than an open list every driver can work around the matcher with.
  *
  * Nothing here fetches parcels any more. A driver's work reaches them on
@@ -46,7 +46,7 @@ export default function ScheduleMyJourneyScreen() {
         <ScreenHeader
           brand={false}
           title="Setup Trip"
-          subtitle="Tell LOCI where you are going and parcels on that route are offered to you automatically."
+          subtitle="Tell Package Relay where you are going and parcels on that route are offered to you automatically."
         />
 
         <JourneyPlanner />

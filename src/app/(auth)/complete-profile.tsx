@@ -16,7 +16,7 @@ import { useSession } from '@/store/session';
  * ⚠ Every email sign-up has a valid Nigerian number, and a server rule rests on
  *   that.
  *
- *   `guard_application_phone` in `16_driver_identity.sql` stops a driver
+ *   `guard_application_phone` in `20250101000016_driver_identity.sql` stops a driver
  *   applicant claiming a number that is not their account's — and it
  *   deliberately lets through accounts that have *no* number, because some
  *   predate the field. A Google account arrives with none, so without this

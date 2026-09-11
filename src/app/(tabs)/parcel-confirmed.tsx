@@ -114,7 +114,7 @@ export default function ParcelConfirmedScreen() {
     // on web that still lands in the OS share sheet or a copy dialog.
     try {
       await Share.share({
-        message: `Track my LOCI parcel: #${booking.trackingId}`,
+        message: `Track my Package Relay parcel: #${booking.trackingId}`,
       });
       setCopied(true);
     } catch {

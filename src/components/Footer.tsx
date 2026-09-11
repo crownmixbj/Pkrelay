@@ -151,7 +151,7 @@ export function Footer({ socialUrls, bleed = true }: FooterProps) {
               key={social.key}
               onPress={() => Linking.openURL(url)}
               accessibilityRole="link"
-              accessibilityLabel={`LOCI on ${social.label}`}>
+              accessibilityLabel={`Package Relay on ${social.label}`}>
               {({ pressed, hovered }: { pressed?: boolean; hovered?: boolean }) => (
                 <View
                   style={[

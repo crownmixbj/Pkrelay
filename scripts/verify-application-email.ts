@@ -31,7 +31,7 @@ const base: ApplicationEmailInput = {
   baseCity: 'Ibadan',
   state: 'Oyo',
   appUrl: 'https://loci.pages.dev',
-  supportEmail: 'support@loci.ng',
+  supportEmail: 'support@pkrelay.ng',
   reviewWorkingDays: 7,
 };
 
@@ -121,8 +121,8 @@ check(
 
 check(
   'headerSafe strips CR and LF',
-  headerSafe('LOCI\r\nBcc: attacker@evil.com') === 'LOCI Bcc: attacker@evil.com',
-  headerSafe('LOCI\r\nBcc: attacker@evil.com'),
+  headerSafe('PKRELAY\r\nBcc: attacker@evil.com') === 'PKRELAY Bcc: attacker@evil.com',
+  headerSafe('PKRELAY\r\nBcc: attacker@evil.com'),
 );
 
 const injected = subjectFor({ ...base, reference: 'REF\nBcc: attacker@evil.com' });
@@ -151,7 +151,7 @@ check(
   !minimal.html.includes('Track your application'),
   'a button pointing nowhere is worse than no button',
 );
-check('no support email still offers a reply path', minimal.text.includes('LOCI'));
+check('no support email still offers a reply path', minimal.text.includes('Package Relay'));
 check(
   'absent vehicle and city are omitted rather than blank',
   !minimal.text.includes('Vehicle:') && !minimal.text.includes('Operating in:'),

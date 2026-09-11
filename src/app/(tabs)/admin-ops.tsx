@@ -266,7 +266,7 @@ export default function AdminOpsScreen() {
           <Info color={theme.warningOnSoft} size={16} />
           <Text style={[styles.noticeText, { color: theme.warningOnSoft }]}>
             {hubsError ?? 'Showing the built-in hub list.'} Until{' '}
-            <Text style={font(700)}>supabase/08_hubs.sql</Text> has been run, edits cannot be saved.
+            <Text style={font(700)}>supabase/migrations/20250101000008_hubs.sql</Text> has been run, edits cannot be saved.
           </Text>
         </View>
       )}

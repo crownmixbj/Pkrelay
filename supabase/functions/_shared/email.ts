@@ -6,6 +6,8 @@
  *   escaping that is missing from eight of them.
  */
 
+import { resolveRecipient, type EnvRecord } from './environment.ts';
+
 /**
  * Escapes text going into the HTML part.
  *
@@ -15,7 +17,7 @@
  *   Names, addresses, cancellation reasons and item descriptions all reach a
  *   template. A `<` breaks the layout; a `<script>` or an `<img onerror=...>`
  *   in a cancellation reason is a stored payload that some clients will run,
- *   sent from a domain LOCI signs. The value is escaped at the point it is
+ *   sent from a domain Package Relay signs. The value is escaped at the point it is
  *   interpolated, never on the way into the database, because the database is
  *   not the thing being attacked.
  */
@@ -110,7 +112,7 @@ export function layout(options: {
   <body style="margin:0;padding:24px;background:#F1F5F9;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto;background:#FFFFFF;border-radius:12px;">
       <tr><td style="padding:28px 28px 0;">
-        <div style="color:#0B5FFF;font-size:20px;font-weight:800;letter-spacing:1.6px;">LOCI</div>
+        <div style="color:#0B5FFF;font-size:20px;font-weight:800;letter-spacing:1.6px;">PKRELAY</div>
       </td></tr>
       <tr><td style="padding:20px 28px 0;">
         <h1 style="margin:0;color:#0F172A;font-size:20px;font-weight:700;">${escapeHtml(options.heading)}</h1>
@@ -146,7 +148,24 @@ export async function sendEmail(input: {
   html: string;
   text: string;
   replyTo?: string | null;
+  env: EnvRecord;
 }): Promise<SendResult> {
+  /*
+   * ⚠ The staging redirect belongs here and nowhere else.
+   *
+   *   Eight templates reach this function and more will follow. A guard at any
+   *   of the call sites is a guard the ninth template forgets, and the failure
+   *   mode of forgetting is an email to a real person from a test database.
+   *   One chokepoint, applied before the address is ever handed to Resend.
+   */
+  const destination = resolveRecipient(input.to, input.env);
+  if (!destination) {
+    return {
+      ok: false,
+      error: 'staging has no LOCI_STAGING_EMAIL set — refusing to send to a real address',
+    };
+  }
+
   try {
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -156,8 +175,8 @@ export async function sendEmail(input: {
       },
       body: JSON.stringify({
         from: input.from,
-        to: [input.to],
-        subject: headerSafe(input.subject),
+        to: [destination.to],
+        subject: headerSafe(`${destination.subjectPrefix}${input.subject}`),
         html: input.html,
         /*
          * ⚠ The text part is not a courtesy.

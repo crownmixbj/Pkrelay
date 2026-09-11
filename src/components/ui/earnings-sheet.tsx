@@ -61,7 +61,7 @@ export function EarningsSheet({
         what this is not; it does not tell anybody where the real number lives.
       */}
       <Text style={[styles.caveat, { color: theme.textMuted }]}>
-        Quoted fares on your parcels, before LOCI&apos;s commission. Your actual balance — what you
+        Quoted fares on your parcels, before Package Relay&apos;s commission. Your actual balance — what you
         can withdraw — is in Driver Wallet, and it will be lower.
       </Text>
 
