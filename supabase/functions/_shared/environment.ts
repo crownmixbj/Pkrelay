@@ -78,6 +78,33 @@ export function resolveRecipient(
 }
 
 /**
+ * Whether to send a push notification at all.
+ *
+ * ⚠ Push was the outbound integration this file forgot, and it is the one with
+ *   the sharpest edge.
+ *
+ *   Email is redirected, Slack is muted, Dojah is forced to sandbox. Push had
+ *   no gate — and a staging database restored from a production backup carries
+ *   production rows in `push_tokens`. An Expo push token is a bearer credential
+ *   for a real device: it needs no key, it does not care which project sent it,
+ *   and it keeps working. Seeding staging and running the dispatch matcher
+ *   would have rung real drivers' phones with real-looking "job assigned"
+ *   alerts generated from test parcels.
+ *
+ * Fails closed, for `resolveRecipient`'s reason: staging sends nothing unless
+ * somebody deliberately turns it on for a device they own.
+ *
+ *   supabase secrets set LOCI_STAGING_PUSH="on" --project-ref <staging-ref>
+ *
+ * Production is unaffected and always returns true — the path that matters most
+ * is a no-op.
+ */
+export function pushEnabled(env: EnvRecord): boolean {
+  if (readEnvironment(env) === 'production') return true;
+  return (env.LOCI_STAGING_PUSH ?? '').trim().toLowerCase() === 'on';
+}
+
+/**
  * Whether to post to Slack at all.
  *
  * Staging never does. An ops channel carrying test alerts is a channel people

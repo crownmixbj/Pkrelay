@@ -45,6 +45,12 @@ export default function TabLayout() {
         <Tabs.Screen name="available-packages" options={{ title: 'Setup Trip' }} />
         <Tabs.Screen name="driver" options={{ title: 'Assigned Trip' }} />
         <Tabs.Screen name="driver-wallet" options={{ title: 'Driver Wallet' }} />
+        {/*
+          Shared by senders and drivers, so it is deliberately absent from
+          ROUTE_EXPERIENCES — unlisted routes are available to every experience,
+          and both sides receive notifications.
+        */}
+        <Tabs.Screen name="notifications" options={{ title: 'Notifications' }} />
         <Tabs.Screen name="driver-signup" options={{ title: 'Drivers' }} />
         <Tabs.Screen name="locations" options={{ title: 'Hubs' }} />
         <Tabs.Screen name="about" options={{ title: 'About Us' }} />

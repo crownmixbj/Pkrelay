@@ -14,6 +14,7 @@ import { View } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { BuildBanner } from '@/components/ui/build-banner';
+import { CookieBanner } from '@/components/ui/cookie-banner';
 import { NotificationRouter } from '@/components/ui/notification-router';
 import { DialogHost } from '@/components/ui/dialog';
 import { ToastHost } from '@/components/ui/toast';
@@ -119,6 +120,22 @@ export default function RootLayout() {
                 people stop tapping.
               */}
               <NotificationRouter />
+
+              {/*
+                Outside the Stack so it survives navigation, and last so it
+                paints over the tab bar rather than under it.
+
+                ⚠ Mounted on every platform and gated inside the component
+                  rather than wrapped in a Platform check here.
+
+                  The test is not only "is this web" — it is also whether any
+                  optional category is live, whether an answer is on file, and
+                  whether that answer is still fresh. Putting one third of it
+                  here and the rest in the component is how the two drift. It
+                  renders null on native and on an answered browser, which costs
+                  a mounted component and nothing else.
+              */}
+              <CookieBanner />
 
               {/* Outside the Stack so these survive navigation. */}
               <DialogHost />

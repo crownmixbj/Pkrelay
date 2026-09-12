@@ -130,23 +130,32 @@ check(
 /*
  * Stacking inside the sticky header.
  *
- * The navbar and the live ticker are siblings. Without an explicit z-index on
- * each they stack in document order, and the ticker — rendered second — drew
+ * The navbar and the row under it are siblings. Without an explicit z-index on
+ * each they stack in document order, and that row — rendered second — drew
  * over any open dropdown, hiding its first item behind the "No parcels moving
  * right now" bar. Asserted on both files because a fix applied to only one of
  * them is a fix that survives until the next person reorders the header.
+ *
+ * ⚠ The z-index moved from `ticker` to `topRow`, and the assertion moved with
+ *   it rather than being relaxed. The ticker now shares its row with the store
+ *   badges; lifting one child of that pair would leave the other behind, so the
+ *   row is the thing that has to declare it.
  */
 const stickyHeader = read('src/components/ui/sticky-header.tsx');
 
 const navZ = /wrapper:\s*\{[^}]*zIndex:\s*(\d+)/s.exec(navSource);
-const tickerZ = /ticker:\s*\{[^}]*zIndex:\s*(\d+)/s.exec(stickyHeader);
+const tickerZ = /topRow:\s*\{[^}]*zIndex:\s*(\d+)/s.exec(stickyHeader);
 
 check('the navbar wrapper declares a z-index', navZ !== null, 'nothing lifts it above the ticker');
-check('the ticker declares one too', tickerZ !== null, 'implicit order is what caused the bug');
 check(
-  'and the navbar sits above the ticker',
+  'the row under it declares one too',
+  tickerZ !== null,
+  'implicit order is what caused the bug',
+);
+check(
+  'and the navbar sits above that row',
   Number(navZ?.[1] ?? 0) > Number(tickerZ?.[1] ?? 0),
-  `navbar ${navZ?.[1]} vs ticker ${tickerZ?.[1]}`,
+  `navbar ${navZ?.[1]} vs header row ${tickerZ?.[1]}`,
 );
 
 /*
@@ -173,6 +182,49 @@ check(
   'and neither does the capsule',
   !/overflow:\s*'hidden'/.test(withoutComments(navSource)),
   "the capsule comment already warns about this — it also crops the capsule's own iOS shadow",
+);
+
+/*
+ * The store badges.
+ *
+ * They exist to be there — a visitor on the web should be able to reach both
+ * listings from any page without opening a menu. Every way of losing them is a
+ * one-line change that looks harmless: wrapping them in a condition, letting
+ * the flex row shrink them to nothing, or moving them into the nav capsule,
+ * which collapses its own contents at 1040px.
+ */
+const storeBadges = read('src/components/ui/store-badges.tsx');
+
+check(
+  'the header renders the store badges',
+  /<StoreBadges\s*\/>/.test(stickyHeader),
+  'the header is the only place on the web where both listings are one click away',
+);
+check(
+  'unconditionally',
+  !/\{[^}]*&&\s*<StoreBadges/.test(stickyHeader) &&
+    !/dismiss|useState/i.test(withoutComments(storeBadges)),
+  'unlike the cookie banner, these are not dismissible and do not depend on session or scroll',
+);
+check(
+  'the ticker beside them yields the width, not the badges',
+  /ticker:\s*\{[^}]*flex: 1/s.test(stickyHeader) &&
+    /row:\s*\{[^}]*flexShrink: 0/s.test(storeBadges),
+  'a half-width badge is worse than a short marquee',
+);
+check(
+  'and they collapse to glyphs rather than disappearing when the window is narrow',
+  storeBadges.includes('BADGE_COMPACT_BREAKPOINT') && storeBadges.includes('badgeCompact'),
+  'mobile web is where a download badge is worth the most',
+);
+check(
+  'both listings are reachable',
+  /platform: 'ios'/.test(storeBadges) && /platform: 'android'/.test(storeBadges),
+);
+check(
+  'the badges leave for the store in a new tab on the web',
+  storeBadges.includes("'_blank'") && storeBadges.includes('noopener'),
+  'a desktop visitor sent away mid-booking has to find their way back',
 );
 
 // --------------------------------------- the privacy notice vs the schema ---
