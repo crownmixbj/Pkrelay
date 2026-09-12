@@ -7,6 +7,7 @@ import {
   useFonts,
 } from '@expo-google-fonts/plus-jakarta-sans';
 import { DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import Head from 'expo-router/head';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
@@ -14,9 +15,11 @@ import { View } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { BuildBanner } from '@/components/ui/build-banner';
+import { CookieBanner } from '@/components/ui/cookie-banner';
 import { NotificationRouter } from '@/components/ui/notification-router';
 import { DialogHost } from '@/components/ui/dialog';
 import { ToastHost } from '@/components/ui/toast';
+import { SITE_DESCRIPTION, SITE_TITLE } from '@/constants/site';
 import { Colors } from '@/constants/theme';
 import { BookingsProvider } from '@/store/bookings';
 import { HubsProvider } from '@/store/hubs';
@@ -73,6 +76,24 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={navigationTheme}>
+      {/*
+        The tab title and the description a search result shows.
+
+        Here rather than in `+html.tsx` because `expo-router/head` is what
+        renders the `<title>` on the web, and it injects at the top of the head
+        — an element declared in the shell as well would be the second one and
+        lose. Declared once, at the root, so every route inherits it; a screen
+        that wants its own can mount its own `Head` and win by being deeper.
+
+        The share-card tags live in the shell instead: they never vary by route,
+        and a crawler that does not run JavaScript has to find them in the
+        pre-rendered HTML.
+      */}
+      <Head>
+        <title>{SITE_TITLE}</title>
+        <meta name="description" content={SITE_DESCRIPTION} />
+      </Head>
+
       <StatusBar style="dark" />
       <AnimatedSplashOverlay />
       {/* Session first: the bookings store stamps ownership from it. */}
@@ -119,6 +140,22 @@ export default function RootLayout() {
                 people stop tapping.
               */}
               <NotificationRouter />
+
+              {/*
+                Outside the Stack so it survives navigation, and last so it
+                paints over the tab bar rather than under it.
+
+                ⚠ Mounted on every platform and gated inside the component
+                  rather than wrapped in a Platform check here.
+
+                  The test is not only "is this web" — it is also whether any
+                  optional category is live, whether an answer is on file, and
+                  whether that answer is still fresh. Putting one third of it
+                  here and the rest in the component is how the two drift. It
+                  renders null on native and on an answered browser, which costs
+                  a mounted component and nothing else.
+              */}
+              <CookieBanner />
 
               {/* Outside the Stack so these survive navigation. */}
               <DialogHost />

@@ -4,8 +4,25 @@ import { Linking, Modal, Platform, Pressable, StyleSheet, Text, View } from 'rea
 import { FontSize, Elevation, Radius, Spacing, Typography, font } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
+/**
+ * Where "get the app" goes. The download section, the drawer's "Get the App"
+ * item and the picker below all share these, so there is one place to correct
+ * when the listings are real.
+ *
+ * ⚠ Neither link resolves yet, and they fail differently.
+ *
+ *   Android's URL is deterministic: it is the `android.package` from app.json
+ *   and nothing else. It said `com.loci.app` while the package has always been
+ *   `com.loci.parcel`, so it would have 404'd on the day of launch with nothing
+ *   to point at the typo. Corrected here; if the package is ever changed, this
+ *   has to change with it.
+ *
+ *   iOS cannot be derived at all — App Store Connect assigns the numeric id
+ *   when the app record is created, so `id123456789` is a placeholder and is
+ *   left obviously fake rather than plausibly wrong.
+ */
 export const STORE_LINKS = {
-  android: 'https://play.google.com/store/apps/details?id=com.loci.app',
+  android: 'https://play.google.com/store/apps/details?id=com.loci.parcel',
   ios: 'https://apps.apple.com/app/id123456789',
 } as const;
 

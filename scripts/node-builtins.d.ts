@@ -11,6 +11,12 @@
  */
 declare module 'node:fs' {
   export function readFileSync(path: string, encoding: 'utf8'): string;
+  /**
+   * Byte-for-byte as a string, for the couple of checks that read a binary
+   * header (PNG dimensions) rather than text. `latin1` is the one encoding
+   * where one character is exactly one byte, so `charCodeAt` returns the byte.
+   */
+  export function readFileSync(path: string, encoding: 'latin1'): string;
   export function existsSync(path: string): boolean;
   export function readdirSync(
     path: string,

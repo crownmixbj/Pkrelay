@@ -1,6 +1,10 @@
 import { useRouter } from 'expo-router';
 import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import {
+  cookiePreferencesAvailable,
+  openCookiePreferences,
+} from '@/components/ui/cookie-banner';
 import { Radius, Spacing, Typography, font } from '@/constants/theme';
 import { useExperience } from '@/hooks/use-experience';
 
@@ -138,6 +142,33 @@ export function Footer({ socialUrls, bleed = true }: FooterProps) {
               {link.label}
             </Text>
           ),
+        )}
+
+        {/*
+          ⚠ An action, not a route, and a compliance requirement rather than a
+            convenience.
+
+            Withdrawing consent has to be as easy as giving it (GDPR Art. 7(3)).
+            Without a way back to the preferences panel, "Accept all" is a
+            one-way door and the implementation does not comply however correct
+            the banner itself is. The footer is where people look for this, and
+            it is on every screen.
+
+            Hidden on native and whenever no optional category is live — see
+            `cookiePreferencesAvailable`.
+        */}
+        {cookiePreferencesAvailable() && (
+          <Pressable
+            onPress={openCookiePreferences}
+            accessibilityRole="button"
+            hitSlop={6}
+            style={({ pressed }) => (pressed ? styles.pressed : undefined)}>
+            {({ hovered }: { hovered?: boolean }) => (
+              <Text style={[styles.link, Platform.OS === 'web' && hovered && styles.linkHovered]}>
+                Cookie Preferences
+              </Text>
+            )}
+          </Pressable>
         )}
       </View>
 

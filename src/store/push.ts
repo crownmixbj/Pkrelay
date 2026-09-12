@@ -21,6 +21,84 @@ import { supabase } from '@/lib/supabase';
 export const DISPATCH_CHANNEL = 'dispatch';
 
 /**
+ * The Android notification channels, matching `CHANNELS` in
+ * `supabase/functions/notify-push/message.ts`.
+ *
+ * ⚠ These ids must exist on the device before the first notification arrives,
+ *   and they must match the server exactly.
+ *
+ *   Android does not error on an unknown channel id — it quietly files the
+ *   message under a default channel. So a typo here does not break push, it
+ *   breaks the *separation*, and it does so invisibly: everything still
+ *   arrives, and every notification lands in one bucket again.
+ *
+ * ⚠ Four channels rather than one, because a channel is what an Android user
+ *   can actually mute.
+ *
+ *   With everything on `dispatch`, a driver who silences payout chatter also
+ *   silences job offers — and neither they nor you can tell that happened.
+ *   Splitting them means "stop telling me about my wallet" is a thing they can
+ *   express without losing work.
+ *
+ * ⚠ Importance is set per channel and cannot be changed later.
+ *
+ *   Android freezes a channel's importance the first time it is created; a
+ *   later `setNotificationChannelAsync` with a different value is ignored for
+ *   anyone who already has it. Raising `wallet` to HIGH after release would
+ *   only affect new installs. Getting these right now is the only chance.
+ */
+export const NOTIFICATION_CHANNELS = [
+  {
+    id: DISPATCH_CHANNEL,
+    name: 'Trip offers and jobs',
+    description: 'Offers, assigned jobs, pickup reminders and cancellations.',
+    high: true,
+  },
+  {
+    id: 'delivery',
+    name: 'Parcel updates',
+    description: 'Where your parcel is, and when it arrives.',
+    high: false,
+  },
+  {
+    id: 'wallet',
+    name: 'Earnings and payouts',
+    description: 'Money added to your wallet, and payouts being settled.',
+    high: false,
+  },
+  {
+    id: 'account',
+    name: 'Account and verification',
+    description: 'Your application, documents and identity checks.',
+    high: false,
+  },
+] as const;
+
+/**
+ * Creates every channel.
+ *
+ * Called from `registerForPush` at the moment permission is asked for, so the
+ * channels exist before anything can be delivered into them. Safe to call
+ * repeatedly — Android treats a repeat as an update of the name and
+ * description, which is how a channel gets renamed in a later release.
+ */
+async function ensureChannels(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+
+  for (const channel of NOTIFICATION_CHANNELS) {
+    await Notifications.setNotificationChannelAsync(channel.id, {
+      name: channel.name,
+      description: channel.description,
+      importance: channel.high
+        ? Notifications.AndroidImportance.HIGH
+        : Notifications.AndroidImportance.DEFAULT,
+      vibrationPattern: channel.high ? [0, 250, 250, 250] : [0, 200],
+      sound: 'default',
+    });
+  }
+}
+
+/**
  * The EAS project a push token belongs to.
  *
  * Expo mints tokens per project, so this is not optional metadata — it is part
@@ -73,19 +151,11 @@ export async function registerForPush(): Promise<PushRegistration> {
 
   try {
     /*
-     * Android needs the channel to exist before the first notification, not
-     * after. Created here rather than at launch so it lands with the
+     * Android needs the channels to exist before the first notification, not
+     * after. Created here rather than at launch so they land with the
      * permission request — one place, one order.
      */
-    if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync(DISPATCH_CHANNEL, {
-        name: 'Trip offers',
-        importance: Notifications.AndroidImportance.HIGH,
-        vibrationPattern: [0, 250, 250, 250],
-        // A driver muting Package Relay's other noise should still hear about work.
-        sound: 'default',
-      });
-    }
+    await ensureChannels();
 
     const existing = await Notifications.getPermissionsAsync();
     let granted = existing.granted;

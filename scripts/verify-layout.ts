@@ -494,6 +494,78 @@ check(
   'Yoga has no grid implementation, so this would fix the web and flatten iOS and Android',
 );
 
+// ------------------------------------------ where the app download lives ---
+
+/*
+ * The store badges, and the header they are no longer in.
+ *
+ * ⚠ They started beside the live ticker and were moved deliberately.
+ *
+ *   The header strip is a status bar with a navigation capsule above it —
+ *   above the fold, and the part of the page the eye crosses on its way to the
+ *   content. The single strongest call to action on the site was sitting there
+ *   at the size a header accessory can be, competing with a scrolling marquee.
+ *   It is now a band under the hero with a heading that says what the app is
+ *   for, which is what every postal and courier site does with the same CTA.
+ *
+ *   Both halves are asserted: that the header is clean, and that the section
+ *   exists. Only checking the second is how the badges end up in both places.
+ */
+const download = code(read('src/components/ui/app-download.tsx'));
+const badges = code(read('src/components/ui/store-badges.tsx'));
+
+check(
+  'the header carries no store badges',
+  !stickyHeader.includes('StoreBadges'),
+  'the download band below the hero is the one place these live',
+);
+check(
+  'the home screen renders the download section',
+  homeScreen.includes('<AppDownload />'),
+  'nothing else mounts it, so without this the component is dead code',
+);
+check(
+  'below the hero and above the quote',
+  (() => {
+    const hero = homeScreen.indexOf('styles.hero,');
+    const band = homeScreen.indexOf('<AppDownload />');
+    const quote = homeScreen.indexOf('<QuickQuote');
+    return hero !== -1 && band > hero && quote > band;
+  })(),
+  'the tracking card is what the visitor came for; the app is the thing to offer next',
+);
+check(
+  'and unconditionally, apart from the native null',
+  !/\{[^}]*&&\s*<AppDownload/.test(homeScreen) && !/useState/.test(download),
+  'unlike the cookie banner this is not dismissible and does not depend on session or scroll',
+);
+check(
+  'the section is web-only',
+  download.includes("experience !== 'web'") && download.includes('return null'),
+  'telling somebody inside the Android app to download the Android app reads as unfinished',
+);
+check(
+  'the heading is a heading',
+  download.includes('accessibilityRole="header"') &&
+    download.includes('Download the Package Relay App'),
+  'react-native-web maps it to <h2>, which is what puts the section in a screen reader outline',
+);
+
+check(
+  'both listings are reachable',
+  /platform: 'ios'/.test(badges) && /platform: 'android'/.test(badges),
+);
+check(
+  'the badges leave for the store in a new tab on the web',
+  badges.includes("'_blank'") && badges.includes('noopener'),
+  'a desktop visitor sent away mid-booking has to find their way back',
+);
+check(
+  'and they wrap rather than shrink when the line runs out',
+  /row:\s*\{[^}]*flexWrap: 'wrap'/s.test(badges) && !/badge:\s*\{[^}]*flexShrink: 1/s.test(badges),
+  'a squeezed badge clips "Google Play"; a badge on the next line is merely a badge on the next line',
+);
+
 // --------------------------------- the nav has two tiers, not three --------
 
 /*
@@ -766,6 +838,7 @@ console.log(
     '       the layouts never both claim it, on Post a Parcel the title, the delivery type\n' +
     '       and its rate scroll with the form as one block at the top of it, the driver\n' +
     '       identity and bell stay put while the hub scrolls under them, no route stretches\n' +
-    '       its content across a desktop viewport, and the top header stays a plain block in\n' +
-    '       normal flow — no scroll listener, no animated layout, nothing to stutter.',
+    '       its content across a desktop viewport, the top header stays a plain block in\n' +
+    '       normal flow — no scroll listener, no animated layout, nothing to stutter — and the\n' +
+    '       app download is one band under the hero rather than two badges beside the ticker.',
 );
