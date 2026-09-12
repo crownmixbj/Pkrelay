@@ -206,6 +206,29 @@ only way to know which artefact a bug came from.
 
 ---
 
+## The icon set, and why it is three files
+
+`assets/images/icon.png` is the master: the PR mark on its pale-blue tile, as
+drawn. The other two are cut from it, because the platforms want different
+things and neither wants the master as-is.
+
+| File | Used by | What it is |
+| --- | --- | --- |
+| `assets/images/icon.png` | `expo.icon`, `ios.icon` | the tile as drawn, 1024×1024, **no alpha** — App Store Connect rejects an icon that has one |
+| `assets/images/favicon.png` | `expo.web.favicon` | the same tile cropped to the mark, 512×512. Expo generates `/favicon.ico` from it; uncropped, two thirds of a 16px browser tab is margin |
+| `assets/images/android-icon-foreground.png` | `adaptiveIcon.foregroundImage` | the mark alone on transparency, 1024×1024, sized inside the inner 66% so the launcher's mask and `adaptiveIcon.backgroundColor` do the shaping |
+
+⚠ **Regenerate all three together.** A rebrand that replaces only `icon.png`
+ships the new mark to iOS and the old one to the launcher and the browser tab,
+and nothing in the build mentions it. `npm run verify:metadata` checks the two
+properties a build actually rejects — the foreground has an alpha channel, the
+app icon does not — and that all three are real PNGs rather than a JPEG someone
+renamed, which is how the PR icon first arrived.
+
+`assets/images/android-icon-monochrome.png` is a fourth, separate thing: the
+flat silhouette Android 13+ uses for themed icons. It is still the Expo
+template's mark.
+
 ## Known limits of this setup
 
 - **No over-the-air updates.** `expo-updates` is not installed, so every JS

@@ -1,20 +1,12 @@
 import { Apple, Play } from 'lucide-react-native';
-import {
-  Linking,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-  useWindowDimensions,
-} from 'react-native';
+import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { STORE_LINKS, type StorePlatform } from '@/components/ui/app-store-modal';
 import { FontSize, Radius, Spacing, font } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
- * The two store badges that live at the right end of the web header.
+ * The two store badges. Presentation only — where they sit is `app-download.tsx`.
  *
  * ⚠ These are *our* badges, not Apple's and Google's artwork.
  *
@@ -30,22 +22,10 @@ import { useTheme } from '@/hooks/use-theme';
  *   assets (Apple: Marketing Resources → App Store badges; Google: Play brand
  *   guidelines) as SVG files rendered through `expo-image`, and keep the
  *   layout below as it is. See the note in `docs/DISTRIBUTION.md`.
- *
- * ⚠ Unlike the cookie banner and the old promo pill, nothing here is
- *   dismissible and nothing is conditional on session, role or scroll. The
- *   only thing that changes with width is how much of the badge is drawn.
  */
 
 /**
- * Below this the two full badges (about 300px together) leave the ticker beside
- * them a sliver, so they drop to their glyphs. Not a phone/desktop split — it
- * is the width at which *this row* stops fitting, which is why the number lives
- * here rather than beside the nav bar's own breakpoints.
- */
-export const BADGE_COMPACT_BREAKPOINT = 760;
-
-/**
- * Navy rather than the stores' black, so the pair reads as part of the header
+ * Navy rather than the stores' black, so the pair reads as part of the page
  * instead of two foreign stickers on it. Fixed across light and dark: a badge
  * that inverts with the theme stops being recognisable as a badge, and the
  * white lettering has to keep its contrast either way (#FFFFFF on #0F172A is
@@ -53,7 +33,7 @@ export const BADGE_COMPACT_BREAKPOINT = 760;
  */
 const BADGE_FILL = '#0F172A';
 const BADGE_PRESSED = '#1E293B';
-/** Hairline lift so the fill separates from a dark page behind it. */
+/** Hairline lift so the fill separates from a dark panel behind it. */
 const BADGE_EDGE = 'rgba(255, 255, 255, 0.14)';
 const BADGE_TEXT = '#FFFFFF';
 const BADGE_TEXT_MUTED = 'rgba(255, 255, 255, 0.78)';
@@ -107,28 +87,17 @@ function openStoreListing(platform: StorePlatform) {
   void Linking.openURL(url).catch(() => {});
 }
 
-export type StoreBadgesProps = {
-  /**
-   * Force the glyph-only form regardless of width. Used where the row is
-   * narrower than the window, e.g. inside a card.
-   */
-  compact?: boolean;
-};
-
-export function StoreBadges({ compact }: StoreBadgesProps) {
-  const { width } = useWindowDimensions();
-  const collapsed = compact ?? width < BADGE_COMPACT_BREAKPOINT;
-
+export function StoreBadges() {
   return (
     <View style={styles.row}>
       {BADGES.map((badge) => (
-        <StoreBadge key={badge.platform} badge={badge} collapsed={collapsed} />
+        <StoreBadge key={badge.platform} badge={badge} />
       ))}
     </View>
   );
 }
 
-function StoreBadge({ badge, collapsed }: { badge: Badge; collapsed: boolean }) {
+function StoreBadge({ badge }: { badge: Badge }) {
   const theme = useTheme();
 
   return (
@@ -142,22 +111,19 @@ function StoreBadge({ badge, collapsed }: { badge: Badge; collapsed: boolean }) 
       accessibilityLabel={`${badge.kicker} ${badge.name} — get the Package Relay app`}
       style={({ pressed }) => [
         styles.badge,
-        collapsed ? styles.badgeCompact : styles.badgeFull,
         { backgroundColor: pressed ? BADGE_PRESSED : BADGE_FILL },
         pressed && styles.pressed,
       ]}>
-      {badge.icon(theme.primaryAccent, collapsed ? 20 : 18)}
+      {badge.icon(theme.primaryAccent, 20)}
 
-      {!collapsed && (
-        <View style={styles.labels}>
-          <Text style={styles.kicker} numberOfLines={1}>
-            {badge.kicker}
-          </Text>
-          <Text style={styles.name} numberOfLines={1}>
-            {badge.name}
-          </Text>
-        </View>
-      )}
+      <View style={styles.labels}>
+        <Text style={styles.kicker} numberOfLines={1}>
+          {badge.kicker}
+        </Text>
+        <Text style={styles.name} numberOfLines={1}>
+          {badge.name}
+        </Text>
+      </View>
     </Pressable>
   );
 }
@@ -166,30 +132,32 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.two,
     /*
-     * Never squeezed. The ticker beside these takes `flex: 1` and will give up
-     * its own width first; without this the badges are the thing that shrinks,
-     * and a half-width badge is worse than a narrow ticker.
+     * Centred so a wrapped second badge sits under the first rather than
+     * ragged-left inside a centred column. In the side-by-side layout the row
+     * hugs its content, so this changes nothing there.
      */
-    flexShrink: 0,
+    justifyContent: 'center',
+    gap: Spacing.two + 4,
+    /*
+     * Wrapping is the whole phone story: the pair is about 340px, so on a
+     * 360px browser they sit side by side and on anything narrower the second
+     * badge drops to its own line at full size. Shrinking them instead would
+     * clip "Google Play", and a badge with a clipped store name is worse than
+     * a badge on the next line.
+     */
+    flexWrap: 'wrap',
   },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.three,
     borderRadius: Radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: BADGE_EDGE,
-    /** Matches the ticker pill beside it, so the row has one baseline. */
-    height: 44,
-  },
-  badgeFull: {
-    gap: Spacing.two,
-    paddingHorizontal: Spacing.three - 4,
-  },
-  badgeCompact: {
-    width: 44,
-    justifyContent: 'center',
+    /** 52 rather than 44: this is a section CTA now, not a header accessory. */
+    height: 52,
   },
   pressed: {
     opacity: 0.9,
@@ -200,13 +168,13 @@ const styles = StyleSheet.create({
   kicker: {
     ...font(500),
     fontSize: FontSize.micro,
-    lineHeight: 13,
+    lineHeight: 14,
     color: BADGE_TEXT_MUTED,
   },
   name: {
     ...font(700),
     fontSize: FontSize.subhead,
-    lineHeight: 20,
+    lineHeight: 22,
     color: BADGE_TEXT,
     letterSpacing: 0.1,
   },

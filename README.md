@@ -25,6 +25,13 @@ won't pick it up.
 | ------------------------------- | --------------------------------------------- |
 | `EXPO_PUBLIC_SUPABASE_URL`      | Supabase dashboard → Project Settings → API   |
 | `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Same page — the **publishable / anon** key     |
+| `EXPO_PUBLIC_SITE_URL`          | The origin this build is served from, e.g. `https://staging.pkrelay.com` |
+
+`EXPO_PUBLIC_SITE_URL` is only used by the web build, and only for link
+previews: `og:image` and `og:url` have to be absolute, and several scrapers —
+WhatsApp and Facebook among them — drop a relative one rather than resolving it.
+Set it per environment, so the staging build advertises staging's own images.
+Unset, the page still renders and the tags fall back to rooted paths.
 
 Anything prefixed `EXPO_PUBLIC_` is compiled into the app bundle and is readable
 by anyone who installs the app. That is correct for the anon key, which is

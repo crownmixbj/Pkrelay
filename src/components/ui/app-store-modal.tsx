@@ -5,8 +5,9 @@ import { FontSize, Elevation, Radius, Spacing, Typography, font } from '@/consta
 import { useTheme } from '@/hooks/use-theme';
 
 /**
- * Where "get the app" goes. The header badges and the picker below share these,
- * so there is one place to correct when the listings are real.
+ * Where "get the app" goes. The download section, the drawer's "Get the App"
+ * item and the picker below all share these, so there is one place to correct
+ * when the listings are real.
  *
  * ⚠ Neither link resolves yet, and they fail differently.
  *

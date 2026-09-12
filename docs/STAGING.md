@@ -134,6 +134,7 @@ Settings → Environment variables → **Preview**:
 | `EXPO_PUBLIC_SUPABASE_URL` | `https://<staging-ref>.supabase.co` |
 | `EXPO_PUBLIC_SUPABASE_ANON_KEY` | the staging project's publishable key |
 | `EXPO_PUBLIC_LINK_DOMAIN` | leave unset unless you host association files on a staging host |
+| `EXPO_PUBLIC_SITE_URL` | `https://staging.pkrelay.com` — the origin this deployment answers on |
 
 ⚠ **Check the Production column at the same time.** The two environments are
 edited on one page and set independently. A staging URL saved into the

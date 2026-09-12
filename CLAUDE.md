@@ -74,7 +74,10 @@ turn the suite red. Run `npm run verify` before declaring anything done.
 ## Conventions worth keeping
 
 - Brand strings are centralised in `src/constants/` on purpose — change them
-  there, not in screens.
+  there, not in screens. That includes what the *web* says about itself:
+  `src/constants/site.ts` holds the tab title, the meta description and the
+  share-card image, read by both `src/app/+html.tsx` (the head tags a crawler
+  sees) and the root layout (which owns the one and only `<title>`).
 - `src/constants/contact.ts` has `CONTACT_IS_PLACEHOLDER = true`; the
   addresses on `pkrelay.ng` are placeholders on a domain nobody owns, and
   `verify-about.ts` fails if the flag lies.

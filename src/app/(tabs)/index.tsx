@@ -37,6 +37,7 @@ import {
 } from 'react-native';
 
 import { Button } from '@/components/ui/button';
+import { AppDownload } from '@/components/ui/app-download';
 import { Card } from '@/components/ui/card';
 import { Footer } from '@/components/Footer';
 import { HowItWorks } from '@/components/ui/how-it-works';
@@ -422,6 +423,20 @@ export default function HomeScreen() {
                 on a check — see `shouldShowVerifyBanner`.
             */}
             <VerifyBanner />
+
+            {/* ---------- Download the app ---------- */}
+            {/*
+              First thing under the hero, and deliberately ahead of the quote.
+
+              It is the one section a visitor can act on without knowing
+              anything about us yet, and the tracking card above it is what they
+              came for — somebody who has just tracked a parcel is the person
+              most likely to want the app that does it for them. It renders
+              nothing at all on native, so this costs the phone app a null.
+            */}
+            <View style={styles.appDownload}>
+              <AppDownload />
+            </View>
 
             {/* ---------- Quick quote ---------- */}
             <View style={styles.quote}>
@@ -882,6 +897,15 @@ const styles = StyleSheet.create({
    * two frosted cards, so at 48 the quote read as a third card in that cluster
    * rather than the start of the page proper.
    */
+  /**
+   * The band's own spacing, rather than a margin on the component.
+   *
+   * Everything in this column sets its gaps from here, so a section that
+   * carried its own would be the one nobody could line up with the rest.
+   */
+  appDownload: {
+    marginTop: Spacing.five,
+  },
   quote: {
     marginTop: Spacing.five,
     marginBottom: SectionGap,

@@ -2,7 +2,6 @@ import { StyleSheet, View } from 'react-native';
 
 import { LiveTicker } from '@/components/LiveTicker';
 import { Navbar } from '@/components/Navbar';
-import { StoreBadges } from '@/components/ui/store-badges';
 import { PageCanvas, Spacing } from '@/constants/theme';
 import { useExperience } from '@/hooks/use-experience';
 import { useTopInset } from '@/hooks/use-top-inset';
@@ -56,18 +55,8 @@ export function StickyHeader() {
   return (
     <View style={styles.header}>
       <Navbar />
-      {/*
-        One row: the ticker takes what is left, the store badges keep their
-        width. They are siblings rather than the badges living inside the nav
-        capsule, because the capsule already collapses its links into a
-        hamburger at 1040px — anything added to it is the next thing to be
-        collapsed, and these are meant never to disappear.
-      */}
-      <View style={styles.topRow}>
-        <View style={styles.ticker}>
-          <LiveTicker />
-        </View>
-        <StoreBadges />
+      <View style={styles.ticker}>
+        <LiveTicker />
       </View>
     </View>
   );
@@ -181,33 +170,13 @@ const styles = StyleSheet.create({
    * Explicitly *below* the navbar.
    *
    * The two are siblings, so without a z-index each they stack in document
-   * order and this row — being second — covered any open nav dropdown. Stated
+   * order and the ticker — being second — covered any open nav dropdown. Stated
    * on both sides rather than only on the navbar, so the ordering is visible
    * from whichever file someone opens first.
-   *
-   * It sits on the row rather than on the ticker now that the badges share it:
-   * a z-index on one child of the pair would lift that child alone.
    */
-  topRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
+  ticker: {
     paddingHorizontal: Spacing.four,
     marginTop: Spacing.two,
     zIndex: 1,
-  },
-  /**
-   * The ticker yields, the badges do not.
-   *
-   * `flex: 1` here and `flexShrink: 0` on the badges is the whole responsive
-   * behaviour of this row: as the window narrows the marquee gets shorter —
-   * which costs nothing, it already scrolls — until the badges themselves drop
-   * to their glyphs at their own breakpoint. `minWidth: 0` because a flex child
-   * whose content overflows otherwise refuses to shrink below it, and a
-   * marquee's content is wider than any window.
-   */
-  ticker: {
-    flex: 1,
-    minWidth: 0,
   },
 });
