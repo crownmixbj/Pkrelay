@@ -108,6 +108,41 @@ export function emailConfirmationLink(email: string): string {
 }
 
 /**
+ * Where a password-reset email should send somebody back to.
+ *
+ * ⚠ Without this, reset is broken end to end and looks like nothing at all.
+ *
+ *   `resetPasswordForEmail` with no `redirectTo` falls back to the project's
+ *   Site URL — the marketing home — which reads no parameters. The recovery
+ *   token is never exchanged, `PASSWORD_RECOVERY` never fires, and the person
+ *   lands on a perfectly normal home page believing the link did something.
+ *   Exactly the failure `/confirm` was built to end, in the other flow.
+ *
+ * ⚠ The address rides along for the same reason it does on a confirmation.
+ *
+ *   An expired recovery link arrives as `?error=access_denied&
+ *   error_code=otp_expired` and nothing else. Without the email on the URL
+ *   there is nobody to offer a fresh link to, and the dead end is the whole
+ *   reason somebody asked for a reset in the first place.
+ *
+ * ⚠ Whatever this returns has to be in the project's Redirect URLs allowlist,
+ *   under Authentication → URL Configuration, exactly like the two below.
+ *   Supabase silently falls back to the Site URL for anything not on the list,
+ *   which is indistinguishable from this code not working.
+ */
+export function passwordResetLink(email: string): string {
+  const address = `email=${encodeURIComponent(email.trim().toLowerCase())}`;
+
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return `${window.location.origin}/update-password?${address}`;
+  }
+
+  return universalLinksEnabled
+    ? `https://${LINK_DOMAIN}/update-password?${address}`
+    : `${APP_SCHEME}://update-password?${address}`;
+}
+
+/**
  * Where Google should send somebody back to after they approve.
  *
  * ⚠ Whatever this returns has to be in the project's Redirect URLs allowlist,

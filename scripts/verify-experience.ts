@@ -11,12 +11,15 @@ import { join } from 'node:path';
 
 import { tabsAreRoutable, tabsFor } from '../src/components/ui/bottom-tab-bar';
 import {
+  completionRedirect,
   EXPERIENCES,
   EXPERIENCE_HOME,
+  recoveryRedirect,
   redirectFor,
   resolveExperience,
   routeAllowed,
   signedInRedirect,
+  UPDATE_PASSWORD_ROUTE,
 } from '../src/lib/experience';
 
 let failures = 0;
@@ -333,6 +336,109 @@ check(
   'this component lives in the root layout, outside every screen: the local hook reads nothing there',
 );
 
+// ------------------------------------------------- the recovery gate -------
+
+/*
+ * A reset link mints an ordinary session, so `status` alone cannot tell a
+ * password somebody knows from an inbox somebody can read. These assertions are
+ * the difference — and they are worth having as assertions rather than as a
+ * careful reading of the component, because every one of them describes a state
+ * that is awkward to reach by hand and easy to regress by accident.
+ */
+check('a session that is not recovering is left alone', recoveryRedirect('/', false) === null);
+check(
+  'a recovering session is pulled off the app home',
+  recoveryRedirect('/', true) === UPDATE_PASSWORD_ROUTE,
+);
+check(
+  'and off the booking form, the driver hub and the profile alike',
+  ['/book', '/driver', '/profile', '/my-packages', '/admin'].every(
+    (route) => recoveryRedirect(route, true) === UPDATE_PASSWORD_ROUTE,
+  ),
+  'the gate is the whole route table minus its exemptions, not a list of screens somebody remembered',
+);
+check(
+  'the update-password screen itself does not bounce',
+  recoveryRedirect(UPDATE_PASSWORD_ROUTE, true) === null,
+  'a redirect to the screen you are on is an infinite loop',
+);
+check(
+  'nor does the legal text underneath it',
+  recoveryRedirect('/legal', true) === null && recoveryRedirect('/legal/terms', true) === null,
+);
+check(
+  'but sign-in does, because leaving by that door strands an untrusted session',
+  recoveryRedirect('/sign-in', true) === UPDATE_PASSWORD_ROUTE,
+  'signing out is the exit; it clears the flag and then every route opens',
+);
+
+check(
+  'the completion gate exempts the update-password screen',
+  completionRedirect(UPDATE_PASSWORD_ROUTE, true) === null,
+  'otherwise recovery and completion take turns and neither screen is ever finished',
+);
+
+check(
+  'the guard applies the recovery rule',
+  routerSource.includes('recoveryRedirect(pathname, recovering)'),
+  'a correct rule nothing calls is a comment',
+);
+check(
+  'ahead of every other rule',
+  (() => {
+    const recovery = routerSource.indexOf('recoveryRedirect(pathname, recovering)');
+    const completion = routerSource.indexOf('completionRedirect(pathname, needsPhone)');
+    return recovery !== -1 && recovery < completion;
+  })(),
+  'every rule below assumes a session the person earned; running one first hands a half-reset session a home screen',
+);
+check(
+  'and re-runs when the flag changes',
+  /}, \[[^\]]*\brecovering\b[^\]]*\]\);/.test(routerSource),
+  'omitted from the deps, the gate closes on the next unrelated navigation instead of on the event',
+);
+
+/*
+ * The store side of the same rule. Read as source rather than executed: the
+ * provider needs a React tree and a Supabase client, and neither is worth
+ * standing up to assert that four lines exist.
+ */
+const sessionStore = read('src/store/session.tsx');
+
+check(
+  'the store listens for PASSWORD_RECOVERY',
+  sessionStore.includes("event === 'PASSWORD_RECOVERY'"),
+  'without the listener the flag is never set and the gate never closes',
+);
+check(
+  'and returns before the sign-in branches, so recovery is never greeted as a sign-in',
+  (() => {
+    const recovery = sessionStore.indexOf("event === 'PASSWORD_RECOVERY'");
+    const greeting = sessionStore.indexOf("event === 'SIGNED_IN'");
+    return recovery !== -1 && greeting !== -1 && recovery < greeting;
+  })(),
+);
+check(
+  'the flag survives a restart',
+  sessionStore.includes('recoveryKey(') && sessionStore.includes("AsyncStorage.setItem(recoveryKey"),
+  'held only in memory, force-quitting the app is enough to be left signed in on a half-reset session',
+);
+check(
+  'and is cleared only once a password has actually been set',
+  (() => {
+    const call = sessionStore.indexOf('supabase.auth.updateUser({ password })');
+    const clear = sessionStore.indexOf('setRecovering(false);\n        if (data.user)');
+    return call !== -1 && clear !== -1 && call < clear;
+  })(),
+  'clearing optimistically releases the gate on a request that failed',
+);
+check(
+  'the reset email points somewhere that reads the token',
+  read('src/store/session.tsx').includes('redirectTo: passwordResetLink(address)') &&
+    read('src/constants/links.ts').includes('/update-password?'),
+  'with no redirectTo Supabase falls back to the Site URL and PASSWORD_RECOVERY never fires at all',
+);
+
 // ------------------------------------------------------ the tab bar --------
 
 const tabs = read('src/components/ui/bottom-tab-bar.tsx');
@@ -528,5 +634,7 @@ console.log(
     '       nothing resolves while auth restores, /driver-signup stays open to senders,\n' +
     '       admin works on every device, every redirect lands somewhere allowed, a signed-in\n' +
     '       person is moved off the sign-in form to the destination the gate asked for —\n' +
-    '       never to another origin — and the navigation and the guard read one shared rule.',
+    '       never to another origin, a session that arrived on a reset link is held on the\n' +
+    '       update-password screen until a password is actually set and survives a restart\n' +
+    '       there, and the navigation and the guard read one shared rule.',
 );

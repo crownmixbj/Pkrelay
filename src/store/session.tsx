@@ -26,7 +26,7 @@ import {
   type DriverApplication,
 } from '@/store/driver-applications';
 import { authErrorMessage, isEmailTakenCode, isSupabaseConfigured, supabase } from '@/lib/supabase';
-import { emailConfirmationLink, oauthRedirectLink } from '@/constants/links';
+import { emailConfirmationLink, oauthRedirectLink, passwordResetLink } from '@/constants/links';
 import { registerForPush, unregisterPush } from '@/store/push';
 import type { City } from '@/store/bookings';
 
@@ -108,6 +108,23 @@ export type DriverRegistration = {
  */
 const activeViewKey = (userId: string) => `loci.activeView.${userId}`;
 
+/**
+ * That this account arrived on a recovery link and has not set a password yet.
+ *
+ * ⚠ Persisted, and that is the point rather than an optimisation.
+ *
+ *   A recovery link mints an ordinary session. Holding "they are mid-reset"
+ *   only in memory means closing the app and reopening it drops the flag and
+ *   leaves a full, signed-in session behind — which is the emailed-link-as-
+ *   login hole this gate exists to close, reachable by doing nothing more
+ *   than force-quitting.
+ *
+ * Per user id, like the view key: two people resetting on the same device do
+ * not inherit each other's state. Cleared the moment a password is set, and on
+ * sign-out.
+ */
+const recoveryKey = (userId: string) => `loci.recovery.${userId}`;
+
 /** `loading` covers the moment at launch before a stored session is restored. */
 export type SessionStatus = 'loading' | 'signedIn' | 'signedOut';
 
@@ -177,6 +194,26 @@ export type SessionContextValue = {
   resendConfirmation: (email: string) => Promise<AuthResult>;
   /** Emails a password-reset link. Never reveals whether the account exists. */
   requestPasswordReset: (email: string) => Promise<AuthResult>;
+  /**
+   * True between arriving on a recovery link and actually setting a password.
+   *
+   * ⚠ Read it as "this session is not trusted yet", not as a routing hint.
+   *
+   *   Supabase answers a recovery link with a real session — same shape, same
+   *   privileges as one earned with a password — so `status` alone says
+   *   "signed in" for somebody who has proved only that they can read an
+   *   inbox. `recoveryRedirect` in `lib/experience.ts` is what keeps them on
+   *   the update-password screen until they have proved more than that.
+   */
+  recovering: boolean;
+  /**
+   * Sets a new password and ends the recovery state.
+   *
+   * Used by the update-password screen for both cases that reach it: somebody
+   * who followed a reset link, and somebody changing a password they already
+   * know while signed in. Supabase requires only a session for either.
+   */
+  updatePassword: (password: string) => Promise<AuthResult>;
   /**
    * Hands off to Google and comes back with a session.
    *
@@ -341,6 +378,7 @@ export function SessionProvider({
   const [application, setApplication] = useState<DriverApplication | null>(null);
   const [driverStatusLoaded, setDriverStatusLoaded] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [recovering, setRecovering] = useState(false);
   const [status, setStatus] = useState<SessionStatus>(
     isSupabaseConfigured ? 'loading' : 'signedOut',
   );
@@ -362,8 +400,24 @@ export function SessionProvider({
 
     let active = true;
 
-    supabase.auth.getSession().then(({ data }) => {
+    /*
+     * ⚠ The stored recovery flag is read *before* status leaves `loading`, and
+     *   the single `setStatus` below is why.
+     *
+     *   Everything downstream treats `loading` as "do not decide yet" —
+     *   `resolveExperience` returns null, and `ExperienceRouter` returns early
+     *   on it. Flipping to `signedIn` first and setting `recovering` a tick
+     *   later would open exactly one frame in which a half-reset session looks
+     *   like a good one, and one frame is all a redirect needs.
+     */
+    supabase.auth.getSession().then(async ({ data }) => {
+      const restoring = data.session?.user?.id ?? null;
+      const stored = restoring
+        ? await AsyncStorage.getItem(recoveryKey(restoring)).catch(() => null)
+        : null;
+
       if (!active) return;
+      setRecovering(stored === '1');
       setSession(data.session);
       setStatus(data.session ? 'signedIn' : 'signedOut');
     });
@@ -387,13 +441,40 @@ export function SessionProvider({
        * clears it, so signing back in — as the same person or a different one —
        * greets again, which is the one case where the message is warranted.
        */
+      /*
+       * ⚠ A reset link is not a sign-in, however much the session looks like one.
+       *
+       *   Supabase mints an ordinary session for a recovery link and reports it
+       *   here as `PASSWORD_RECOVERY`. Left to the branches below it would fall
+       *   through as an unremarkable signed-in state: "Welcome back", the app
+       *   home, full access — to somebody who has demonstrated only that they
+       *   can open an email. Whoever forwarded that message, or is still logged
+       *   into a shared inbox, gets the same.
+       *
+       *   So it is flagged instead, and the flag is what `recoveryRedirect`
+       *   holds them on the update-password screen with. It outlives a restart
+       *   because it is written to storage here, and it is cleared in exactly
+       *   two places: a password actually being set, and signing out.
+       */
+      if (event === 'PASSWORD_RECOVERY') {
+        setRecovering(true);
+        if (next?.user) {
+          void AsyncStorage.setItem(recoveryKey(next.user.id), '1').catch(() => {});
+        }
+        return;
+      }
+
       if (event === 'SIGNED_OUT') {
         greetedUserId.current = null;
+        setRecovering(false);
         /*
          * Forget the stored view for the account that just left, so the next
          * person on this device is not dropped into their interface.
          */
-        if (user) void AsyncStorage.removeItem(activeViewKey(user.id)).catch(() => {});
+        if (user) {
+          void AsyncStorage.removeItem(activeViewKey(user.id)).catch(() => {});
+          void AsyncStorage.removeItem(recoveryKey(user.id)).catch(() => {});
+        }
         restoredViewFor.current = null;
         return;
       }
@@ -720,8 +801,17 @@ export function SessionProvider({
     if (!isSupabaseConfigured) return NOT_CONFIGURED;
 
     try {
+      const address = email.trim().toLowerCase();
       const { error } = await withTimeout(
-        supabase.auth.resetPasswordForEmail(email.trim().toLowerCase()),
+        supabase.auth.resetPasswordForEmail(address, {
+          /*
+            Without this the link lands on the Site URL, which reads no
+            parameters — no token exchange, no `PASSWORD_RECOVERY`, and a
+            marketing page that looks like the reset simply did nothing.
+            See `constants/links.ts`; the URL must also be allowlisted.
+          */
+          redirectTo: passwordResetLink(address),
+        }),
       );
 
       // Rate limits and outages are real failures worth surfacing. "No such
@@ -731,6 +821,39 @@ export function SessionProvider({
       return { error: thrownMessage(thrown) };
     }
   }, []);
+
+  /**
+   * Sets a new password on the current session, and lifts the recovery gate.
+   *
+   * ⚠ The flag is cleared only after Supabase confirms the write.
+   *
+   *   Clearing optimistically would release the gate on a request that failed —
+   *   a rate limit, a dropped connection, a password the project's own rules
+   *   rejected — leaving somebody inside the app with the old password still
+   *   live and no prompt to finish. The gate stays shut until the thing it is
+   *   waiting for has actually happened.
+   */
+  const updatePassword = useCallback(
+    async (password: string): Promise<AuthResult> => {
+      if (!isSupabaseConfigured) return NOT_CONFIGURED;
+
+      try {
+        const { data, error } = await withTimeout(supabase.auth.updateUser({ password }));
+
+        if (error) return { error: authErrorMessage(error.code, error.message) };
+
+        setRecovering(false);
+        if (data.user) {
+          void AsyncStorage.removeItem(recoveryKey(data.user.id)).catch(() => {});
+        }
+
+        return { error: null };
+      } catch (thrown) {
+        return { error: thrownMessage(thrown) };
+      }
+    },
+    [],
+  );
 
   /** Re-sends the confirmation email. Supabase rate-limits this server-side. */
   const resendConfirmation = useCallback(async (email: string): Promise<AuthResult> => {
@@ -875,11 +998,15 @@ export function SessionProvider({
      * be greeted.
      */
     greetedUserId.current = null;
+    setRecovering(false);
     /*
      * Forget the stored view for the account that just left, so the next
      * person on this device is not dropped into their interface.
      */
-    if (user) void AsyncStorage.removeItem(activeViewKey(user.id)).catch(() => {});
+    if (user) {
+      void AsyncStorage.removeItem(activeViewKey(user.id)).catch(() => {});
+      void AsyncStorage.removeItem(recoveryKey(user.id)).catch(() => {});
+    }
     restoredViewFor.current = null;
   }, []);
 
@@ -906,6 +1033,8 @@ export function SessionProvider({
       savePhone,
       resendConfirmation,
       requestPasswordReset,
+      recovering,
+      updatePassword,
       signOut,
     }),
     [
@@ -924,6 +1053,8 @@ export function SessionProvider({
       savePhone,
       resendConfirmation,
       requestPasswordReset,
+      recovering,
+      updatePassword,
       signOut,
     ],
   );
