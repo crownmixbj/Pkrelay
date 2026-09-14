@@ -78,6 +78,16 @@ const BROWSER_CALLED = [
   'verify-identity',
   'verify-liveness',
   'erase-auth-user',
+  /*
+   * ⚠ The one that is *only* ever called from a browser.
+   *
+   *   The guarantor portal is a web page opened from an email by somebody with
+   *   no app and no account. Every other function on this list has a native
+   *   caller that would keep working through a CORS fault; this one does not, so
+   *   a missing preflight here is not a degraded feature, it is the feature
+   *   gone — and gone silently, because the function's own logs stay empty.
+   */
+  'guarantor-portal',
 ] as const;
 
 for (const name of BROWSER_CALLED) {

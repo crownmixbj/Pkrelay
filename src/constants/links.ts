@@ -24,6 +24,8 @@
  * instead of promising the camera will work.
  */
 
+import * as Linking from 'expo-linking';
+
 /**
  * Set `EXPO_PUBLIC_LINK_DOMAIN` to the bare host, e.g. `pkrelay.ng`.
  *
@@ -112,6 +114,7 @@ export function emailConfirmationLink(email: string): string {
  *   exactly like `emailConfirmationLink`. Supabase silently falls back to the
  *   Site URL for anything not on the list, which looks precisely like OAuth
  *   being broken and sends the next hour into the client code.
+ *   `docs/AUTH-REDIRECTS.md` lists what to add, per environment.
  *
  * ⚠ No email rides along, and none is needed.
  *
@@ -119,23 +122,52 @@ export function emailConfirmationLink(email: string): string {
  *   identifying on an expired-link error. An OAuth return either carries a
  *   session or an error the provider named, and in both cases the app already
  *   knows who it asked about.
- *
- * On the web the current origin is used rather than `LINK_DOMAIN`, so a preview
- * deploy signs back into itself instead of dropping people on production.
  */
 export function oauthRedirectLink(): string {
+  /*
+   * ⚠ The origin this build is *being served from*, not a configured one.
+   *
+   *   This single line is what makes the function environment-aware, and it
+   *   is deliberately not a `__DEV__` check or a hostname match against a
+   *   list of known domains. It is already correct for localhost on whatever
+   *   port Expo settled on, for staging.pkrelay.com, for app.pkrelay.com —
+   *   and, the case a hardcoded list always forgets, for every Cloudflare
+   *   Pages preview deploy, which gets its own `*.pages.dev` origin per
+   *   branch. Matching on known hostnames would send all of those back to
+   *   production, where the tokens in the fragment belong to nobody and the
+   *   person lands signed out on a site they were not testing.
+   *
+   *   `EXPO_PUBLIC_SITE_URL` is not used here either, for the same reason:
+   *   it is one configured string per deployment, and a preview build that
+   *   inherited staging's value would sign people into staging.
+   */
   if (typeof window !== 'undefined' && window.location?.origin) {
     return `${window.location.origin}/sign-in`;
   }
 
   /*
-   * ⚠ Native comes back through the scheme even when universal links are on.
+   * ⚠ Native comes back through a scheme, never a universal link.
    *
    *   A universal link would be caught by the *browser* that is showing
    *   Google's consent screen, not by the app that opened it — so the person
    *   ends up on a web page inside a modal browser with a session the app
-   *   never sees. The custom scheme is what closes that browser and hands the
-   *   tokens back.
+   *   never sees. The scheme is what closes that browser and hands the
+   *   tokens back. That is why `LINK_DOMAIN` is not consulted here even when
+   *   universal links are switched on.
+   *
+   * ⚠ Which scheme is not a constant, which is why this is `createURL` and
+   *   not `${APP_SCHEME}://sign-in`.
+   *
+   *   A release build and a dev client both answer to `parcelmobile://`. Expo
+   *   Go does not — it is a different app, and its deep links are
+   *   `exp://<lan-ip>:<port>/--/sign-in`. Hardcoding the scheme means Google
+   *   sign-in works in TestFlight and silently does nothing on the machine it
+   *   is being developed on: the sheet closes, no tokens arrive, and there is
+   *   no error to read. `createURL` returns whichever of the three is
+   *   correct for the binary currently running.
+   *
+   *   Both the `redirectTo` and the `openAuthSessionAsync` return URL come
+   *   from this one function, so they cannot drift apart.
    */
-  return `${APP_SCHEME}://sign-in`;
+  return Linking.createURL('/sign-in');
 }

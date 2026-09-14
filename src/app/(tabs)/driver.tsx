@@ -42,6 +42,7 @@ import {
   type Booking,
 } from '@/store/bookings';
 import { DriverHub } from '@/components/ui/driver-hub';
+import { GuarantorTrackingCard } from '@/components/ui/guarantor-tracking-card';
 import { SignedOutState } from '@/components/ui/signed-out-state';
 import {
   REVIEW_WORKING_DAYS,
@@ -134,6 +135,30 @@ export default function DriverScreen() {
         ) : (
           <ApplyPrompt onApply={() => router.navigate('/driver-signup')} />
         )}
+
+        {/*
+          ---------- Where the guarantor invitation stands ----------
+
+          ⚠ Above the approval gate, because it is the reason for the gate.
+
+            An application waiting on a guarantor is not waiting on us, and the
+            driver is the only person who can do anything about it — the address
+            was typed by them and a mistyped one is the commonest cause of
+            silence. The gate notice below says "an admin has to approve you",
+            which is true and, at this stage, not yet the thing standing in the
+            way.
+
+          ⚠ Only while it is the live question.
+
+            `my_guarantor_status` answers with the most recent invitation
+            whatever state the application reached, so an approved driver would
+            otherwise carry "Guarantor verified" on their dashboard for as long
+            as they drive. The card is about an outstanding step, and once the
+            application is decided there is no outstanding step.
+        */}
+        {application &&
+          (application.status === 'pending_guarantor' ||
+            application.status === 'ready_for_review') && <GuarantorTrackingCard />}
 
         {/*
           The approval gate, stated once and plainly.

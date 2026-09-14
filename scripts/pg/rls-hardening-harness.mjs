@@ -111,6 +111,25 @@ const SUPABASE_SHIM = `
     ('delivery-proof','delivery-proof'), ('parcel-photo','parcel-photo'),
     ('sender-identity','sender-identity');
 
+  /*
+    ⚠ A stub for the one table 19 creates that a later migration insists on.
+
+      19 and 24 are skipped above — they are the push plumbing, and this harness
+      is about RLS. 49 then opens with a guard that refuses to install unless
+      public.push_tokens exists, which turned the whole chain into "Run
+      20250101000019_push.sql first." and took every assertion in this file with
+      it. Nothing here reads the table; the guard only asks whether it is there.
+
+      Stubbed rather than un-skipping 19, because the reason 19 is skipped has
+      not changed, and because dropping 49 and 50 from the chain instead would
+      quietly stop asserting on the notifications policies they add.
+  */
+  create table public.push_tokens (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid, token text, platform text,
+    created_at timestamptz default now()
+  );
+
   create table private.app_settings (key text primary key, value text);
   create function net.http_post(
     url text, body jsonb default '{}', params jsonb default '{}',

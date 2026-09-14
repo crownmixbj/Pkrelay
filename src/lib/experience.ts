@@ -175,6 +175,105 @@ export function redirectFor(pathname: string, experience: Experience | null): st
   return EXPERIENCE_HOME[experience];
 }
 
+// --------------------------------------- already signed in, still at the door --
+
+/**
+ * Routes that only mean something to somebody signed out.
+ *
+ * ⚠ The list is short on purpose, and the omissions are the interesting part.
+ *
+ *   `/verify-email` and `/confirm` belong to a person who *has* just signed up
+ *   and often does have a session — bouncing them off either one strands a
+ *   half-finished signup. `/forgot-password` stays open too: somebody signed in
+ *   on this device who cannot remember their password still has to be able to
+ *   ask for the email, and the reset link lands them back here.
+ */
+const SIGNED_OUT_ONLY = ['/sign-in', '/sign-up'];
+
+export type SignedInRedirectInput = {
+  pathname: string;
+  isAuthenticated: boolean;
+  /** From the session: an account with no phone number on file. */
+  needsPhone: boolean;
+  experience: Experience | null;
+  /**
+   * The `?next=` the auth gate set on its way here, if any.
+   *
+   * Honoured so that the two routes into the same place agree: somebody who
+   * signs in on this screen is sent to `next` by the screen itself, and this
+   * rule has to pick the same destination or whichever fires second wins and
+   * the person lands somewhere they did not ask for.
+   */
+  next?: string | string[] | null;
+};
+
+/**
+ * Where to send somebody who is already signed in and looking at the sign-in
+ * form, or null when there is nothing to do.
+ *
+ * ⚠ The sign-in screen does not know it is being looked at by a signed-in
+ *   person — it renders the same form either way, which is exactly the bug
+ *   this fixes. The rule lives here rather than in the screen for the reason
+ *   stated at the top of this file: a routing rule written into a screen is a
+ *   routing rule the next screen gets slightly differently.
+ *
+ * ⚠ Nothing happens while `needsPhone` is true.
+ *
+ *   That account belongs to the completion gate, which deliberately leaves the
+ *   auth routes reachable so somebody who signed in with the wrong Google
+ *   account has a way back out. Redirecting them off `/sign-in` would take that
+ *   exit away and leave them with one form and no door.
+ */
+export function signedInRedirect({
+  pathname,
+  isAuthenticated,
+  needsPhone,
+  experience,
+  next,
+}: SignedInRedirectInput): string | null {
+  // Null experience means auth is still restoring: nobody is "already signed
+  // in" yet, and deciding now would bounce a cold start off its own sign-in.
+  if (!experience || !isAuthenticated || needsPhone) return null;
+
+  if (!SIGNED_OUT_ONLY.some((route) => pathname === route || pathname.startsWith(`${route}/`))) {
+    return null;
+  }
+
+  const home = EXPERIENCE_HOME[experience];
+  const requested = internalPath(next);
+
+  if (!requested) return home;
+  // A `next` pointing back at the door would redirect to itself for ever.
+  if (SIGNED_OUT_ONLY.some((route) => requested === route || requested.startsWith(`${route}/`))) {
+    return home;
+  }
+
+  return routeAllowed(requested, experience) ? requested : home;
+}
+
+/**
+ * `next` as a path inside this app, or null.
+ *
+ * ⚠ On the web this string reaches `router.replace`, and a URL is not a path.
+ *
+ *   `//evil.example` is protocol-relative and `/\evil.example` is treated the
+ *   same way by browser URL parsers: both leave the site. A query parameter is
+ *   attacker-supplied by definition — it arrives in a link somebody can send —
+ *   so a single leading slash is the whole contract, and anything else falls
+ *   back to the home route.
+ */
+function internalPath(next: string | string[] | null | undefined): string | null {
+  // expo-router hands back an array when a parameter appears twice; a duplicated
+  // `next` is not a request we can honour unambiguously.
+  if (typeof next !== 'string') return null;
+
+  const trimmed = next.trim();
+  if (!trimmed.startsWith('/')) return null;
+  if (trimmed.startsWith('//') || trimmed.startsWith('/\\')) return null;
+
+  return trimmed;
+}
+
 // ------------------------------------------- an account with no phone number --
 
 /** The one-field screen a Google account lands on before anything else. */

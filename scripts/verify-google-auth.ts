@@ -96,10 +96,19 @@ check(
  *   Running the experience rules first bounces somebody to a home screen and
  *   then to the form — two navigations to reach one destination, and on web two
  *   entries in the history to press back through.
+ *
+ * ⚠ Order, not adjacency. This used to require the two calls to sit either side
+ *   of one `??`, which broke the day a third rule (`signedInRedirect`) joined
+ *   the chain between them — a correct change failing an assertion that had
+ *   pinned the wrong thing. What matters is that the phone-number gate is
+ *   consulted first; what sits after it is that rule's business.
  */
+const completionAt = flat(router).indexOf('completionRedirect(pathname, needsPhone)');
+const experienceAt = flat(router).indexOf('redirectFor(pathname, experience)');
+
 check(
   'before the experience rules',
-  /completionRedirect\(pathname, needsPhone\) \?\? redirectFor\(/.test(flat(router)),
+  completionAt !== -1 && experienceAt !== -1 && completionAt < experienceAt,
   'the other order is two redirects where one belongs',
 );
 
@@ -198,10 +207,40 @@ check(
   /oauthRedirectLink[\s\S]{0,400}return `\$\{window\.location\.origin\}/.test(links),
   'a hardcoded domain sends every preview deploy back to production',
 );
+/*
+ * ⚠ `createURL`, not a hardcoded `parcelmobile://`.
+ *
+ *   Expo Go is a different app with a different scheme (`exp://<lan-ip>:<port>`).
+ *   A literal scheme works in a release build and silently does nothing in
+ *   development: the sheet closes, no tokens arrive, no error is shown.
+ */
 check(
-  'and native comes back through the scheme',
-  /oauthRedirectLink[\s\S]{0,600}\$\{APP_SCHEME\}:\/\//.test(links),
-  'a universal link is caught by the browser showing the consent screen, not by the app',
+  'and native comes back through the scheme this binary actually answers to',
+  /oauthRedirectLink[\s\S]{0,1800}Linking\.createURL\('\/sign-in'\)/.test(links),
+  'a hardcoded scheme leaves Google sign-in dead in Expo Go with nothing to read',
+);
+/*
+ * ⚠ The one thing native must never return.
+ *
+ *   A universal link is caught by the browser showing the consent screen, not
+ *   by the app that opened it — so the person lands on a web page inside a
+ *   modal browser holding a session the app never sees.
+ */
+check(
+  'and never as a universal link',
+  !/oauthRedirectLink[\s\S]{0,1800}return `https:\/\/\$\{LINK_DOMAIN\}/.test(links),
+  'LINK_DOMAIN here hands the session to the browser instead of the app',
+);
+/*
+ * ⚠ No environment guessing on the web path.
+ *
+ *   `__DEV__` is true in a native dev build too, and a hostname allowlist has
+ *   no entry for the per-branch `*.pages.dev` origin a preview deploy gets.
+ */
+check(
+  'and the web path guesses at no environment',
+  !/oauthRedirectLink[\s\S]{0,1800}(__DEV__|localhost:8081|staging\.pkrelay\.com)/.test(links),
+  'a hardcoded environment list sends every preview deploy back to production',
 );
 
 // ------------------------------------------------------- both entry points --

@@ -16,6 +16,7 @@ import {
   redirectFor,
   resolveExperience,
   routeAllowed,
+  signedInRedirect,
 } from '../src/lib/experience';
 
 let failures = 0;
@@ -187,6 +188,150 @@ for (const experience of EXPERIENCES) {
     );
   }
 }
+
+// ------------------------------------------ already signed in, at the door ---
+
+/*
+ * The bug: a signed-in person opening /sign-in was shown the form.
+ *
+ * The screen renders the same thing either way — it has no idea who is looking
+ * at it — so the fix is a rule the guard applies, and these are its edges. The
+ * `next` cases matter most: the screen sends somebody to `next` after a
+ * successful sign-in while this rule is firing on the same session change, so
+ * the two have to agree on the destination.
+ */
+const signedIn = (over: Partial<Parameters<typeof signedInRedirect>[0]> = {}) =>
+  signedInRedirect({
+    pathname: '/sign-in',
+    isAuthenticated: true,
+    needsPhone: false,
+    experience: 'web',
+    ...over,
+  });
+
+check(
+  'a signed-in person on the sign-in form is sent home',
+  signedIn() === EXPERIENCE_HOME.web,
+  'this is the reported bug: the form renders the same whether or not there is a session',
+);
+check(
+  'and on sign-up too',
+  signedIn({ pathname: '/sign-up' }) === EXPERIENCE_HOME.web,
+  'an account creation form is no more use to somebody who already has one',
+);
+check(
+  'to the home their interface actually has',
+  signedIn({ experience: 'sender' }) === '/book' && signedIn({ experience: 'driver' }) === '/driver',
+);
+check(
+  'a signed-out person is left alone',
+  signedIn({ isAuthenticated: false }) === null,
+  'the whole point of the screen',
+);
+check(
+  'nothing happens while auth is restoring',
+  signedIn({ experience: null }) === null,
+  'a cold start would otherwise bounce off its own sign-in screen',
+);
+check(
+  'and nothing happens to an account that still owes a phone number',
+  signedIn({ needsPhone: true }) === null,
+  'the completion gate keeps the auth routes open as that account\'s way back out',
+);
+check(
+  'every other auth screen is left alone',
+  ['/verify-email', '/confirm', '/forgot-password', '/complete-profile'].every(
+    (route) => signedIn({ pathname: route }) === null,
+  ),
+  'those belong to somebody mid-signup, who often does have a session',
+);
+check(
+  'and so does the rest of the app',
+  ['/', '/book', '/profile'].every((route) => signedIn({ pathname: route }) === null),
+);
+
+check(
+  'the destination the auth gate asked for is honoured',
+  signedIn({ next: '/book' }) === '/book',
+  'the screen sends them to next on sign-in; this rule fires on the same session change',
+);
+check(
+  'unless that interface does not have it',
+  signedIn({ next: '/book', experience: 'driver' }) === '/driver',
+  'following it would land them somewhere the next rule bounces them off',
+);
+check(
+  'a next pointing back at the door is ignored',
+  signedIn({ next: '/sign-in' }) === EXPERIENCE_HOME.web,
+  'a screen that redirects to itself is a browser that hangs',
+);
+
+/*
+ * ⚠ `next` is attacker-supplied: it arrives in a link anybody can send, and on
+ *   the web it reaches `router.replace`. A URL is not a path.
+ */
+check(
+  'an off-site next is refused',
+  ['//evil.example', '/\\evil.example', 'https://evil.example', 'evil.example'].every(
+    (hostile) => signedIn({ next: hostile }) === EXPERIENCE_HOME.web,
+  ),
+  'protocol-relative and backslash forms are both parsed as another origin by browsers',
+);
+check(
+  'and so is a duplicated one',
+  signedIn({ next: ['/book', '/driver'] }) === EXPERIENCE_HOME.web,
+  'expo-router hands back an array; there is no unambiguous request to honour',
+);
+
+const routerSource = read('src/components/ui/experience-router.tsx');
+const signInScreen = read('src/app/(auth)/sign-in.tsx');
+
+/*
+ * ⚠ The screen reads the same rule, and does not restate it.
+ *
+ *   The guard is what navigates, but it navigates from an effect — so for a
+ *   frame or two the form is on screen, which is the symptom that was reported
+ *   in the first place. The screen therefore asks the same function whether
+ *   this person is leaving, rather than testing `isAuthenticated` itself: a
+ *   second copy of the condition is how the two start disagreeing about who is
+ *   signed in, and a signed-in person sees a form again.
+ */
+check(
+  'the sign-in screen reads the shared rule',
+  signInScreen.includes('signedInRedirect({') &&
+    signInScreen.includes("from '@/lib/experience'"),
+  'a hand-written isAuthenticated check here is the second copy this avoids',
+);
+check(
+  'and renders no form to somebody it is redirecting',
+  (() => {
+    const guardAt = signInScreen.indexOf('if (leaving)');
+    const formAt = signInScreen.indexOf('<ValidatedEmailInput');
+    return guardAt !== -1 && formAt !== -1 && guardAt < formAt;
+  })(),
+  'the early return has to come before the form, or both render',
+);
+
+check(
+  'the guard applies the rule',
+  routerSource.includes('signedInRedirect({'),
+  'a correct rule nothing calls is a comment',
+);
+check(
+  'after the completion gate and before the experience rule',
+  (() => {
+    const completion = routerSource.indexOf('completionRedirect(pathname, needsPhone)');
+    const signedInAt = routerSource.indexOf('signedInRedirect({');
+    const experienceAt = routerSource.indexOf('redirectFor(pathname, experience)');
+    return completion !== -1 && completion < signedInAt && signedInAt < experienceAt;
+  })(),
+  'an account owing a phone number outranks this; being on a route your interface lacks does not',
+);
+check(
+  'and reads next from the current route, not from its own',
+  routerSource.includes('useGlobalSearchParams<{ next?: string }>()'),
+  'this component lives in the root layout, outside every screen: the local hook reads nothing there',
+);
 
 // ------------------------------------------------------ the tab bar --------
 
@@ -381,6 +526,7 @@ console.log(
     '       the view switch lives in one place and is stored per account, a revoked\n' +
     '       driver cannot be stranded by a stale preference,\n' +
     '       nothing resolves while auth restores, /driver-signup stays open to senders,\n' +
-    '       admin works on every device, every redirect lands somewhere allowed, and the\n' +
-    '       navigation and the guard read one shared rule.',
+    '       admin works on every device, every redirect lands somewhere allowed, a signed-in\n' +
+    '       person is moved off the sign-in form to the destination the gate asked for —\n' +
+    '       never to another origin — and the navigation and the guard read one shared rule.',
 );
