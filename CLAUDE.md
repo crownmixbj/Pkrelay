@@ -51,8 +51,8 @@ src/hooks/ store/ utils/
 supabase/migrations/  timestamped CLI migrations (20250101000001 … 45)
 supabase/functions/   Deno edge functions + _shared/
 scripts/            the test suite (see below)
-docs/               STAGING, DEEP-LINKS, DOJAH, DISTRIBUTION, PUSH-DEPLOY,
-                    PRIVACY-NOTES, SCHEMA-AUDIT
+docs/               STAGING, DEEP-LINKS, AUTH-REDIRECTS, DOJAH, DISTRIBUTION,
+                    PUSH-DEPLOY, PRIVACY-NOTES, SCHEMA-AUDIT
 ```
 
 ## Commands that matter
@@ -103,7 +103,12 @@ turn the suite red. Run `npm run verify` before declaring anything done.
   needs before the CLI will accept a `db push`.
 - Staging is `ublqzvuzbyodjstzjvja`; production is `ymfdnzeonkhvzncqcezo`.
   `.env` and the CLI link both point at staging. Migrations 01-45 and 47 are
-  applied there. **48 is written but not yet pushed.**
+  applied there. **48, 49, 50 and 51 are written but not yet pushed.**
+- 51 is the guarantor form — see `docs/GUARANTOR.md`. It has to be pushed
+  *together with* `supabase functions deploy guarantor-portal`: 51 revokes
+  `complete_guarantor_verification` from `anon`, and until that function is
+  deployed nothing else can call it, so the portal's submit button would 403.
+  49 must reach the database before 51, which queues notifications through it.
 
 ## Migration numbering: the gap at 46
 
@@ -113,7 +118,11 @@ sorted before the last applied migration and `db push` would have skipped it
 without `--include-all`. So RLS hardening is **48**. Do not fill the 46 gap —
 anything numbered below 47 needs `--include-all` to ever reach staging.
 
-## Still owed: the `is_admin()` pass (migration 49)
+## Still owed: the `is_admin()` pass (its own migration, 52 or later)
+
+⚠ This heading used to say "migration 49". 49 is the notifications spine and 50
+its triggers, so the number was taken before the pass was written; it is whatever
+number is free when somebody does it.
 
 `schema-gap.ts` describes the hardening work as including "a handful of
 policies rewritten to stop calling `is_admin()` once per row". That half was

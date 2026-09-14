@@ -205,7 +205,16 @@ function guarantorInvitation(payload: Payload, context: Context): Rendered {
     '',
     expires ? `This link expires on ${expires}.` : '',
     '',
-    'What this involves: confirming you are willing to stand as their guarantor, and entering your own NIN so we can verify who you are. It takes about a minute.',
+    /*
+     * ⚠ What it involves, stated accurately, because it stopped being one field.
+     *
+     *   This used to promise a NIN and about a minute. The portal now also asks
+     *   for a photograph of a government ID, a live photo taken with the camera,
+     *   and a signature under a liability declaration. Somebody who opens the
+     *   link expecting one field and meets all of that abandons it — and would
+     *   be right to feel the email had misled them.
+     */
+    'What this involves: your own details, your NIN, a photo of your government ID, a live photo taken with your camera, and a declaration to read and sign. It takes about five minutes, and you will need your ID with you.',
     '',
     `If you were not expecting this, or you do not know ${driver}, you can ignore this email — nothing happens without you.`,
     '',
@@ -225,6 +234,16 @@ function guarantorInvitation(payload: Payload, context: Context): Rendered {
       intro: `Hello ${guarantor}, ${driver} has listed you as a guarantor on Package Relay. Please use the secure link below to review the terms and complete your verification.`,
       bodyHtml: [
         ROW('Driver', driver || 'Not named'),
+        /*
+         * ⚠ The HTML says the same thing the plain text does.
+         *
+         *   The text body lists what the portal asks for; this layout has rows
+         *   rather than paragraphs, so it says it as a row. A recipient who
+         *   opens the link on a laptop with their ID in another room abandons
+         *   halfway through, and the two versions of this email must not
+         *   disagree about what it takes.
+         */
+        ROW('What to have ready', 'Your government ID, and a camera for a live photo'),
         expires ? ROW('Link expires', expires) : '',
       ].join(''),
       cta: url ? { label: 'Review and verify', url } : null,

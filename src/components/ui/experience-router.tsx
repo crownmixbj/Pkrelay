@@ -1,8 +1,8 @@
-import { usePathname, useRouter } from 'expo-router';
+import { useGlobalSearchParams, usePathname, useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
 
 import { useExperience } from '@/hooks/use-experience';
-import { completionRedirect, redirectFor } from '@/lib/experience';
+import { completionRedirect, redirectFor, signedInRedirect } from '@/lib/experience';
 import { useSession } from '@/store/session';
 
 /**
@@ -20,7 +20,22 @@ export function ExperienceRouter() {
   const router = useRouter();
   const pathname = usePathname();
   const experience = useExperience();
-  const { needsPhone } = useSession();
+  const { isAuthenticated, needsPhone } = useSession();
+  /**
+   * Where the auth gate wanted this person to end up.
+   *
+   * Read here rather than only in the sign-in screen because this effect can
+   * fire first: the session flips to signed-in the instant `signIn` resolves,
+   * while the screen is still on its own `router.replace(next)`. Both have to
+   * choose the same destination, or whichever lands second decides it.
+   *
+   * ⚠ Global, not local. `useLocalSearchParams` reads the params of the route
+   *   this component sits in — and this one sits in the root layout, outside
+   *   every screen, so it would read nothing at all. The global hook is the one
+   *   that answers "what is the current route's `?next=`" from out here; it
+   *   re-renders on navigations, which this component does anyway.
+   */
+  const { next } = useGlobalSearchParams<{ next?: string }>();
 
   /*
    * The last path we sent someone to.
@@ -46,7 +61,17 @@ export function ExperienceRouter() {
      *   destination — and on web, two entries in the history somebody has to
      *   press back through.
      */
-    const target = completionRedirect(pathname, needsPhone) ?? redirectFor(pathname, experience);
+    /*
+     * Three rules, in the order they outrank each other.
+     *
+     *   completionRedirect  an account with no phone number goes nowhere else
+     *   signedInRedirect    somebody already signed in has no use for the door
+     *   redirectFor         and then: is this route in their interface at all
+     */
+    const target =
+      completionRedirect(pathname, needsPhone) ??
+      signedInRedirect({ pathname, isAuthenticated, needsPhone, experience, next }) ??
+      redirectFor(pathname, experience);
     if (!target) {
       lastRedirect.current = null;
       return;
@@ -65,7 +90,7 @@ export function ExperienceRouter() {
      * a screen that immediately redirects again.
      */
     router.replace(target as '/');
-  }, [experience, needsPhone, pathname, router]);
+  }, [experience, isAuthenticated, needsPhone, next, pathname, router]);
 
   return null;
 }

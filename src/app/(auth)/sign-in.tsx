@@ -1,14 +1,16 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, usePathname, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { errorMessage } from '@/lib/errors';
+import { signedInRedirect } from '@/lib/experience';
 import { AuthFooterLink, AuthShell } from '@/components/ui/auth-shell';
 import { GoogleSignIn } from '@/components/ui/google-sign-in';
 import { Button } from '@/components/ui/button';
 import { PasswordField } from '@/components/ui/password-field';
 import { ValidatedEmailInput } from '@/components/ValidatedEmailInput';
 import { Spacing, Typography, font } from '@/constants/theme';
+import { useExperience } from '@/hooks/use-experience';
 import { useTheme } from '@/hooks/use-theme';
 import { MIN_PASSWORD_LENGTH } from '@/constants/auth-validation';
 import { useSession } from '@/store/session';
@@ -18,13 +20,26 @@ export default function SignInScreen() {
   const theme = useTheme();
   const router = useRouter();
 
-  const { signIn } = useSession();
+  const { signIn, isAuthenticated, needsPhone } = useSession();
+  const experience = useExperience();
+  const pathname = usePathname();
   /**
    * `next` is set by the auth gate so we can return the user to what they were
    * doing; `email` is set when sign-up sent them here because the address was
    * already registered. Read before the state below, which seeds from it.
    */
   const { next, email: prefillEmail } = useLocalSearchParams<{ next?: string; email?: string }>();
+
+  /**
+   * Already signed in, looking at the sign-in form.
+   *
+   * `ExperienceRouter` is what actually navigates — this is the same rule read
+   * a second time so the form is not rendered for the frame or two before it
+   * does. Two readers, one rule, imported from `lib/experience`: a second copy
+   * of the condition written out here is how the screen and the guard start
+   * disagreeing about who is signed in.
+   */
+  const leaving = signedInRedirect({ pathname, isAuthenticated, needsPhone, experience, next });
 
   const [email, setEmail] = useState(prefillEmail ?? '');
   const [password, setPassword] = useState('');
@@ -65,6 +80,19 @@ export default function SignInScreen() {
 
     router.replace((next as '/') ?? '/');
   };
+
+  /*
+   * No form, no footer offering an account to somebody who has one. Not null:
+   * a blank screen for the instant before the redirect lands reads as a
+   * failure, and on a slow web navigation that instant is visible.
+   */
+  if (leaving) {
+    return (
+      <AuthShell title="You're already signed in" subtitle="Taking you back to Package Relay.">
+        <ActivityIndicator color={theme.primary} />
+      </AuthShell>
+    );
+  }
 
   return (
     <AuthShell

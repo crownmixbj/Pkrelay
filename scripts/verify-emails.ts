@@ -357,8 +357,34 @@ check(
  *   back with a message about a check constraint. The last constraint written
  *   across the migrations is the one in force.
  */
-const kindChecks = [...migration.matchAll(/check \(kind in \(([\s\S]*?)\)\)/g)];
-const liveKinds = [...(kindChecks.at(-1)?.[1] ?? '').matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+/*
+ * ⚠ And in the *outbox's* constraint, not merely the last one in the repository.
+ *
+ *   This read the last `check (kind in (...))` across every migration, on the
+ *   reasoning that the last one written is the one in force. That was true when
+ *   only the outbox had a column called `kind`. It stopped being true at 49,
+ *   which gives `notifications` a `kind` with its own closed list, and again at
+ *   51, whose `guarantor_documents.kind` admits two values — so this assertion
+ *   started comparing the email templates against a notification vocabulary and
+ *   then against 'government_id'.
+ *
+ *   Both failures were loud, which is the only good thing about them. A quieter
+ *   version of the same bug would have compared the templates against a list
+ *   that happened to overlap.
+ *
+ *   Statements, then: the ones that name `public.email_outbox` and carry the
+ *   constraint. 38 creates it and 41 widens it, and the last of those is in
+ *   force.
+ */
+const outboxConstraints = migration
+  .split(/;\s*\n/)
+  .filter((statement) => /public\.email_outbox/.test(statement))
+  .filter((statement) => /check \(kind in \(/.test(statement));
+
+const liveKinds = [
+  ...(/check \(kind in \(([\s\S]*?)\)\)/.exec(outboxConstraints.at(-1) ?? '')?.[1] ?? '')
+    .matchAll(/'([a-z_]+)'/g),
+].map((m) => m[1]);
 
 check('the outbox kind constraint parsed', liveKinds.length >= 11, liveKinds.join(', '));
 

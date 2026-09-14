@@ -120,6 +120,40 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
     fn: 'guard_delivery_state',
     migration: '20250101000048_rls_hardening.sql',
   },
+  /*
+   * ⚠ 49 and 50 were missing from this list, and the guard above had already
+   *   caught it.
+   *
+   *   `verify-identity-review` fails when the newest migration is not listed
+   *   here, and on this working tree it was failing on 50 before 51 existed.
+   *   Adding only 51 would have turned the assertion green while leaving the
+   *   panel reporting a healthy schema on a project with no notifications table
+   *   — which is the precise failure the assertion exists to prevent, achieved
+   *   by satisfying the assertion. So all three are here.
+   */
+  {
+    label: 'Notifications',
+    fn: 'queue_notification',
+    migration: '20250101000049_notifications.sql',
+  },
+  {
+    label: 'Notification triggers',
+    fn: 'notify_on_application_decision',
+    migration: '20250101000050_notification_triggers.sql',
+  },
+  /*
+   * ⚠ Probed on a *new* function, not on one 51 replaces.
+   *
+   *   51 drops and recreates four functions that 39 already created, so none of
+   *   those can answer "has 51 been applied" — they exist on a database that has
+   *   only ever run 39. `guarantor_document_slot` is new in 51, which makes its
+   *   absence the honest signal.
+   */
+  {
+    label: 'Guarantor form and documents',
+    fn: 'guarantor_document_slot',
+    migration: '20250101000051_guarantor_full_form.sql',
+  },
 ];
 
 /**

@@ -1,22 +1,28 @@
 import { useLocalSearchParams } from 'expo-router';
-import { BadgeCheck, ShieldAlert, ShieldCheck } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
+import { BadgeCheck, Briefcase, FileSignature, ShieldAlert, ShieldCheck, User } from 'lucide-react-native';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Footer } from '@/components/Footer';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Dropdown } from '@/components/ui/dropdown';
 import { Field } from '@/components/ui/field';
+import { GuarantorUploadCard } from '@/components/ui/guarantor-upload-card';
 import { screenPadding } from '@/components/ui/screen';
-import { NIN_LENGTH } from '@/constants/driver-validation';
-import { Radius, Spacing, Typography, font } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
 import {
   CONSENT_TEXT,
-  completeVerification,
-  openInvitation,
-  type InvitationView,
-} from '@/store/guarantor';
+  EMPLOYMENT_STATUSES,
+  GUARANTOR_PRIVACY_NOTE,
+  KNOWN_DURATIONS,
+  SURETYSHIP_CLAUSE,
+  needsEmployer,
+} from '@/constants/guarantor';
+import { GUARANTOR_RELATIONSHIPS, NIN_LENGTH } from '@/constants/driver-validation';
+import { Radius, Spacing, Typography, font } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
+import { isValidEmail, isValidNigerianPhone, nigerianPhoneError } from '@/utils/validation';
+import { completeVerification, openInvitation, type InvitationView } from '@/store/guarantor';
 
 /**
  * The guarantor portal — the only screen in Package Relay meant for somebody with no
@@ -25,10 +31,19 @@ import {
  * ⚠ It is opened by a stranger who was not expecting it.
  *
  *   They received an unsolicited email naming somebody, asking for a national
- *   identifier. The most reasonable thing for them to do is close the tab. So
- *   this page's first job is not to collect a NIN — it is to be legible: who
- *   listed them, what Package Relay is, what happens if they do nothing, and what the
- *   number is for. The form is below all of that, not above it.
+ *   identifier, a photograph of their ID, their face, and a signature under a
+ *   liability clause. The most reasonable thing for them to do is close the tab.
+ *   So this page's first job is not to collect anything — it is to be legible:
+ *   who listed them, what Package Relay is, what happens if they do nothing, and
+ *   what each thing is for. The form is below all of that, not above it.
+ *
+ * ⚠ The order of the sections is the order of trust, not the order of the table.
+ *
+ *   Who they are, then what they do, then their identity documents, and the
+ *   liability clause last — because the clause is the part a reasonable person
+ *   might refuse, and asking for a face before they have read it means holding a
+ *   photograph of somebody who then said no. Each section is a card, so somebody
+ *   on a phone can see where they are in it.
  *
  * ⚠ Outside `(tabs)`, so there is no app chrome.
  *
@@ -40,22 +55,61 @@ export default function GuarantorPortal() {
   const theme = useTheme();
   const { token } = useLocalSearchParams<{ token: string }>();
 
-  const [view, setView] = useState<InvitationView | null>(null);
-  const [nin, setNin] = useState('');
-  const [agreed, setAgreed] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  /*
+   * ⚠ The "no token at all" case is the initial state, not an effect.
+   *
+   *   Setting it inside the effect is a setState in an effect body, which
+   *   cascades a render for a value that was knowable before the first one —
+   *   there is no token in the URL, and no amount of waiting will produce one.
+   */
+  const [view, setView] = useState<InvitationView | null>(() =>
+    token ? null : { valid: false, reason: 'invalid' },
+  );
   const [done, setDone] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  /* The guarantor's own details. */
+  const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('+234');
+  const [email, setEmail] = useState('');
+  const [address, setAddress] = useState('');
+  const [relationship, setRelationship] = useState('');
+  const [duration, setDuration] = useState('');
+
+  /* Professional background. */
+  const [employment, setEmployment] = useState('');
+  const [company, setCompany] = useState('');
+  const [jobTitle, setJobTitle] = useState('');
+
+  /* Identity. */
+  const [nin, setNin] = useState('');
+  const [idUploaded, setIdUploaded] = useState(false);
+  const [photoUploaded, setPhotoUploaded] = useState(false);
+
+  /* The two agreements, and the signature. */
+  const [agreedConsent, setAgreedConsent] = useState(false);
+  const [agreedClause, setAgreedClause] = useState(false);
+  const [signature, setSignature] = useState('');
 
   useEffect(() => {
-    if (!token) {
-      setView({ valid: false, reason: 'invalid' });
-      return;
-    }
+    if (!token) return;
 
     let cancelled = false;
     void openInvitation(String(token)).then((next) => {
-      if (!cancelled) setView(next);
+      if (cancelled) return;
+      setView(next);
+      /*
+       * ⚠ Pre-filled, not locked.
+       *
+       *   The address the invitation went to is almost always the guarantor's
+       *   own, so pre-filling saves typing. Locking it would be wrong: a driver
+       *   who used a work address, or a shared family inbox, would force the
+       *   guarantor to file a contact address that is not theirs. Both values are
+       *   kept — a mismatch is something an admin should see, and is one of the
+       *   more useful signals on the review screen.
+       */
+      if (next.valid) setEmail(next.guarantorEmail);
     });
 
     return () => {
@@ -63,27 +117,93 @@ export default function GuarantorPortal() {
     };
   }, [token]);
 
+  /**
+   * ⚠ Checked here and again in the database, and the database is the authority.
+   *
+   *   This is a courtesy — it saves a round trip and it can point at the field
+   *   that is wrong, which a server refusal cannot. The page is reachable by
+   *   anyone and every check on it can simply be skipped, so
+   *   `complete_guarantor_verification` repeats all of them.
+   */
+  const problem = useMemo((): string | null => {
+    if (fullName.trim().split(/\s+/).length < 2) return 'Enter your first and last name.';
+    if (!isValidNigerianPhone(phone)) {
+      return nigerianPhoneError(phone) ?? 'Enter a valid Nigerian WhatsApp number.';
+    }
+    if (!isValidEmail(email)) return 'Enter a valid email address.';
+    if (address.trim().length < 10) return 'Enter your full residential address.';
+    if (!relationship) return 'Choose how you know this person.';
+    if (!duration) return 'Choose how long you have known them.';
+    if (!employment) return 'Choose your employment status.';
+    if (needsEmployer(employment) && company.trim().length === 0) {
+      return 'Enter the name of your employer or business.';
+    }
+    if (needsEmployer(employment) && jobTitle.trim().length === 0) return 'Enter your job title.';
+    if (nin.replace(/\D/g, '').length !== NIN_LENGTH) return `A NIN is ${NIN_LENGTH} digits.`;
+    if (!idUploaded) return 'Attach a photo of your government ID.';
+    if (!photoUploaded) return 'Take your live photo.';
+    if (!agreedConsent) return 'Tick the box to confirm your NIN is your own.';
+    if (!agreedClause) return 'Read and accept the guarantor declaration.';
+    /*
+     * ⚠ Compared the same way the database compares it — case and spacing
+     *   ignored — so a submission this page accepts is never refused there for a
+     *   reason this page could have explained.
+     */
+    const tidy = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase();
+    if (tidy(signature) !== tidy(fullName)) {
+      return 'Sign with the same full name you entered above.';
+    }
+    return null;
+  }, [
+    fullName,
+    phone,
+    email,
+    address,
+    relationship,
+    duration,
+    employment,
+    company,
+    jobTitle,
+    nin,
+    idUploaded,
+    photoUploaded,
+    agreedConsent,
+    agreedClause,
+    signature,
+  ]);
+
   const submit = async () => {
     setError(null);
 
-    /*
-     * ⚠ Checked here and again in the database.
-     *
-     *   This is a courtesy — it saves a round trip for a mistyped number. The
-     *   authority is `complete_guarantor_verification`, because this page is
-     *   reachable by anyone and its checks can simply be skipped.
-     */
-    if (nin.replace(/\D/g, '').length !== NIN_LENGTH) {
-      setError(`A NIN is ${NIN_LENGTH} digits.`);
-      return;
-    }
-    if (!agreed) {
-      setError('Please tick the box to confirm you agree.');
+    if (problem) {
+      setError(problem);
       return;
     }
 
     setSaving(true);
-    const outcome = await completeVerification(String(token), nin);
+    const outcome = await completeVerification(String(token), {
+      nin,
+      fullName: fullName.trim(),
+      whatsappPhone: phone.trim(),
+      email: email.trim(),
+      residentialAddress: address.trim(),
+      relationship,
+      knownDuration: duration,
+      employmentStatus: employment,
+      companyName: needsEmployer(employment) ? company.trim() : '',
+      jobTitle: needsEmployer(employment) ? jobTitle.trim() : '',
+      signatureName: signature.trim(),
+      /*
+       * ⚠ The wording travels with the submission.
+       *
+       *   Both strings are stored in the row, so what was on the screen and what
+       *   is on file cannot drift apart. A server filling in its own current
+       *   wording would produce a record of somebody agreeing to a paragraph
+       *   they may never have seen.
+       */
+      consentText: CONSENT_TEXT,
+      declarationText: SURETYSHIP_CLAUSE,
+    });
     setSaving(false);
 
     if (!outcome.ok) {
@@ -121,11 +241,17 @@ export default function GuarantorPortal() {
               Your verification is complete and their application has moved on for review. Nothing
               else is needed from you, and you can close this page.
             </Text>
+            <Text style={[styles.body, { color: theme.textMuted }]}>
+              Keep this in mind: you have agreed to stand as this person&apos;s guarantor. If you
+              change your mind, write to us and we will tell them their application needs a
+              different guarantor.
+            </Text>
           </Card>
         )}
 
         {view?.valid === true && !done && (
           <>
+            {/* ---------- 1. what this is, before anything is asked ---------- */}
             <Card style={styles.card}>
               <View style={styles.row}>
                 <ShieldCheck color={theme.primary} size={22} />
@@ -140,17 +266,31 @@ export default function GuarantorPortal() {
               </Text>
 
               {/*
-                ⚠ What it means, before what is asked for.
+                ⚠ The applicant's details, read-only, and there are only two.
 
-                  Somebody agreeing to stand as a guarantor should know what
-                  they are agreeing to. Putting the NIN field first and the
-                  explanation underneath would be collecting a national
-                  identifier from a person who does not yet know why.
+                  A guarantor needs to know who they are vouching for and have
+                  something to quote if they telephone us. They do not need this
+                  person's phone number, address or NIN, and
+                  `open_guarantor_invitation` deliberately does not return them —
+                  whoever opened this link may not be the guarantor at all.
               */}
+              <View style={[styles.applicant, { backgroundColor: theme.surfaceMuted }]}>
+                <ReadOnly label="Applicant" value={view.driverName} />
+                <ReadOnly label="Application reference" value={view.reference || '—'} />
+                <ReadOnly
+                  label="Invitation sent to"
+                  value={view.guarantorEmail || '—'}
+                />
+              </View>
+
               <Text style={[styles.body, { color: theme.textSecondary }]}>
                 Being a guarantor means you know this person and are willing to vouch for them. We
-                ask for your NIN so we can confirm you are a real person — it is checked once and we
-                keep only the last four digits on file.
+                ask for your NIN and a photo of your ID so we can confirm you are a real person — we
+                keep only the last four digits of the NIN where staff can see it.
+              </Text>
+
+              <Text style={[styles.body, { color: theme.textMuted }]}>
+                {GUARANTOR_PRIVACY_NOTE}
               </Text>
 
               <Text style={[styles.body, { color: theme.textMuted }]}>
@@ -159,7 +299,118 @@ export default function GuarantorPortal() {
               </Text>
             </Card>
 
+            {/* ---------- 2. who they are ---------- */}
             <Card style={styles.card}>
+              <SectionTitle icon={<User color={theme.primary} size={18} />} label="Your details" />
+
+              <Field
+                label="Your full name"
+                placeholder="As it appears on your ID"
+                value={fullName}
+                onChangeText={setFullName}
+                autoCapitalize="words"
+                hint="First and last name."
+              />
+
+              <Field
+                label="WhatsApp phone number"
+                placeholder="+2348012345678"
+                value={phone}
+                onChangeText={setPhone}
+                keyboardType="phone-pad"
+                /*
+                  ⚠ WhatsApp, said explicitly, because that is where a recovery
+                    conversation will actually happen. A number that is not on it
+                    is a number nobody will reach.
+                */
+                hint="We will only use this if there is ever a dispute about a parcel."
+              />
+
+              <Field
+                label="Your email address"
+                placeholder="you@example.com"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoComplete="email"
+                hint="Change it if this is not the address you use."
+              />
+
+              <Field
+                label="Residential address"
+                placeholder="Street, area, city, state"
+                value={address}
+                onChangeText={setAddress}
+                multiline
+                autoCapitalize="sentences"
+              />
+
+              <Dropdown
+                label="How do you know them?"
+                placeholder="Choose one"
+                options={GUARANTOR_RELATIONSHIPS}
+                selected={relationship as (typeof GUARANTOR_RELATIONSHIPS)[number]}
+                onSelect={(value) => setRelationship(value)}
+              />
+
+              <Dropdown
+                label="How long have you known them?"
+                placeholder="Choose one"
+                options={KNOWN_DURATIONS}
+                selected={duration as (typeof KNOWN_DURATIONS)[number]}
+                onSelect={(value) => setDuration(value)}
+              />
+            </Card>
+
+            {/* ---------- 3. what they do ---------- */}
+            <Card style={styles.card}>
+              <SectionTitle
+                icon={<Briefcase color={theme.primary} size={18} />}
+                label="Your work"
+              />
+
+              <Dropdown
+                label="Employment status"
+                placeholder="Choose one"
+                options={EMPLOYMENT_STATUSES}
+                selected={employment as (typeof EMPLOYMENT_STATUSES)[number]}
+                onSelect={(value) => setEmployment(value)}
+              />
+
+              {/*
+                ⚠ Only asked of people who have an employer.
+
+                  Requiring a company name of everybody makes a retired guarantor
+                  type something untrue into a form that is about to ask them to
+                  sign it. `complete_guarantor_verification` applies the same rule,
+                  because the client is not the authority on its own validation.
+              */}
+              {needsEmployer(employment) && (
+                <>
+                  <Field
+                    label="Employer or business name"
+                    value={company}
+                    onChangeText={setCompany}
+                    autoCapitalize="words"
+                  />
+                  <Field
+                    label="Your job title"
+                    value={jobTitle}
+                    onChangeText={setJobTitle}
+                    autoCapitalize="words"
+                  />
+                </>
+              )}
+            </Card>
+
+            {/* ---------- 4. proving they are a real person ---------- */}
+            <Card style={styles.card}>
+              <SectionTitle
+                icon={<ShieldCheck color={theme.primary} size={18} />}
+                label="Confirming your identity"
+              />
+
               <Field
                 label="Your NIN"
                 placeholder="12345678901"
@@ -170,34 +421,94 @@ export default function GuarantorPortal() {
                 hint={`${NIN_LENGTH} digits. Yours, not the driver's.`}
               />
 
-              <Pressable
-                onPress={() => setAgreed((was) => !was)}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: agreed }}
-                style={styles.consent}>
-                <View
-                  style={[
-                    styles.box,
-                    { borderColor: agreed ? theme.primary : theme.border },
-                    agreed && { backgroundColor: theme.primary },
-                  ]}>
-                  {agreed && <BadgeCheck color={theme.primaryText} size={14} />}
-                </View>
-                {/*
-                  ⚠ The same string that is stored with the submission.
+              <GuarantorUploadCard
+                token={String(token)}
+                kind="government_id"
+                hint="Your NIN slip, driver's licence, voter's card or international passport. Make sure the name and photo are readable."
+                uploaded={idUploaded}
+                onUploaded={() => setIdUploaded(true)}
+                onCleared={() => setIdUploaded(false)}
+                disabled={saving}
+              />
 
-                    `CONSENT_TEXT` is rendered here and written to the row, so
-                    what was agreed to and what is on file cannot drift apart.
-                */}
-                <Text style={[styles.consentText, { color: theme.textSecondary }]}>
-                  {CONSENT_TEXT}
-                </Text>
-              </Pressable>
+              <GuarantorUploadCard
+                token={String(token)}
+                kind="live_photo"
+                hint="Taken now, with your camera — a saved picture cannot be used. It shows that the person agreeing to this is the person holding the ID."
+                uploaded={photoUploaded}
+                onUploaded={() => setPhotoUploaded(true)}
+                onCleared={() => setPhotoUploaded(false)}
+                disabled={saving}
+              />
+            </Card>
+
+            {/* ---------- 5. the part they might refuse, last ---------- */}
+            <Card style={styles.card}>
+              <SectionTitle
+                icon={<FileSignature color={theme.primary} size={18} />}
+                label="Guarantor declaration"
+              />
+
+              {/*
+                ⚠ The clause is shown in full, not summarised, and not behind a
+                  link.
+
+                  It is the only part of this page that creates an obligation. A
+                  summary with "see full terms" is how people come to sign
+                  something they have not read, and the wording stored in the row
+                  is this exact string — so the screen and the record are the same
+                  sentence by construction.
+              */}
+              <View style={[styles.clause, { backgroundColor: theme.surfaceMuted }]}>
+                <Text style={[styles.clauseText, { color: theme.text }]}>{SURETYSHIP_CLAUSE}</Text>
+              </View>
+
+              <CheckRow
+                checked={agreedConsent}
+                onToggle={() => setAgreedConsent((was) => !was)}
+                label={CONSENT_TEXT}
+              />
+
+              <CheckRow
+                checked={agreedClause}
+                onToggle={() => setAgreedClause((was) => !was)}
+                label="I have read the declaration above and I accept it."
+              />
+
+              <Field
+                label="Type your full name to sign"
+                placeholder={fullName || 'Your full name'}
+                value={signature}
+                onChangeText={setSignature}
+                autoCapitalize="words"
+                hint="It has to match the name you entered above."
+              />
+
+              {/*
+                ⚠ The timestamp is shown, and it is not the one that is stored.
+
+                  The row is stamped by the database at the moment it is written.
+                  This line exists so the person signing knows a time is being
+                  recorded — a signature with an invisible date is the kind of
+                  thing people are right to be uneasy about. It says "will be
+                  recorded" rather than presenting itself as the record.
+              */}
+              <Text style={[styles.stamp, { color: theme.textMuted }]}>
+                Signed {new Date().toLocaleString()} — the exact time is recorded with your
+                submission.
+              </Text>
 
               {!!error && <Text style={[styles.error, { color: theme.danger }]}>{error}</Text>}
 
+              {/*
+                ⚠ Enabled, and it explains the refusal.
+
+                  A disabled Submit on a form this long leaves somebody hunting
+                  for what is missing. Pressing it names the first thing that is
+                  not right, in the order the form asks for it.
+              */}
               <Button
-                label={saving ? 'Submitting…' : 'Confirm and verify'}
+                label={saving ? 'Submitting…' : 'Sign and submit'}
                 onPress={() => void submit()}
                 disabled={saving}
               />
@@ -214,13 +525,64 @@ export default function GuarantorPortal() {
           footer looked like more of the same and was nearly exempted.
 
           It stays for one link: Privacy Policy. This page asks a person with no
-          account for their national identifier, which makes them a data subject
-          under the NDPA and gives them a right to read what happens to it. A
-          route to that notice is not decoration. The marketing links beside it
-          are a small price.
+          account for their national identifier, their ID and their photograph,
+          which makes them a data subject under the NDPA and gives them a right to
+          read what happens to it. A route to that notice is not decoration.
       */}
       <Footer />
     </ScrollView>
+  );
+}
+
+function SectionTitle({ icon, label }: { icon: React.ReactNode; label: string }) {
+  const theme = useTheme();
+  return (
+    <View style={styles.row}>
+      {icon}
+      <Text style={[styles.sectionTitle, { color: theme.text }]}>{label}</Text>
+    </View>
+  );
+}
+
+/** An applicant detail the guarantor may read and may not change. */
+function ReadOnly({ label, value }: { label: string; value: string }) {
+  const theme = useTheme();
+  return (
+    <View style={styles.readOnly}>
+      <Text style={[styles.readOnlyLabel, { color: theme.textMuted }]}>{label}</Text>
+      <Text style={[styles.readOnlyValue, { color: theme.text }]}>{value}</Text>
+    </View>
+  );
+}
+
+/** A tick box whose label is the wording that gets stored. */
+function CheckRow({
+  checked,
+  onToggle,
+  label,
+}: {
+  checked: boolean;
+  onToggle: () => void;
+  label: string;
+}) {
+  const theme = useTheme();
+
+  return (
+    <Pressable
+      onPress={onToggle}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked }}
+      style={styles.consent}>
+      <View
+        style={[
+          styles.box,
+          { borderColor: checked ? theme.primary : theme.border },
+          checked && { backgroundColor: theme.primary },
+        ]}>
+        {checked && <BadgeCheck color={theme.primaryText} size={14} />}
+      </View>
+      <Text style={[styles.consentText, { color: theme.textSecondary }]}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -297,9 +659,40 @@ const styles = StyleSheet.create({
     ...font(700),
     flex: 1,
   },
+  sectionTitle: {
+    ...Typography.cardTitle,
+    ...font(700),
+    flex: 1,
+  },
   body: {
     ...Typography.meta,
     lineHeight: 21,
+  },
+  applicant: {
+    gap: Spacing.two,
+    padding: Spacing.three,
+    borderRadius: Radius.md,
+  },
+  readOnly: {
+    gap: 2,
+  },
+  readOnlyLabel: {
+    ...Typography.caption,
+    ...font(600),
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  readOnlyValue: {
+    ...Typography.body,
+    ...font(600),
+  },
+  clause: {
+    padding: Spacing.three,
+    borderRadius: Radius.md,
+  },
+  clauseText: {
+    ...Typography.caption,
+    lineHeight: 19,
   },
   consent: {
     flexDirection: 'row',
@@ -319,6 +712,9 @@ const styles = StyleSheet.create({
     ...Typography.caption,
     flex: 1,
     lineHeight: 18,
+  },
+  stamp: {
+    ...Typography.caption,
   },
   error: {
     ...Typography.caption,
