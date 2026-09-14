@@ -1,0 +1,15 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["REPLACE_WITH_APPLE_TEAM_ID.com.loci.parcel"],
+        "components": [
+          {
+            "/": "/capture/*",
+            "comment": "The cross-device photo handoff. Everything else on the domain stays in the browser."
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -432,6 +432,28 @@ check(
   })(),
   'clearing optimistically releases the gate on a request that failed',
 );
+/*
+ * The regression that sent somebody back to their inbox for a link that was
+ * never the problem: a fresh reset link reported as expired.
+ */
+const updatePasswordScreen = read('src/app/(auth)/update-password.tsx');
+
+check(
+  'a link is only called expired when Supabase says it is',
+  !updatePasswordScreen.includes('Boolean(params.code)'),
+  'deriving "expired" from a code being present reports every failed exchange as a dead link',
+);
+check(
+  'and the wait for the exchange is not gated on seeing that code',
+  !/if \(!params\.code \|\|/.test(updatePasswordScreen),
+  'supabase-js strips its own params before this screen mounts, so the code is usually already gone',
+);
+check(
+  'a link that produced no session names the device, not the clock',
+  updatePasswordScreen.includes('could not be completed here'),
+  'PKCE keeps the verifier in the browser that asked; a link opened elsewhere is fine and unusable',
+);
+
 check(
   'the reset email points somewhere that reads the token',
   read('src/store/session.tsx').includes('redirectTo: passwordResetLink(address)') &&

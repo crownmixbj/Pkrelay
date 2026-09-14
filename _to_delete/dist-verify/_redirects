@@ -1,0 +1,14 @@
+# Cloudflare Pages SPA fallback.
+#
+# app.json sets web.output: "static", so Expo pre-renders one HTML file per
+# known route. Dynamic routes cannot be pre-rendered — there is no way to know
+# every parcel id at build time — so /parcel/abc123 has no file of its own and
+# Pages would answer 404.
+#
+# Cloudflare serves a matching file first and only falls through to these rules,
+# so this catches the dynamic routes without shadowing the pre-rendered pages.
+# Status 200 rather than 301: the browser keeps the original URL, which is what
+# lets expo-router read the id out of it.
+#
+# Expo copies everything in public/ to the root of the export.
+/*    /index.html    200

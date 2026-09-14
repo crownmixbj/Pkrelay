@@ -56,21 +56,30 @@ export default function UpdatePasswordScreen() {
   }, []);
 
   /*
-   * ⚠ Nothing is claimed while a code is still in flight.
+   * ⚠ The wait is NOT conditional on seeing a `code` in the URL, and that is the
+   *   whole point of this block.
    *
-   *   A recovery URL carries a code that `supabase-js` exchanges on its own.
-   *   Until that lands there is no session and no `recovering` flag, which is
-   *   indistinguishable from an expired link — and telling somebody their link
-   *   is dead while it is still working is the one answer they cannot act on.
+   *   It was, and the result was a valid link reported as an expired one. Two
+   *   things conspire. `supabase-js` strips its own parameters from the URL the
+   *   moment it starts the exchange, so by the time this screen mounts the code
+   *   is usually already gone. And a link whose `redirect_to` is the project
+   *   Site URL — every link sent before `passwordResetLink` existed, and any
+   *   link whose redirect was not allowlisted — lands on the home page first
+   *   and arrives here by redirect, carrying no query string at all.
+   *
+   *   In both cases `code` is absent while the exchange is still running, the
+   *   old condition skipped the wait entirely, and the screen went straight to
+   *   a failure panel for somebody whose reset was working. So: no session yet
+   *   means wait, every time, and let the timer be the thing that gives up.
    */
   const [exchangeTimedOut, setExchangeTimedOut] = useState(false);
 
   useEffect(() => {
-    if (!params.code || recovering || status === 'loading') return;
+    if (recovering || status === 'loading' || status === 'signedIn') return;
 
     const timer = setTimeout(() => setExchangeTimedOut(true), EXCHANGE_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [params.code, recovering, status]);
+  }, [recovering, status]);
 
   const tooShort = password.length < MIN_PASSWORD_LENGTH;
   const mismatch = confirmation.length > 0 && confirmation !== password;
@@ -111,7 +120,7 @@ export default function UpdatePasswordScreen() {
   };
 
   /* ---------- the exchange is still running ---------- */
-  if (status === 'loading' || (params.code && !recovering && !exchangeTimedOut)) {
+  if (status === 'loading' || (!recovering && status !== 'signedIn' && !exchangeTimedOut)) {
     return (
       <AuthShell title="Checking your link" subtitle="One moment.">
         <ActivityIndicator color={theme.primary} style={styles.loading} />
@@ -121,16 +130,38 @@ export default function UpdatePasswordScreen() {
 
   /* ---------- no session to change a password on ---------- */
   if (!recovering && status !== 'signedIn') {
-    const expired = params.errorCode === 'otp_expired' || Boolean(params.code);
+    /*
+     * ⚠ Three different failures, and calling them all "expired" is what sent
+     *   somebody back to their inbox to re-click a link that was never the
+     *   problem.
+     *
+     *   Only Supabase saying so means expired. A link that reached us and
+     *   produced no session is almost always PKCE: `resetPasswordForEmail`
+     *   stores the code verifier in the storage of the browser that asked, so a
+     *   link opened in a different browser, a different profile, or on a phone
+     *   has nothing to exchange with — the link is fine, the device is wrong,
+     *   and only one of those is worth telling somebody. Anything else means
+     *   they arrived here without a link at all.
+     */
+    const denied = params.errorCode === 'otp_expired' || params.error === 'access_denied';
+    const arrivedOnALink = Boolean(params.code || params.error || params.email);
 
     return (
       <AuthShell
-        title={expired ? 'That link has expired' : 'That link did not work'}
+        title={
+          denied
+            ? 'That link has expired'
+            : arrivedOnALink
+              ? 'That link could not be completed here'
+              : 'Nothing to reset yet'
+        }
         subtitle={
-          expired
-            ? 'Reset links are good for one hour, and can only be used once. Ask for a fresh one and open it on this device.'
-            : (params.errorDescription ??
-              'Ask for a fresh reset link and open it on this device.')
+          denied
+            ? 'Reset links are good for one hour, and can only be used once. Ask for a fresh one below.'
+            : arrivedOnALink
+              ? 'The link itself is fine. A reset can only be completed in the same browser it was requested from — ask for a fresh one here, then open it in this browser.'
+              : (params.errorDescription ??
+                'Open the reset link from your email, or ask for a new one below.')
         }
         onBack={() => router.replace('/sign-in')}>
         <View style={styles.form}>
