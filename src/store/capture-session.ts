@@ -305,10 +305,18 @@ export function livenessLabel(outcome: LivenessOutcome): string {
    *   uses it for both — so an applicant photographing their face for a job was
    *   told about a parcel they were not posting.
    *
-   *   The replacement says what is true in both places: the photo is saved, the
-   *   automatic check did not run, and a person takes it from here.
+   *   The replacement says what is true in both places: the automatic check did
+   *   not run, and a person takes it from here.
+   *
+   * ⚠ It does not repeat that the photo arrived, because the line above it
+   *   already does.
+   *
+   *   This renders as the second line of a card whose heading is "Photo received
+   *   from your phone." / "Live photo captured." An intervening draft opened
+   *   with "Your photo was saved", which said the same thing twice in two
+   *   sentences — the heading is the receipt, this line is what happens next.
    */
-  return 'Your photo was saved. The automatic liveness check could not run, so a person will look at it instead.';
+  return 'Liveness check unavailable — a team member will review it manually instead.';
 }
 
 // ------------------------------------------------------ identity matching ---

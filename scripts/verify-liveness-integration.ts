@@ -536,10 +536,25 @@ const identityOutage = identityLabel({
   message: '',
 });
 
+/*
+ * ⚠ Asserted as "a person takes it from here", not as the word "saved".
+ *
+ *   The first version of this required both labels to say the photo was saved.
+ *   `livenessLabel` renders as the second line of a card already headed "Photo
+ *   received from your phone.", so saying it again there is the same sentence
+ *   twice — the property worth pinning is that an outage reads as a handover to
+ *   a human rather than as the photograph having failed.
+ */
 check(
-  'an outage says the photo was saved rather than that something failed',
-  /saved/i.test(livenessOutage) && /saved/i.test(identityOutage),
+  'an outage hands over to a person rather than reading as a failure',
+  /person|team member/i.test(livenessOutage) && /person|team member/i.test(identityOutage),
   'nothing failed: the photograph was taken, uploaded and stored',
+);
+check(
+  'and neither says the photo did not work',
+  !/failed|could not be|unable to (take|capture)/i.test(livenessOutage) &&
+    !/failed|could not be|unable to (take|capture)/i.test(identityOutage),
+  'the provider was unreachable; the photograph is fine and the applicant should not be told otherwise',
 );
 /*
  * ⚠ One label, two purposes. `sender-photo-sheet` takes a `purpose` and the
