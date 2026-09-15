@@ -150,6 +150,48 @@ failure looks like a broken login rather than a missing setting.
 
 ---
 
+## When address search stops working locally
+
+`.env` points at staging, so `npx expo start` talks to the **staging** Supabase
+project — not production. Address lookup can therefore be working on
+`app.pkrelay.com` and dead on your laptop at the same time, which reads as "it
+broke" and is actually "it was never switched on over here".
+
+The field says which, and the three sentences map to three different causes:
+
+| What the field says | What it means | Fix |
+| --- | --- | --- |
+| Address search is **not switched on yet** | `places-lookup` answered `configured: false` — it is deployed, `GOOGLE_PLACES_KEY` is not set on this project | `supabase secrets set GOOGLE_PLACES_KEY=… --project-ref <ref>` |
+| Address search **could not be reached** | the function call failed — usually not deployed on this project | `supabase functions deploy places-lookup --project-ref <ref>` |
+| Address search is **busy right now** | Google refused the key — `REQUEST_DENIED` or `OVER_QUERY_LIMIT` | Google Cloud console (see below) |
+
+⚠ **`REQUEST_DENIED` is usually the key's restrictions, not its quota.**
+
+An edge function calls Google from a server with no fixed IP and no referrer.
+A key restricted to HTTP referrers — the normal setting for a key used in a web
+page — is refused every time it is used from here, and the status is
+`REQUEST_DENIED` whether the cause is the restriction, an API that was never
+enabled on that Cloud project, or billing that is off. Google says which in an
+`error_message`, which `places-lookup` now writes to its function log.
+
+So a key for this function wants: **application restriction none**, **API
+restriction limited to Places API and Distance Matrix API**, on a project with
+billing enabled. Its safety is that it never leaves the server — that is the
+whole reason the function exists.
+
+Check both on the project your `.env` names:
+
+```bash
+supabase secrets list   --project-ref ublqzvuzbyodjstzjvja   # GOOGLE_PLACES_KEY present?
+supabase functions list --project-ref ublqzvuzbyodjstzjvja   # places-lookup ACTIVE?
+```
+
+⚠ A browser extension error in the Expo dev overlay is not this bug. MetaMask
+in particular throws "Failed to connect to MetaMask" into any page it is
+injected into, and the dev overlay catches it because it catches every uncaught
+window error. Nothing in this repo touches `window.ethereum` — check the next
+error in the overlay (the `1/2` arrows) before believing the first one.
+
 ## Adding a migration from here on
 
 ```bash

@@ -32,6 +32,33 @@ const env = (key: string) => Deno.env.get(key) ?? null;
 
 const PLACES_KEY = env('GOOGLE_PLACES_KEY') ?? '';
 
+/**
+ * What Google actually said, in the function log.
+ *
+ * ⚠ The status alone is not a diagnosis, and this cost a day.
+ *
+ *   Google answers a refused key with `REQUEST_DENIED` and an `error_message`
+ *   naming the reason — "API key not valid", "This API project is not
+ *   authorized to use this API", "You must enable Billing", "API keys with
+ *   referer restrictions cannot be used with this API". Only the status was
+ *   ever forwarded, and all four collapse into one word at the client, which
+ *   then says "Address search is busy right now" for a key that is not busy at
+ *   all.
+ *
+ *   It is logged rather than returned: the message is operational detail about
+ *   *our* Google project, and nobody typing an address can act on it. The
+ *   client contract stays the status word it already handles.
+ *
+ * The key is never logged — `error_message` does not contain it, and nothing
+ * here interpolates it.
+ */
+function logRefusal(mode: string, status: string | undefined, message: string | undefined) {
+  console.error(
+    `places-lookup ${mode} refused by Google: ${status ?? 'no status'}` +
+      (message ? ` — ${message}` : ' — no error_message'),
+  );
+}
+
 type Suggestion = {
   placeId: string;
   description: string;
@@ -109,6 +136,7 @@ Deno.serve(async (request: Request) => {
 
     const payload = (await response.json()) as {
       status?: string;
+      error_message?: string;
       predictions?: {
         place_id: string;
         description: string;
@@ -124,6 +152,7 @@ Deno.serve(async (request: Request) => {
      * still gets their quote.
      */
     if (payload.status && payload.status !== 'OK' && payload.status !== 'ZERO_RESULTS') {
+      logRefusal('suggest', payload.status, payload.error_message);
       return json({ configured: true, suggestions: [], error: payload.status });
     }
 
@@ -157,6 +186,7 @@ Deno.serve(async (request: Request) => {
 
     const payload = (await response.json()) as {
       status?: string;
+      error_message?: string;
       result?: {
         formatted_address?: string;
         address_components?: { long_name: string; short_name: string; types: string[] }[];
@@ -165,6 +195,7 @@ Deno.serve(async (request: Request) => {
     };
 
     if (payload.status !== 'OK' || !payload.result) {
+      logRefusal('details', payload.status, payload.error_message);
       return json({ error: payload.status ?? 'No such place' }, 502);
     }
 
@@ -217,12 +248,14 @@ Deno.serve(async (request: Request) => {
 
     const payload = (await response.json()) as {
       status?: string;
+      error_message?: string;
       rows?: { elements?: { status?: string; distance?: { value?: number } }[] }[];
     };
 
     const element = payload.rows?.[0]?.elements?.[0];
 
     if (payload.status !== 'OK' || element?.status !== 'OK' || !element.distance?.value) {
+      logRefusal('distance', element?.status ?? payload.status, payload.error_message);
       return json({ error: element?.status ?? payload.status ?? 'No route' }, 502);
     }
 

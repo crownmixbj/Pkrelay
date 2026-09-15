@@ -147,15 +147,28 @@ function remember(reason: Unavailable): SuggestionResult {
   return { suggestions: [], unavailable: reason };
 }
 
+/**
+ * Why lookup is unavailable, as a clause with no advice attached.
+ *
+ * ⚠ Split out because the two fields give different advice for the same cause.
+ *
+ *   The quote form falls back to a city picker, so it says "pick a city
+ *   instead". The driver, guarantor and hub fields accept whatever is typed, so
+ *   theirs says "type the address in full". They used to disagree about more
+ *   than the advice: one named the cause and the other said only "Address
+ *   search is unavailable", and that flatness cost real debugging time — a key
+ *   Google was refusing read exactly like a key nobody had set, which read
+ *   exactly like a function nobody had deployed.
+ */
+export function unavailableCause(reason: Unavailable): string {
+  if (reason === 'not-configured') return 'Address search is not switched on yet';
+  if (reason === 'refused') return 'Address search is busy right now';
+  return 'Address search could not be reached';
+}
+
 /** What to tell somebody whose address field just turned into a dropdown. */
 export function unavailableReason(reason: Unavailable): string {
-  if (reason === 'not-configured') {
-    return 'Address search is not switched on yet — pick a city instead.';
-  }
-  if (reason === 'refused') {
-    return 'Address search is busy right now — pick a city instead.';
-  }
-  return 'Address search could not be reached — pick a city instead.';
+  return `${unavailableCause(reason)} — pick a city instead.`;
 }
 
 /**
