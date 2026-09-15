@@ -300,22 +300,44 @@ const privacyNotes = read('docs/PRIVACY-NOTES.md');
 /*
  * The claim, and the limits of it.
  *
- * A selfie is not a verified identity, and every surface a sender can read must
- * say so. This is the assertion that matters most in this file.
+ * ⚠ Inverted, because the thing this used to assert became false — and the
+ *   assertion went on passing on the comment that recorded it becoming false.
+ *
+ *   These three demanded that both surfaces say "It is a photo record, not an
+ *   identity check" and "does not match your face against any document or
+ *   database". `sender-photo-sheet` withdrew both sentences when the sender's
+ *   photo started being compared against their NIN record, calling the denial
+ *   "the most misleading kind of privacy copy". The assertion kept passing:
+ *   `flat()` collapses whitespace and leaves comments, and the comment
+ *   explaining the withdrawal quotes the withdrawn sentence verbatim.
+ *
+ *   So the test that this file calls the one that matters most was, for
+ *   months, proving the opposite of what the code had decided — satisfied by
+ *   its own obituary. Everything below runs on `code()`, which strips comments,
+ *   so a sentence can only satisfy an assertion by being on screen.
+ *
+ * The property worth defending has not changed: no surface may overstate what
+ * was done. It has simply moved — the overstatement is now the *denial*.
  */
-check(
-  'the sheet states plainly that nothing is verified',
-  flat(photoSheet).includes('It is a photo record, not an identity check'),
-);
-check(
-  'and says what is not being matched',
-  flat(photoSheet).includes('does not match your face against any document or database'),
-);
-check(
-  'the capture screen makes the same claim, not a stronger one',
-  flat(captureScreen).includes('It is a photo record, not an identity check'),
-  'the phone screen is reached by people who never saw the browser copy',
-);
+for (const [label, source] of [
+  ['the sheet', photoSheet],
+  ['the capture screen', captureScreen],
+] as const) {
+  check(
+    `${label} does not deny an identity check that now happens`,
+    !flat(code(source)).includes('not an identity check'),
+    'both photos are compared against the photo on the person’s NIN record; denying it is the most misleading copy available',
+  );
+  check(
+    `${label} does not claim nothing is matched`,
+    !flat(code(source)).includes('does not match your face against any document or database'),
+  );
+  check(
+    `${label} says what the photo is compared with`,
+    /NIN record/.test(code(source)),
+    'somebody handing over their face is owed the sentence saying what it is measured against',
+  );
+}
 check(
   'no UI surface claims verification',
   [photoSheet, captureScreen].every((source) => !/verif(y|ied|ication)/i.test(code(source))),
@@ -545,10 +567,26 @@ check(
   'and there is a screen at the route it opens',
   captureScreen.includes('export default function CaptureScreen'),
 );
+/*
+ * ⚠ "Go back to the browser to finish", without naming what is being finished.
+ *
+ *   This pinned "…to finish posting", which was written when the handoff only
+ *   ever served a parcel. The driver application uses the same screen, and the
+ *   session row carries no purpose — so the phone cannot know, and a wrong noun
+ *   beside a browser tab headed "to finish your application" is worse than
+ *   none. The instruction is what this assertion is for, and it survives.
+ */
 check(
   'the capture screen tells the sender to go back to the browser',
-  flat(captureScreen).includes('Go back to the browser to finish posting'),
+  flat(code(captureScreen)).includes('Go back to the browser to finish'),
   'otherwise people wait on the phone for something that already happened elsewhere',
+);
+check(
+  'and names neither a parcel nor an application, because it cannot know which',
+  !/\b(parcel|application)\b/i.test(
+    code(captureScreen).replace(/parcelmobile/g, ''),
+  ),
+  'the driver application uses this same handoff; the session row says nothing about which flow opened it',
 );
 
 /*
