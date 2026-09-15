@@ -512,6 +512,16 @@ export default function BookScreen() {
   const [photoSession, setPhotoSession] = useState<string | null>(null);
   /** What the identity check said, shown on the card. Never blocks the parcel. */
   const [identityNote, setIdentityNote] = useState('');
+  /*
+   * ⚠ Tracked separately from the note, because the note is a sentence and the
+   *   card needs a verdict.
+   *
+   *   `LiveSelfieCard` picks its heading and its colour from this. Left unset it
+   *   defaults to true, which put "Live photo captured and checked." above
+   *   "The automatic check could not run" — the same contradiction the driver
+   *   application had. Only 'verified' is good news.
+   */
+  const [identityNoteIsGood, setIdentityNoteIsGood] = useState(true);
   const [posting, setPosting] = useState(false);
   const declaredValueRef = useRef<TextInput>(null);
   const itemCardY = useRef(0);
@@ -992,10 +1002,12 @@ export default function BookScreen() {
 
     if (!outcome.ok) {
       setIdentityNote('We could not record that photo. Try taking it again.');
+      setIdentityNoteIsGood(false);
       return;
     }
 
     setIdentityNote(outcome.message);
+    setIdentityNoteIsGood(outcome.status === 'verified');
   };
 
   /** Runs only once we know who is posting. */
@@ -1767,10 +1779,12 @@ export default function BookScreen() {
                 purpose="sender"
                 captured={photoSession}
                 note={identityNote}
+                noteIsGood={identityNoteIsGood}
                 onCaptured={handlePhotoCaptured}
                 onCleared={() => {
                   setPhotoSession(null);
                   setIdentityNote('');
+                  setIdentityNoteIsGood(true);
                 }}
                 disabled={posting}
                 gate={(proceed) =>

@@ -65,6 +65,39 @@ export function contentTypeFor(nameOrUri: string): string {
   return MIME[extensionOf(nameOrUri)] ?? 'image/jpeg';
 }
 
+/**
+ * How big a local file is, without reading it.
+ *
+ * ⚠ For the case where the picker does not say.
+ *
+ *   `expo-document-picker` reports `size` for most providers and omits it for
+ *   some — anything reached through a cloud provider in the Files app, and a few
+ *   Android document providers. The form's own size check is written as
+ *   `if (asset.size && asset.size > MAX)`, which is not a check at all when the
+ *   size is missing: a 40 MB scan sails into the form and is refused at submit,
+ *   after every other field has been filled in.
+ *
+ *   `info()` is a stat, not a read — it does not pull the bytes into memory,
+ *   which is the whole reason this is worth having rather than measuring the
+ *   file by loading it.
+ *
+ * Returns null when the size cannot be established: on the web, where the
+ * filesystem module has no view of a `blob:` URL, and for any URI the platform
+ * refuses to stat. A null is "unknown", never "empty" — callers must not treat
+ * it as a pass or a fail on its own. `uploadDocument` measures the real bytes
+ * before sending, which is the backstop.
+ */
+export async function fileSizeOf(uri: string): Promise<number | null> {
+  if (Platform.OS === 'web') return null;
+
+  try {
+    const info = new FileSystemFile(uri).info();
+    return typeof info.size === 'number' ? info.size : null;
+  } catch {
+    return null;
+  }
+}
+
 export type FileBytes = { bytes: ArrayBuffer; contentType: string };
 
 /**

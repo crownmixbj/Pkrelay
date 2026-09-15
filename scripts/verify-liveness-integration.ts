@@ -26,6 +26,7 @@ import {
   interpretFaceMatch,
   readCredentials,
 } from '../supabase/functions/verify-liveness/dojah';
+import { identityLabel, livenessLabel } from '../src/store/capture-session';
 import {
   maskNin,
   maskNinInput,
@@ -506,6 +507,85 @@ check(
   !/not held up|still goes ahead/i.test(OUTCOME_MESSAGES.unavailable),
   'only a verified sender can post; that reassurance stopped being true',
 );
+
+/*
+ * ⚠ And what the *card* says, which is the half that contradicted itself.
+ *
+ *   `livenessLabel` and `identityLabel` are rendered inside `LiveSelfieCard`,
+ *   whose heading reads "Live photo captured and checked." unless the caller
+ *   says otherwise. Neither caller said otherwise, so an outage arrived as:
+ *
+ *     Live photo captured and checked.
+ *     The identity check could not run. Your application has still been sent.
+ *
+ *   Three claims, two of them false at that moment — the check had not run, and
+ *   the application had not been sent, because this card sits above the submit
+ *   button. The assertions below pin each half of the repair.
+ */
+const captureStore = read('src/store/capture-session.ts');
+const livenessOutage = livenessLabel({
+  status: 'unavailable',
+  probability: null,
+  environment: null,
+  message: '',
+});
+const identityOutage = identityLabel({
+  status: 'unavailable',
+  confidence: null,
+  environment: null,
+  message: '',
+});
+
+check(
+  'an outage says the photo was saved rather than that something failed',
+  /saved/i.test(livenessOutage) && /saved/i.test(identityOutage),
+  'nothing failed: the photograph was taken, uploaded and stored',
+);
+/*
+ * ⚠ One label, two purposes. `sender-photo-sheet` takes a `purpose` and the
+ *   phone-handoff screen renders this for a driver application as readily as for
+ *   a parcel, so a word like "parcel" in the shared string is wrong half the
+ *   time.
+ */
+check(
+  'the shared liveness label names neither a parcel nor an application',
+  !/parcel|application/i.test(livenessOutage),
+  'an applicant photographing their face for a job was told about a parcel',
+);
+check(
+  'and neither label claims the application has already been sent',
+  !/has still been sent|has been sent/i.test(code(captureStore)),
+  'the card sits above the submit button — it cannot know, and on a failed submit it was flatly wrong',
+);
+check(
+  'a mismatch still says it is not a rejection',
+  /does not stop your application|a person will review it/i.test(
+    identityLabel({ status: 'mismatch', confidence: null, environment: null, message: '' }),
+  ),
+  'an old NIMC photo is not fraud, and the applicant has to be told a person decides',
+);
+
+/*
+ * ⚠ Every caller of the card tells it whether the news is good.
+ *
+ *   The prop defaults to `true` because banking the photo is the common case,
+ *   which means a caller that forgets it gets a green tick and the word
+ *   "checked" on every outcome including the ones that checked nothing. Two of
+ *   the three callers forgot.
+ */
+for (const [label, path] of [
+  ['the sender verification card', 'src/components/ui/verify-identity-card.tsx'],
+  ['the booking form', 'src/app/(tabs)/book.tsx'],
+  ['the driver application', 'src/app/(tabs)/driver-signup.tsx'],
+] as const) {
+  const source = read(path);
+  if (!source.includes('<LiveSelfieCard')) continue;
+  check(
+    `${label} tells the card whether the check confirmed anything`,
+    /noteIsGood=\{/.test(source) || /setNoteIsGood\(/.test(source),
+    'defaulting to good news makes "captured and checked" the heading above "could not run"',
+  );
+}
 
 check(
   'the reference photo is only ever set from a matched check',

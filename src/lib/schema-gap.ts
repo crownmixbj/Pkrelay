@@ -154,6 +154,28 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
     fn: 'guarantor_document_slot',
     migration: '20250101000051_guarantor_full_form.sql',
   },
+  /*
+   * ⚠ 52 creates nothing, so nothing here can probe it — and it is listed
+   *   anyway, for the same two reasons 45 and 48 are.
+   *
+   *   It drops three `not null` constraints that 39 orphaned. A database without
+   *   it refuses every driver application with 23502 rather than PGRST202, so no
+   *   missing-function message will ever name it; `NOT_NULL_MIGRATIONS` below is
+   *   what actually turns that failure into this filename.
+   *
+   *   So 52 carries a function whose only job is to be askable, and which reads
+   *   the catalogue rather than returning a constant — it answers correctly even
+   *   on a database where somebody restored an old dump or re-added the
+   *   constraint by hand. Naming 51's function here instead would have reported
+   *   52 as installed on a database that has never run it, and
+   *   `verify-identity-review.ts` refuses that: it checks the migration really
+   *   defines the function it is attributed to.
+   */
+  {
+    label: 'Submitting a driver application',
+    fn: 'driver_application_guarantor_optional',
+    migration: '20250101000052_guarantor_columns_nullable.sql',
+  },
 ];
 
 /**
@@ -178,6 +200,37 @@ const COLUMN_MIGRATIONS: Readonly<Record<string, { label: string; migration: str
   },
 };
 
+/**
+ * Columns a migration made nullable, for the failure that arrives as 23502.
+ *
+ * ⚠ A third way for the same one thing to go wrong, and the only one that
+ *   reaches a person mid-form.
+ *
+ *   02 created these three `not null`; 39 stopped collecting them and left the
+ *   constraints; 52 drops them. On a database without 52 the insert fails with
+ *
+ *     null value in column "guarantor_relationship" of relation
+ *     "driver_applications" violates not-null constraint
+ *
+ *   which the driver application showed verbatim to an applicant who had just
+ *   filled in thirty fields, attached five documents and photographed their own
+ *   face. It is not a fault they can act on, and it is not a connection problem.
+ */
+const NOT_NULL_MIGRATIONS: Readonly<Record<string, { label: string; migration: string }>> = {
+  guarantor_relationship: {
+    label: 'Submitting a driver application',
+    migration: '20250101000052_guarantor_columns_nullable.sql',
+  },
+  guarantor_address: {
+    label: 'Submitting a driver application',
+    migration: '20250101000052_guarantor_columns_nullable.sql',
+  },
+  guarantor_nin: {
+    label: 'Submitting a driver application',
+    migration: '20250101000052_guarantor_columns_nullable.sql',
+  },
+};
+
 type PostgrestLike = { message?: unknown; code?: unknown };
 
 /**
@@ -197,6 +250,19 @@ const FUNCTION_MISSING = 'PGRST202';
  * client knows about does not exist in the database yet.
  */
 const COLUMN_MISSING = 'PGRST204';
+
+/**
+ * And Postgres's own code for "that column may not be null".
+ *
+ * ⚠ Not a PostgREST code — it comes from the database itself and passes through
+ *   untouched, which is why it arrived on screen as raw SQL.
+ */
+const NOT_NULL_VIOLATION = '23502';
+
+/** The column name out of Postgres's not-null message. */
+function notNullColumnIn(message: string): string | null {
+  return /null value in column ["']([a-z0-9_]+)["']/i.exec(message)?.[1] ?? null;
+}
 
 /** The function name out of the message, when there is one to be had. */
 function functionIn(message: string): string | null {
@@ -229,9 +295,32 @@ export function schemaGapMessage(thrown: unknown): string | null {
   if (!thrown || typeof thrown !== 'object') return null;
 
   const error = thrown as PostgrestLike;
-  if (error.code !== FUNCTION_MISSING && error.code !== COLUMN_MISSING) return null;
+  if (
+    error.code !== FUNCTION_MISSING &&
+    error.code !== COLUMN_MISSING &&
+    error.code !== NOT_NULL_VIOLATION
+  ) {
+    return null;
+  }
 
   const message = typeof error.message === 'string' ? error.message : '';
+
+  if (error.code === NOT_NULL_VIOLATION) {
+    const column = notNullColumnIn(message);
+    const known = column ? NOT_NULL_MIGRATIONS[column] : undefined;
+
+    /*
+     * ⚠ Null for a column this file does not know, rather than a guess.
+     *
+     *   Most 23502s are a genuine client bug — a field the form failed to
+     *   collect — and telling somebody to run a migration for one would send
+     *   them to the SQL editor for a problem no SQL can fix. Only the columns
+     *   named above are known to be a schema that is behind the code.
+     */
+    if (!known) return null;
+
+    return `${known.label} needs a database change that has not been made yet. Run supabase/${known.migration} in the Supabase SQL editor, then try again.`;
+  }
 
   if (error.code === COLUMN_MISSING) {
     const column = columnIn(message);

@@ -103,7 +103,13 @@ turn the suite red. Run `npm run verify` before declaring anything done.
   needs before the CLI will accept a `db push`.
 - Staging is `ublqzvuzbyodjstzjvja`; production is `ymfdnzeonkhvzncqcezo`.
   `.env` and the CLI link both point at staging. Migrations 01-45 and 47 are
-  applied there. **48, 49, 50 and 51 are written but not yet pushed.**
+  applied there. **48, 49, 50, 51 and 52 are written but not yet pushed.**
+- 52 is a one-line unblock and the most urgent of them: 02 made
+  `guarantor_relationship`, `guarantor_address` and `guarantor_nin` `not null`,
+  39 stopped writing them and left the constraints, so on any database with 39
+  applied *every* driver application fails with 23502 at the last step.
+  `verify:application-insert` now compares the client's insert with the column
+  list so this class of drift fails at the commit rather than at the form.
 - 51 is the guarantor form — see `docs/GUARANTOR.md`. It has to be pushed
   *together with* `supabase functions deploy guarantor-portal`: 51 revokes
   `complete_guarantor_verification` from `anon`, and until that function is

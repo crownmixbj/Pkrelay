@@ -290,7 +290,25 @@ export function livenessLabel(outcome: LivenessOutcome): string {
       : 'Liveness check passed';
   }
   if (outcome.status === 'failed') return outcome.message || 'The photo did not pass.';
-  return 'Liveness check unavailable — your parcel will be posted without it.';
+
+  /*
+   * ⚠ This said "Liveness check unavailable — your parcel will be posted
+   *   without it", and it was wrong twice over.
+   *
+   *   It appeared under a heading reading "Live photo captured and checked",
+   *   which is the card and the note contradicting each other in the same box.
+   *   Nothing failed: the photograph was taken, uploaded and stored. The only
+   *   thing that did not happen is an automatic check at a third party.
+   *
+   *   And it named a parcel. This label is rendered for a driver *application*
+   *   too — `sender-photo-sheet` takes a `purpose`, and the phone-handoff screen
+   *   uses it for both — so an applicant photographing their face for a job was
+   *   told about a parcel they were not posting.
+   *
+   *   The replacement says what is true in both places: the photo is saved, the
+   *   automatic check did not run, and a person takes it from here.
+   */
+  return 'Your photo was saved. The automatic liveness check could not run, so a person will look at it instead.';
 }
 
 // ------------------------------------------------------ identity matching ---
@@ -387,8 +405,24 @@ export function identityLabel(outcome: IdentityOutcome): string {
       ? 'Identity matched (test mode — not a real verification)'
       : 'Identity matched against your NIN record';
   }
+  /*
+   * ⚠ Neither sentence claims the application has been sent, and both used to.
+   *
+   *   They read "Your application has still been sent" — written when the photo
+   *   was taken *inside* the submit handler, where it was true. `LiveSelfieCard`
+   *   moved the capture above the confirmation checkbox, so this note now
+   *   appears while the applicant is still filling the form. It told them their
+   *   application was in, next to a button that had not been pressed — and, on
+   *   the submission that failed on a not-null constraint, directly above a
+   *   dialog saying it could not be submitted.
+   *
+   *   What was worth keeping is the reason the sentence existed: somebody whose
+   *   face did not match a government photo needs to know it is not a rejection.
+   *   That part is said without asserting anything about a row that may not
+   *   exist yet.
+   */
   if (outcome.status === 'mismatch') {
-    return 'Your selfie did not match the photo on your NIN record. Your application has still been sent, and a person will review it.';
+    return 'Your selfie did not match the photo on your NIN record. That does not stop your application — a person will review it.';
   }
-  return 'The identity check could not run. Your application has still been sent.';
+  return 'Your photo was saved. The identity check could not run, so a person will review it instead.';
 }

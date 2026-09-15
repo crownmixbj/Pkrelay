@@ -101,7 +101,17 @@ import {
   REVIEW_WORKING_DAYS,
 } from '@/store/driver-applications';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import { uploadDocument } from '@/store/driver-documents';
+import { schemaGapMessage } from '@/lib/schema-gap';
+import { fileSizeOf } from '@/lib/upload';
+import {
+  ACCEPTED_MIME_TYPES,
+  DOCUMENT_RULE,
+  formatRejection,
+  isAcceptedDocument,
+  MAX_DOCUMENT_BYTES,
+  sizeRejection,
+  uploadDocument,
+} from '@/store/driver-documents';
 import { recordDocument } from '@/store/documents';
 import { useAuthGate } from '@/hooks/use-auth-gate';
 import {
@@ -273,9 +283,16 @@ type BankName = (typeof NIGERIAN_BANKS)[number];
 /** An attached document. `uri` is a local file path — nothing is uploaded yet. */
 type AttachedDocument = { fileName: string; uri: string; size: number | null } | null;
 
-/** Rejected client-side so a 40 MB scan doesn't sit in memory waiting for a backend. */
-const MAX_DOCUMENT_MB = 10;
-const MAX_DOCUMENT_BYTES = MAX_DOCUMENT_MB * 1024 * 1024;
+/*
+ * ⚠ The cap and the accepted formats come from `@/store/driver-documents`, which
+ *   is where the bucket's own limits are mirrored.
+ *
+ *   This file used to declare its own `MAX_DOCUMENT_MB = 10` beside the store's
+ *   `MAX_DOCUMENT_BYTES = 10 * 1024 * 1024`. Two numbers, in two files, meaning
+ *   one thing — and the store's is the one the bucket is actually checked
+ *   against, so the local copy was the one that could be wrong without anything
+ *   noticing.
+ */
 
 /**
  * Empty attachment map, derived from `DOCUMENTS` rather than written out. Two
@@ -725,10 +742,19 @@ export default function DriverSignupScreen() {
    * Opens the OS file browser. Accepts images and PDFs — a licence is usually
    * photographed, an insurance certificate is usually a PDF.
    */
-  const pickDocumentFile = async (key: DocumentKey) => {
+  const pickDocumentFile = async (key: DocumentKey, label: string) => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ['image/*', 'application/pdf'],
+        /*
+         * ⚠ The bucket's own list, not `image/*`.
+         *
+         *   `image/*` offers the applicant every image the device holds,
+         *   including the TIFFs, BMPs and SVGs Storage refuses — so the picker
+         *   was inviting a choice the upload would later reject. It is a filter
+         *   and not a guarantee either way: a file manager's "All files" mode
+         *   ignores it entirely, which is why the check below exists.
+         */
+        type: ACCEPTED_MIME_TYPES,
         copyToCacheDirectory: true,
         multiple: false,
       });
@@ -736,14 +762,40 @@ export default function DriverSignupScreen() {
 
       const asset = result.assets[0];
       if (!asset) return;
-      if (asset.size && asset.size > MAX_DOCUMENT_BYTES) {
-        showDialog('File too large', `Attachments must be under ${MAX_DOCUMENT_MB} MB.`);
+
+      /*
+       * ⚠ The type is checked here, not left to the upload.
+       *
+       *   Every file manager can hand back something the filter did not offer,
+       *   and `uploadDocument` refuses it correctly — at submit, after thirty
+       *   other fields and five other attachments, with the failure attached to
+       *   the wrong action. Refusing it now puts the message next to the button
+       *   that was just pressed.
+       */
+      if (!isAcceptedDocument(asset.name)) {
+        showDialog('Wrong kind of file', formatRejection(asset.name));
+        return;
+      }
+
+      /*
+       * ⚠ `asset.size ?? (await fileSizeOf(...))`, because "no size" is not
+       *   "small enough".
+       *
+       *   This read `if (asset.size && asset.size > MAX)`, which is not a check
+       *   when the picker reports nothing — and it reports nothing for files
+       *   reached through a cloud provider in the Files app, which is where a
+       *   scanned insurance certificate usually lives.
+       */
+      const size = asset.size ?? (await fileSizeOf(asset.uri));
+
+      if (size !== null && size > MAX_DOCUMENT_BYTES) {
+        showDialog('File too large', sizeRejection(label, size));
         return;
       }
 
       setDocuments((prev) => ({
         ...prev,
-        [key]: { fileName: asset.name, uri: asset.uri, size: asset.size ?? null },
+        [key]: { fileName: asset.name, uri: asset.uri, size },
       }));
       clearDocumentError(key);
     } catch {
@@ -752,7 +804,7 @@ export default function DriverSignupScreen() {
   };
 
   /** Camera capture, for documents the applicant is holding rather than storing. */
-  const captureDocument = async (key: DocumentKey) => {
+  const captureDocument = async (key: DocumentKey, label: string) => {
     try {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted) {
@@ -782,20 +834,27 @@ export default function DriverSignupScreen() {
           with the failure attached to the wrong action. A modern phone shooting
           at full resolution clears 10 MB without trying.
       */
-      if (asset.fileSize && asset.fileSize > MAX_DOCUMENT_BYTES) {
-        showDialog(
-          'Photo too large',
-          `That came out at ${Math.round(asset.fileSize / 1024 / 1024)} MB. Attachments must be under ${MAX_DOCUMENT_MB} MB.`,
-        );
+      const size = asset.fileSize ?? (await fileSizeOf(asset.uri));
+
+      if (size !== null && size > MAX_DOCUMENT_BYTES) {
+        showDialog('Photo too large', sizeRejection(label, size));
         return;
       }
 
+      /*
+       * ⚠ The fallback name ends in `.jpg`, and that is load-bearing.
+       *
+       *   `mimeFor` decides the content type from the extension, and an upload
+       *   with no extension is refused by `uploadDocument` as an unknown format.
+       *   `launchCameraAsync` returns a JPEG here — `quality` is set, which is
+       *   what makes that true on both platforms.
+       */
       setDocuments((prev) => ({
         ...prev,
         [key]: {
           fileName: asset.fileName ?? `${key}-${new Date().toISOString().slice(0, 10)}.jpg`,
           uri: asset.uri,
-          size: asset.fileSize ?? null,
+          size,
         },
       }));
       clearDocumentError(key);
@@ -810,13 +869,13 @@ export default function DriverSignupScreen() {
    */
   const attachDocument = (key: DocumentKey, label: string) => {
     if (Platform.OS === 'web') {
-      void pickDocumentFile(key);
+      void pickDocumentFile(key, label);
       return;
     }
 
-    showDialog(label, 'How would you like to attach this?', [
-      { text: 'Take photo', onPress: () => void captureDocument(key) },
-      { text: 'Choose file', onPress: () => void pickDocumentFile(key) },
+    showDialog(label, `How would you like to attach this? ${DOCUMENT_RULE}.`, [
+      { text: 'Take photo', onPress: () => void captureDocument(key, label) },
+      { text: 'Choose file', onPress: () => void pickDocumentFile(key, label) },
       { text: 'Cancel', style: 'cancel' },
     ]);
   };
@@ -1062,13 +1121,26 @@ export default function DriverSignupScreen() {
       } catch (thrown) {
         setIsSubmitting(false);
 
-        const message = errorMessage(thrown, 'Something went wrong.');
+        /*
+         * ⚠ A schema that is behind the code is named as one, before the raw
+         *   error is shown.
+         *
+         *   An applicant once met `null value in column "guarantor_relationship"
+         *   of relation "driver_applications" violates not-null constraint
+         *   (23502)` at the end of this form. It is not a fault they can act on
+         *   and not something they can retry their way out of — the column had
+         *   been `not null` since 02 and nothing had written it since 39. This
+         *   turns it into the filename somebody has to run, which is the only
+         *   sentence that helps anybody in the room.
+         */
+        const gap = schemaGapMessage(thrown);
+        const message = gap ?? errorMessage(thrown, 'Something went wrong.');
+        const duplicate = !gap && /duplicate key|one_open_application/i.test(message);
+
         // The unique constraint is the common case and deserves its own words.
         showDialog(
-          /duplicate key|one_open_application/i.test(message)
-            ? 'You already have an application'
-            : 'Could not submit your application',
-          /duplicate key|one_open_application/i.test(message)
+          duplicate ? 'You already have an application' : 'Could not submit your application',
+          duplicate
             ? 'There is already an application on this account. Check its status on the Drivers screen.'
             : `${message}\n\nYour answers are still here — try again.`,
         );
@@ -1573,6 +1645,23 @@ export default function DriverSignupScreen() {
                 purpose="driver"
                 captured={photoSession}
                 note={identityOutcome ? identityLabel(identityOutcome) : ''}
+                /*
+                  ⚠ Without this the card defaults to good news, and the default
+                    is what produced the contradiction.
+
+                    `LiveSelfieCard` has had two headings and two note colours
+                    since the sender's card needed them — "captured and checked"
+                    when the check confirmed something, "captured" when it did
+                    not. This caller never said which, so every outcome got the
+                    green tick and the word "checked": "Live photo captured and
+                    checked." sat directly above "The identity check could not
+                    run."
+
+                    Only a match is good news. A mismatch and an outage are both
+                    "the photo is saved, a person will look" — different
+                    sentences, the same heading.
+                */
+                noteIsGood={identityOutcome?.status === 'matched'}
                 onCaptured={handlePhotoCaptured}
                 onCleared={() => {
                   setPhotoSession(null);
@@ -1756,7 +1845,19 @@ function DocumentRow({
               </Text>
             </View>
           ) : (
-            <Text style={[styles.docHint, { color: theme.textMuted }]}>{hint}</Text>
+            <>
+              <Text style={[styles.docHint, { color: theme.textMuted }]}>{hint}</Text>
+              {/*
+                ⚠ On every empty slot, not once at the top of the card.
+
+                  The formats and the size limit are what somebody needs at the
+                  moment they are choosing a file, and that moment is here — five
+                  rows down from a paragraph they read before they started. It
+                  disappears once a file is attached, where the filename and its
+                  size say the same thing about the file they actually picked.
+              */}
+              <Text style={[styles.docRule, { color: theme.textMuted }]}>{DOCUMENT_RULE}</Text>
+            </>
           )}
         </View>
 
@@ -2260,6 +2361,11 @@ const styles = StyleSheet.create({
   },
   docHint: {
     ...Typography.meta,
+  },
+  docRule: {
+    ...Typography.caption,
+    fontSize: 11,
+    marginTop: 2,
   },
   docAction: {
     ...Typography.caption,
