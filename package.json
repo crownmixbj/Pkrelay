@@ -46,6 +46,7 @@
   "devDependencies": {
     "@electric-sql/pglite": "0.5.5",
     "@types/react": "~19.2.2",
+    "eas-cli": "^24.4.0",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~56.0.4",
     "typescript": "~6.0.3"
