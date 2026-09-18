@@ -122,7 +122,8 @@ export function SenderPhotoSheet({
   const [liveness, setLiveness] = useState<LivenessOutcome | null>(null);
   const [webcamOpen, setWebcamOpen] = useState(false);
 
-  const webcam = useWebcam();
+  /* This sheet does render a QR code, so it is the one that may say so. */
+  const webcam = useWebcam({ fallback: 'Use the QR code instead.' });
   const stopWatching = useRef<(() => void) | null>(null);
 
   /*

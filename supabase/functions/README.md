@@ -4,6 +4,27 @@ Deno, not React Native. They run on Supabase's edge runtime and are excluded
 from the app's `tsconfig.json` — type-checking them against React Native's libs
 produces nonsense like "Cannot find name 'Deno'".
 
+## payments-initialize / payments-verify / payments-webhook
+
+The parcel fare, through Paystack. **`docs/PAYMENTS.md` is the runbook** — the
+deploy commands, the secrets, the webhook URL and the cron sweep are all there
+rather than duplicated here.
+
+Two things worth knowing before you touch them:
+
+```bash
+supabase functions deploy payments-webhook --no-verify-jwt
+```
+
+The flag is not optional. Paystack's servers have no Supabase token, so with
+JWT verification on they are refused at the gateway, the function logs nothing,
+and every payment sits pending. The `x-paystack-signature` HMAC is what
+protects it instead, checked over the raw body before anything is parsed.
+
+And `PAYSTACK_SECRET_KEY` must be an `sk_test_` key on staging. A live key
+there is refused outright by `_shared/paystack.ts` — staging shares this
+directory with production, and a live key on a test parcel takes real money.
+
 ## notify-application
 
 Runs the moment a driver application is inserted, called by the
@@ -51,7 +72,8 @@ supabase functions deploy notify-application
 ```bash
 # --- Applicant confirmation email -------------------------------------------
 supabase secrets set RESEND_API_KEY="re_..."
-supabase secrets set LOCI_FROM_EMAIL="Package Relay <noreply@yourdomain.com>"
+# LOCI_FROM_EMAIL is optional — defaults to DEFAULT_FROM in _shared/email.ts
+# supabase secrets set LOCI_FROM_EMAIL="Package Relay <noreply@app.pkrelay.com>"
 
 # Optional but strongly recommended: replies land somewhere a human reads.
 supabase secrets set LOCI_SUPPORT_EMAIL="support@yourdomain.com"

@@ -33,6 +33,7 @@ Cloudflare) himself — prepare the change in the repo and hand him the steps.
 | Identity | Dojah (liveness + document verification) |
 | Email | Resend, via the `notify-*` edge functions |
 | Push | Expo push, via `notify-offer` |
+| Payments | Paystack hosted checkout, via the `payments-*` edge functions |
 | Web deploy | Cloudflare Pages (`npm run build:web` → `dist/`); Preview env carries staging credentials |
 | Native builds | EAS (`eas.json` profiles: development, preview, preview-testflight) |
 
@@ -42,7 +43,8 @@ the versioned docs before writing Expo code from memory.
 ## Layout
 
 ```
-src/app/            expo-router routes — (tabs), (auth), capture, guarantor, parcel
+src/app/            expo-router routes — (tabs), (auth), capture, guarantor, parcel,
+                    payment-return
 src/components/ui/  the whole component library, flat
 src/constants/      brand-facing content lives here: contact, links, legal,
                     theme, services, hubs, driver-guidelines
@@ -52,7 +54,7 @@ supabase/migrations/  timestamped CLI migrations (20250101000001 … 45)
 supabase/functions/   Deno edge functions + _shared/
 scripts/            the test suite (see below)
 docs/               STAGING, DEEP-LINKS, AUTH-REDIRECTS, DOJAH, DISTRIBUTION,
-                    PUSH-DEPLOY, PRIVACY-NOTES, SCHEMA-AUDIT
+                    PUSH-DEPLOY, PRIVACY-NOTES, SCHEMA-AUDIT, PAYMENTS, SUPPORT
 ```
 
 ## Commands that matter
@@ -103,7 +105,7 @@ turn the suite red. Run `npm run verify` before declaring anything done.
   needs before the CLI will accept a `db push`.
 - Staging is `ublqzvuzbyodjstzjvja`; production is `ymfdnzeonkhvzncqcezo`.
   `.env` and the CLI link both point at staging. Migrations 01-45 and 47 are
-  applied there. **48, 49, 50, 51 and 52 are written but not yet pushed.**
+  applied there. **48 through 60 are written but not yet pushed.**
 - 52 is a one-line unblock and the most urgent of them: 02 made
   `guarantor_relationship`, `guarantor_address` and `guarantor_nin` `not null`,
   39 stopped writing them and left the constraints, so on any database with 39
@@ -115,6 +117,85 @@ turn the suite red. Run `npm run verify` before declaring anything done.
   `complete_guarantor_verification` from `anon`, and until that function is
   deployed nothing else can call it, so the portal's submit button would 403.
   49 must reach the database before 51, which queues notifications through it.
+
+## Payments (56)
+
+A parcel is now posted **unpaid** and reaches no driver until a charge has been
+verified against Paystack's API by something holding the secret key.
+`docs/PAYMENTS.md` is the runbook — read it before touching any policy on
+`bookings`, because four separate things hold the gate shut and three of them
+are one-line changes away from being decorative.
+
+The short version:
+
+- Payment is a **separate axis from `status`**, not a new stage. `status` is
+  where the parcel is on its journey; `payment_status` is whether the fare was
+  collected. Adding a 'Pending Payment' stage would have taught `stageIndex`,
+  every progress bar, `advance_booking`, `cancellation_allowed` and the
+  notification triggers about a stage that is not a place.
+- `bookings_guard_payment` is the load-bearing one. Without it, `advance own
+  parcel` (25) lets a sender PATCH their own parcel to `paid` through PostgREST
+  and the gateway is never contacted.
+- The amount is never sent by the client. `parcel_fare_kobo` reads
+  `estimated_fee`, which 01's immutability trigger froze at insert.
+- 56 adds `payment_status` with default `'paid'` and *then* sets the default to
+  `'pending'`. The other order marks every live parcel unpaid in one statement
+  and empties the driver board. Do not reorder those two lines.
+- `payments-webhook` deploys with `--no-verify-jwt` and is protected by the
+  `x-paystack-signature` HMAC instead. `npm run verify:payments` asserts both.
+
+57 adds the confirmation email the first live test exposed: the charge settled
+correctly and the only message the sender received was Paystack's, which names
+no parcel. `email_on_parcel_paid` queues it from the same `pending → paid`
+transition, on `bookings` rather than on `parcel_payments` — a charge landing on
+a cancelled parcel is a refund owed, not a shipment, and must stay silent.
+
+`npm run verify:pg-payments` runs the whole migration chain under RLS and
+breaks each guard in turn; it is the one to run after editing a `bookings`
+policy.
+
+## Finance: the admin ledgers (58)
+
+`/admin-finance`, two tabs. Inbound is `parcel_payments` (56); outbound is
+`driver_earnings` and `payout_requests` (30). Both are reached through
+`security definer` functions that check `is_admin()` — not through an
+`is_admin()` branch on the policies, for 17's reason: a policy hands an admin
+token every column of every row, for ever, unlogged.
+
+Three things to know before changing any of it:
+
+- **Two currencies.** Sender payments are stored in kobo (`amount_kobo`);
+  driver earnings are stored in naira (`numeric`). `src/store/finance.ts`
+  divides the first by 100 and the second not at all, and `verify:finance`
+  asserts both. A misplaced ÷100 is wrong by a factor of a hundred and entirely
+  plausible on screen.
+- **'ready' has no row anywhere.** `payout_requests` records money a driver has
+  *asked* for. A driver sitting on a withdrawable balance who has not asked has
+  no row at all, so the state is derived in SQL from the balance. A ledger built
+  on that table alone is empty on the day the platform owes the most.
+- **`admin_payout_ledger` is a copy of `driver_balance`'s arithmetic**, written
+  set-based because calling the original per row is a query per driver.
+  `scripts/pg/finance-harness.mjs` asserts the two agree for every driver in the
+  fixture — that comparison is the only thing keeping the copy honest.
+
+60 adds the date range, the CSV exports and the per-row fee breakdown. Three
+things in it are easy to undo by accident: the upper date bound is **exclusive**
+(an inclusive one double-counts midnight across monthly exports); the outbound
+CSV amounts are **signed** (both positive sums to double the truth); and
+`split_is_actual` decides whether the commission columns are facts or a forecast
+at today's rate. `verify:finance` and the pg harness assert all three, and each
+was broken on purpose to confirm they notice.
+
+Bank account numbers are masked to four digits in the ledger;
+`admin_reveal_payout_account` returns the whole one and logs who asked, exactly
+as `admin_reveal_parcel_contacts` does. Settling a payout goes through 30's
+`settle_payout` and the screen requires a transfer reference the database treats
+as optional.
+
+⚠ `commission_rate` still defaults to **0**. 30 chose that deliberately — "a
+made-up rate is worse than an obviously unset one" — so until it is set in
+`private.app_settings`, the Finance screen will correctly report that the
+platform has earned nothing.
 
 ## Migration numbering: the gap at 46
 

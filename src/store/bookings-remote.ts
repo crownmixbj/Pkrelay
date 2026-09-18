@@ -6,6 +6,7 @@ import type {
   City,
   DeliveryType,
   HandoverMode,
+  PaymentStatus,
 } from '@/store/bookings';
 
 /**
@@ -56,6 +57,8 @@ export type BookingRow = {
   proof_note: string | null;
   cancelled_at: string | null;
   cancellation_reason: string | null;
+  payment_status: string;
+  paid_at: string | null;
   created_at: string;
 };
 
@@ -105,6 +108,19 @@ export function rowToBooking(row: BookingRow): Booking {
     proofNote: (row.proof_note as string | null) ?? null,
     cancelledAt: (row.cancelled_at as string | null) ?? null,
     cancellationReason: (row.cancellation_reason as string | null) ?? null,
+    /*
+     * ⚠ Defaulted to 'paid' when the column is absent, not to 'pending'.
+     *
+     *   A build running against a database that has not had
+     *   20250101000056_parcel_payments.sql applied gets `undefined` here. Read
+     *   as 'pending' that would hide every parcel from every driver and empty
+     *   the board — a schema gap presenting as a dead marketplace. Read as
+     *   'paid' it behaves exactly as the app did before payments existed,
+     *   which is the truthful answer for a database that has never collected
+     *   one. `schema-gap.ts` is what tells somebody the migration is missing.
+     */
+    paymentStatus: (row.payment_status as PaymentStatus) ?? 'paid',
+    paidAt: (row.paid_at as string | null) ?? null,
     createdAt: row.created_at,
   };
 }
@@ -140,6 +156,9 @@ export function bookingToInsert(
     | 'proofNote'
     | 'cancelledAt'
     | 'cancellationReason'
+    // Server-owned. The insert policy refuses anything but the default.
+    | 'paymentStatus'
+    | 'paidAt'
   >,
 ) {
   return {
@@ -178,6 +197,14 @@ export function bookingToInsert(
     sender_id: booking.senderId,
     status: booking.status,
     capture_session_id: booking.captureSessionId,
+    /*
+     * `payment_status` is deliberately absent, not sent as 'pending'.
+     *
+     * The column's default is 'pending' and the insert policy requires that
+     * value, so naming it here would add a second place for the two to
+     * disagree — and an older bundle that sent 'paid' would simply be refused,
+     * which is the behaviour worth keeping.
+     */
   };
 }
 
@@ -208,6 +235,9 @@ export async function insertBooking(
     | 'proofNote'
     | 'cancelledAt'
     | 'cancellationReason'
+    // Server-owned. The insert policy refuses anything but the default.
+    | 'paymentStatus'
+    | 'paidAt'
   >,
 ): Promise<Booking> {
   const { data, error } = await supabase

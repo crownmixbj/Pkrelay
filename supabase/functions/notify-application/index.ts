@@ -20,6 +20,7 @@
  * `20250101000005_storage_and_alerts.sql`.
  */
 
+import { DEFAULT_FROM } from '../_shared/email.ts';
 import { resolveRecipient, slackEnabled } from '../_shared/environment.ts';
 
 import { renderApplicationEmail, headerSafe } from './email.ts';
@@ -137,10 +138,17 @@ type Outcome = { ok: true } | { ok: false; error: string } | { skipped: string }
  */
 async function sendApplicantEmail(payload: ApplicationPayload): Promise<Outcome> {
   const apiKey = env('RESEND_API_KEY');
-  const from = env('LOCI_FROM_EMAIL');
+  /*
+   * ⚠ The same default as `notify-events`, so the two emails a driver receives
+   *   do not come from two different addresses — or, worse, so one sends and the
+   *   other silently does not because a secret was set for one deployment step
+   *   and not another.
+   */
+  const from = (env('LOCI_FROM_EMAIL') ?? '').trim() || DEFAULT_FROM;
 
-  if (!apiKey || !from) {
-    console.warn('RESEND_API_KEY or LOCI_FROM_EMAIL not set — confirmation email skipped.');
+  /* `from` now always has a value, so only the key can be missing. */
+  if (!apiKey) {
+    console.warn('RESEND_API_KEY is not set — confirmation email skipped.');
     return { skipped: 'no email provider configured' };
   }
 

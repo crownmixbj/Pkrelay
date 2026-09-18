@@ -33,6 +33,7 @@ import { json, preflight } from '../_shared/cors.ts';
 import { pushEnabled } from '../_shared/environment.ts';
 import { chunk, sendBatch } from '../_shared/expo-push.ts';
 import { buildMessage, type NotificationRow } from './message.ts';
+import { isServiceRole } from '../_shared/service-role.ts';
 
 const env = (key: string) => Deno.env.get(key) ?? null;
 
@@ -117,7 +118,18 @@ Deno.serve(async (request: Request) => {
    *   can be replayed at somebody else's phone.
    */
   const auth = request.headers.get('Authorization') ?? '';
-  if (!SERVICE_KEY || auth !== `Bearer ${SERVICE_KEY}`) {
+  /*
+   * ⚠ The role, not a comparison with this deployment's own copy of the key.
+   *
+   *   See `_shared/service-role.ts`. The identical check in `notify-events`
+   *   turned a rotated key — and a key pasted into the SQL editor with a
+   *   trailing newline — into a 403 that recorded nothing anywhere, while the
+   *   database went on believing it had posted. This function is reached by the
+   *   same trigger machinery, carrying the same key from the same table.
+   */
+  const caller = isServiceRole(auth, SERVICE_KEY);
+  if (!caller.ok) {
+    console.log(JSON.stringify({ fn: 'notify-push', stage: 'refused', why: caller.how }));
     return json({ error: 'Forbidden' }, 403);
   }
 

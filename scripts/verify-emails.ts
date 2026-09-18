@@ -32,6 +32,7 @@ import { join } from 'node:path';
  *   exists to prevent.
  */
 import { EMAIL_KINDS, render, type Context } from '../supabase/functions/notify-events/templates';
+import { absoluteUrl, layout } from '../supabase/functions/_shared/email';
 
 let failures = 0;
 
@@ -334,6 +335,126 @@ check(
   'no call to action when there is nowhere to send them',
   Boolean(noUrl) && !noUrl!.html.includes('href="null'),
   'a dead link in an email cannot be fixed after it is sent',
+);
+
+// ------------------------------------------------------- the button works --
+
+/*
+ * ⚠ A mail client has no page to be relative to.
+ *
+ *   `LOCI_APP_URL` is typed by a person into `supabase secrets set`. Set without
+ *   a scheme it produced `href="app.pkrelay.com/guarantor/abc"` — a *relative*
+ *   URL, which Gmail and Outlook variously render as unlinked text or strip
+ *   entirely. The button looked perfect and did nothing, which is how it was
+ *   reported.
+ */
+check('a bare host becomes absolute', absoluteUrl('app.pkrelay.com', '/x') === 'https://app.pkrelay.com/x');
+check('a scheme is kept', absoluteUrl('http://localhost:8081', '/x') === 'http://localhost:8081/x');
+check(
+  'a trailing slash does not double up',
+  absoluteUrl('https://app.pkrelay.com/', '/x') === 'https://app.pkrelay.com/x',
+  'https://host//guarantor/... is a 404 on a router that cares',
+);
+check('whitespace is trimmed', absoluteUrl('  https://app.pkrelay.com  ', 'x') === 'https://app.pkrelay.com/x');
+check('an unset url yields nothing', absoluteUrl(null, '/x') === null && absoluteUrl('', '/x') === null);
+check(
+  'and something that is not a host yields nothing rather than a broken button',
+  absoluteUrl('localhost', '/x') === null && absoluteUrl('not a url', '/x') === null,
+  'href="" is a button that silently fails; no button leaves the plain URL and the explanation',
+);
+
+/*
+ * ⚠ The values that actually reached production, by name.
+ *
+ *   `LOCI_APP_URL` was set to `.https://staging.pkrelay.com` — one stray leading
+ *   dot, invisible in a dashboard field. The first version of this helper only
+ *   asked whether the hostname contained a dot, and `.https` does, so the email
+ *   went out carrying `https://.https//staging.pkrelay.com/guarantor/<token>`.
+ *   Every one of these parses; none of them is a URL anybody can open.
+ */
+for (const mangled of [
+  '.https://staging.pkrelay.com',
+  '.https//staging.pkrelay.com',
+  'https//staging.pkrelay.com',
+  'http:/staging.pkrelay.com',
+]) {
+  check(
+    `a mangled scheme is refused: ${mangled}`,
+    absoluteUrl(mangled, '/guarantor/t') === null,
+    'this shipped once, in the one email whose entire purpose is the link',
+  );
+}
+/*
+ * A protocol-relative value is a typo with an unambiguous intent, so it is
+ * repaired rather than refused — unlike the ones above, there is only one thing
+ * `//host` can mean.
+ */
+check(
+  'a protocol-relative host is repaired, not dropped',
+  absoluteUrl('//staging.pkrelay.com', '/guarantor/t') ===
+    'https://staging.pkrelay.com/guarantor/t',
+);
+check(
+  'a path on the base survives',
+  absoluteUrl('https://app.pkrelay.com/base/', '/guarantor/t') ===
+    'https://app.pkrelay.com/base/guarantor/t',
+);
+
+const button = layout({
+  heading: 'h',
+  intro: 'i',
+  bodyHtml: '',
+  cta: { label: 'Review and verify', url: 'app.pkrelay.com/guarantor/tok' },
+  footerNote: 'f',
+});
+
+check(
+  'the button href is absolute',
+  button.includes('href="https://app.pkrelay.com/guarantor/tok"'),
+  'the whole point: a relative href is not a link in an inbox',
+);
+/*
+ * ⚠ Colour on the cell, `display:block` on the anchor.
+ *
+ *   Outlook renders with Word, which ignores `display` on an inline element and
+ *   most of its padding — so a styled `<a>` alone gives a blue box painted by
+ *   the cell with only the text inside it clickable. The edges do nothing, which
+ *   is exactly what "not fully clickable" looks like.
+ */
+check(
+  'the cell carries the colour',
+  /bgcolor="#0B5FFF"/.test(button),
+  'Word ignores background on an inline anchor',
+);
+check(
+  'and the anchor fills the cell, padding included',
+  /<a [^>]*style="display:block;padding:/.test(button.replace(/\s+/g, ' ')),
+  'padding on the cell instead of the anchor is padding that is not part of the link',
+);
+check('the button opens in a new tab safely', /target="_blank" rel="noopener noreferrer"/.test(button));
+/*
+ * Corporate clients strip styles and some strip anchors outright. A guarantor
+ * left with a dead button has nothing else to go on — and a person who wants to
+ * see where an unexpected link goes before pressing it is being sensible.
+ */
+check(
+  'the address is also written out in full',
+  button.includes('Or paste this into your browser') &&
+    (button.match(/https:\/\/app\.pkrelay\.com\/guarantor\/tok/g) ?? []).length >= 2,
+  'a stripped button with no visible URL is a dead end',
+);
+
+const noButton = layout({
+  heading: 'h',
+  intro: 'i',
+  bodyHtml: '',
+  cta: { label: 'Review and verify', url: 'not a url' },
+  footerNote: 'f',
+});
+check(
+  'an unbuildable url renders no button at all',
+  !noButton.includes('Review and verify') && !noButton.includes('href=""'),
+  'a button that cannot work is worse than no button',
 );
 
 // --------------------------------------- the kinds and the schema agree ----

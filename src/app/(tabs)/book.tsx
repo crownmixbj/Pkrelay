@@ -55,6 +55,12 @@ import { useTheme } from '@/hooks/use-theme';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { uploadParcelPhoto } from '@/store/parcel-photos';
 import { showToast } from '@/components/ui/toast';
+import { PaymentSheet, type CheckoutOutcome } from '@/components/ui/payment-sheet';
+import {
+  initializeParcelPayment,
+  verifyParcelPayment,
+  type CheckoutSession,
+} from '@/store/payments';
 import { fetchSenderIdentity, runIdentityCheck, type SenderIdentity } from '@/store/identity';
 import {
   blockedMessage,
@@ -391,7 +397,7 @@ const asOption = <T extends string>(options: readonly T[], value: unknown): T | 
 
 export default function BookScreen() {
   const theme = useTheme();
-  const { addBooking, error: bookingError } = useBookings();
+  const { addBooking, refresh: refreshBookings, error: bookingError } = useBookings();
   const { requireAuth } = useAuthGate();
   const router = useRouter();
   const params = useLocalSearchParams<{
@@ -523,6 +529,22 @@ export default function BookScreen() {
    */
   const [identityNoteIsGood, setIdentityNoteIsGood] = useState(true);
   const [posting, setPosting] = useState(false);
+
+  /*
+   * The checkout, and the wait after it.
+   *
+   * ⚠ Two flags rather than one, because they mean different things to the
+   *   sender.
+   *
+   *   `posting` covers writing the parcel and opening the gateway — work they
+   *   can still cancel by going back. `settling` covers the seconds after the
+   *   gateway closes, while the server asks Paystack what happened, and during
+   *   that window there is nothing to go back to: the money has either moved or
+   *   it has not. Collapsing them would put "Posting…" on a button under a
+   *   charge that has already been made.
+   */
+  const [checkout, setCheckout] = useState<CheckoutSession | null>(null);
+  const [settling, setSettling] = useState(false);
   const declaredValueRef = useRef<TextInput>(null);
   const itemCardY = useRef(0);
   /** Guards against re-applying the prefill on every re-render. */
@@ -1140,20 +1162,168 @@ export default function BookScreen() {
       }
     }
 
-    // Posted and stored — the draft has done its job.
+    /*
+      The draft is cleared here, before the money, and that is the right moment.
+
+      ⚠ It used to be cleared on the way to the confirmation screen, when
+        posting and paying were the same instant. They are not any more: the
+        parcel is now a row in the database — every address, every phone
+        number, the selfie, the fare — and an unpaid one is reachable from
+        Shipments with a Complete payment button on it. Holding the draft past
+        this point would mean a sender who abandons the checkout comes back to
+        two copies of the same parcel, one of them real.
+    */
     void clearDraft();
     setForm(INITIAL_FORM);
     setErrors({});
 
     /*
-      A confirmation screen rather than an alert: this form is four sections
-      long, and an OS dialog that vanishes on tap is a poor place to put the
-      one number the sender needs to keep. `replace` so the back gesture can't
-      return to a submitted form and post it twice.
+      ⚠ No gateway in the offline store, and no pretending there is one.
+
+        Without Supabase configured, `addBooking` keeps the parcel in memory
+        and `SETTLED_OFFLINE` marks it paid — there is no server to initialize a
+        charge against and no row for a webhook to settle. Calling the edge
+        function here would fail, and reporting that failure to somebody
+        exploring a build with no database would be reporting the absence of a
+        database as a payment problem.
     */
+    if (!isSupabaseConfigured) {
+      await finishPosting(booking.trackingId);
+      return;
+    }
+
+    await startCheckout(booking.id, booking.trackingId);
+  };
+
+  /**
+   * Opens the gateway for a parcel that now exists and has not been paid for.
+   *
+   * ⚠ No amount is passed, and none is passed back that this screen trusts.
+   *
+   *   The fare on the summary above is `fee.total`, computed here for the
+   *   sender to read. What is charged is `estimated_fee` on the parcel row,
+   *   which the insert wrote and `bookings_guard_immutable` froze — read
+   *   server-side by `parcel_fare_kobo`. Handing the client's number to the
+   *   gateway would make the price of a delivery a thing the client decides.
+   */
+  const startCheckout = async (bookingId: string, trackingId: string) => {
+    const opened = await initializeParcelPayment(bookingId);
+
+    if (opened.ok) {
+      setCheckout(opened.session);
+      return;
+    }
+
+    /*
+      Already settled — a retry after the sheet was closed on a charge that had
+      in fact gone through, or a webhook that landed first. Not an error.
+    */
+    if (opened.alreadyPaid) {
+      await finishPosting(trackingId);
+      return;
+    }
+
+    /*
+      ⚠ The parcel is not lost, and the message has to say so.
+
+        Everything the sender typed is on the server. The one thing that did
+        not happen is the charge, and the way back to it is the Shipments list
+        — so the dialog names that rather than leaving somebody looking at an
+        emptied form wondering what became of four sections of typing.
+    */
+    showDialog(
+      'Could not open the checkout',
+      `${opened.error} Your parcel ${trackingId} is saved — you can pay for it from your shipments.`,
+      [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'Go to my shipments', onPress: toActiveShipments },
+      ],
+    );
+  };
+
+  /**
+   * What the sheet reported, turned into what the server says.
+   *
+   * ⚠ None of the three outcomes is treated as a verdict.
+   *
+   *   'returned' means the gateway redirected — which it does on success, on a
+   *   decline and on the sender pressing cancel. 'dismissed' means they closed
+   *   the sheet, possibly in the second after the charge went through. Only
+   *   `payments-verify` knows, because only the server holds the secret key.
+   */
+  const handleCheckoutOutcome = async (outcome: CheckoutOutcome, session: CheckoutSession) => {
+    setCheckout(null);
+
+    if (outcome === 'failed') {
+      showDialog(
+        'The checkout would not load',
+        'Nothing has been charged. Your parcel is saved — try paying for it from your shipments.',
+        [{ text: 'Go to my shipments', onPress: toActiveShipments }],
+      );
+      return;
+    }
+
+    setSettling(true);
+    try {
+      const verdict = await verifyParcelPayment(session.reference);
+
+      if (verdict.status === 'success') {
+        await finishPosting(session.trackingId);
+        return;
+      }
+
+      if (verdict.status === 'failed') {
+        showDialog(
+          'That payment did not go through',
+          `${verdict.error ?? 'The bank declined it.'} Your parcel is saved — you can try again from your shipments.`,
+          [{ text: 'Go to my shipments', onPress: toActiveShipments }],
+        );
+        return;
+      }
+
+      /*
+       * ⚠ Inconclusive, and deliberately not reported as a failure.
+       *
+       *   The sender may have closed the sheet a moment before the charge
+       *   settled, and the webhook will finish the job whether or not anybody
+       *   is watching. Telling them it failed here is how somebody pays twice.
+       */
+      showToast('Still confirming your payment', {
+        message:
+          'Your parcel will start moving as soon as the bank confirms. Nothing else is needed from you.',
+        tone: 'info',
+      });
+      toActiveShipments();
+    } finally {
+      setSettling(false);
+    }
+  };
+
+  /** Where a paid parcel lands, and the one place that decides it. */
+  const toActiveShipments = () => {
+    /*
+      `replace`, so the back gesture cannot return to a submitted form and post
+      a second parcel — the reason the confirmation screen used it too.
+    */
+    router.replace({ pathname: '/my-packages', params: { section: 'active' } });
+  };
+
+  const finishPosting = async (trackingId: string) => {
+    /*
+      ⚠ Refreshed before navigating, not after.
+
+        The store holds the copy of this parcel that came back from the insert,
+        with `paymentStatus: 'pending'` on it — the shipments screen reads the
+        store, not the server, and `activeMovements` hides unpaid parcels. Going
+        there first would show the sender the very "No parcels moving right now"
+        they just paid to get rid of, for however long the refresh took. One
+        await here is the difference.
+    */
+    await refreshBookings();
+
     router.replace({
-      pathname: '/parcel-confirmed',
-      params: { trackingId: booking.trackingId },
+      pathname: '/my-packages',
+      params: { section: 'active', posted: trackingId },
     });
   };
 
@@ -1832,10 +2002,10 @@ export default function BookScreen() {
             finalAction={
               step === STEPS.length - 1 ? (
                 <Button
-                  label={posting ? 'Posting…' : 'Confirm & Post Parcel'}
+                  label={posting || settling ? 'Posting…' : 'Confirm & Post Parcel'}
                   icon={(color, size) => <PackagePlus color={color} size={size} />}
                   onPress={handleSubmit}
-                  disabled={!confirmed || !photoSession || posting}
+                  disabled={!confirmed || !photoSession || posting || settling}
                 />
               ) : undefined
             }
@@ -1843,6 +2013,14 @@ export default function BookScreen() {
         </View>
         <Footer />
       </ScrollView>
+
+      {/*
+        Outside the ScrollView on purpose. It is a Modal, so where it sits in
+        the tree does not decide where it draws — but a Modal mounted inside a
+        scrolling container is one more thing for the scroll position to fight
+        with on Android, for no benefit.
+      */}
+      <PaymentSheet session={checkout} onOutcome={handleCheckoutOutcome} />
     </KeyboardAvoidingView>
   );
 }

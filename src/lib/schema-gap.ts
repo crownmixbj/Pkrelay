@@ -176,6 +176,133 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
     fn: 'driver_application_guarantor_optional',
     migration: '20250101000052_guarantor_columns_nullable.sql',
   },
+  /*
+   * ⚠ Listed against a function 53 creates, not against `dispatch_email`.
+   *
+   *   38 created `dispatch_email` and 53 replaces it, so its presence says
+   *   nothing about whether 53 has run — the same trap the 45 entry documents.
+   *   `email_dispatch_config` is new in 53 and is therefore the honest probe.
+   */
+  {
+    label: 'Transactional email dispatch',
+    fn: 'email_dispatch_config',
+    migration: '20250101000053_email_dispatch_repair.sql',
+  },
+  /*
+   * ⚠ 54 replaces a function 39 created, so its presence proves nothing — the
+   *   same limit the 45 and 52 entries document. It is listed because the
+   *   newest-migration assertion exists to stop this list falling behind, and
+   *   because a database still on 39's seven-day window while the app promises
+   *   thirty is a promise broken to the one person in the flow who cannot check.
+   */
+  {
+    label: 'Guarantor link window (39; 54 widens it)',
+    fn: 'guarantor_invitation_window',
+    migration: '20250101000054_guarantor_link_window.sql',
+  },
+  /*
+   * ⚠ 55 is a one-off UPDATE, so it carries a function whose only job is to be
+   *   askable — and which reads the live state rather than returning a constant,
+   *   so it keeps answering after the migration has run. Its absence is
+   *   otherwise invisible by construction: the emails send, the links work, and
+   *   the only symptom is a date in somebody else's inbox that is not the date
+   *   their link expires.
+   */
+  {
+    label: 'Guarantor invite email dates',
+    fn: 'guarantor_invite_dates_current',
+    migration: '20250101000055_guarantor_invite_payload_refresh.sql',
+  },
+  /*
+   * ⚠ Probed on `settle_parcel_payment`, which is new in 56 and is the one
+   *   function whose absence has an unmistakable symptom.
+   *
+   *   Not `dispatch_new_booking`: 15 creates it and 56 replaces it, so it is
+   *   present on every database and would report 56 installed where it is not —
+   *   the trap the 45 and 53 entries document. On a project without 56 the
+   *   booking insert fails with PGRST204 on `payment_status`, which
+   *   `COLUMN_MIGRATIONS` below turns into this same filename.
+   */
+  {
+    label: 'Parcel payments',
+    fn: 'settle_parcel_payment',
+    migration: '20250101000056_parcel_payments.sql',
+  },
+  /*
+   * ⚠ Its absence is invisible from inside the app, which is why it is listed.
+   *
+   *   Without 57 the payment still settles, the parcel still dispatches and
+   *   every screen is correct. The only symptom is that the sender hears from
+   *   Paystack and never from Package Relay — a missing email nobody can see
+   *   from a screenshot, and exactly the shape of the gap that produced this
+   *   migration. `email_on_parcel_paid` is new in 57, so its absence is the
+   *   honest probe.
+   */
+  {
+    label: 'Payment confirmation email',
+    fn: 'email_on_parcel_paid',
+    migration: '20250101000057_payment_receipt_email.sql',
+  },
+  /*
+   * ⚠ Probed on the ledger rather than on `settle_payout`, which 30 created.
+   *
+   *   58 grants an admin a view over two tables that already existed; the only
+   *   new thing whose absence is unambiguous is the ledger itself. On a project
+   *   without it the Finance screen renders empty tables and a PGRST202 naming
+   *   this function, which is exactly the message worth translating.
+   */
+  {
+    label: 'Admin finance ledgers',
+    fn: 'admin_payout_ledger',
+    migration: '20250101000058_admin_finance.sql',
+  },
+  /*
+   * ⚠ 60 *changes the signature* of two functions 58 created, which is a
+   *   failure mode this list has not had before.
+   *
+   *   Every other entry answers "is this function here at all". On a database
+   *   with 58 but not 60, `admin_payments_ledger` exists — with the wrong
+   *   argument list — so the app's call fails with PGRST202 naming a function
+   *   that is plainly present, which reads as a bug in the client. The probe is
+   *   therefore `admin_finance_transactions`, which 60 creates outright and
+   *   whose absence is unambiguous.
+   */
+  {
+    label: 'Finance reporting (dates, fee split, export)',
+    fn: 'admin_finance_transactions',
+    migration: '20250101000060_finance_reporting.sql',
+  },
+  /*
+   * ⚠ Probed on the queue, and it is the only honest probe in 59.
+   *
+   *   Without 59 the Support screen shows an empty queue and the ticket panel on
+   *   the public Support page renders nothing at all — no error, because a
+   *   missing table reads to that panel as "not switched on yet". So the symptom
+   *   is a support system that looks installed and quietly swallows everything
+   *   anybody writes into it. `admin_support_queue` is new in 59 and is what
+   *   every path on that screen calls first.
+   */
+  {
+    label: 'Support ticketing queue',
+    fn: 'admin_support_queue',
+    migration: '20250101000059_support_tickets.sql',
+  },
+  /*
+   * ⚠ 61 repairs a foreign key and adds no working function, so it carries a
+   *   probe whose only job is to be askable — 55's arrangement, for 55's reason.
+   *
+   *   Its absence is the worst kind: erasing a sender who has posted a parcel
+   *   raises a foreign key violation and scrubs nothing, so an NDPR request
+   *   fails on a database that looks complete. And unlike every other entry
+   *   here, the probe answers from the live catalog — it returns false if
+   *   somebody re-adds that constraint without the `on delete` clause, which is
+   *   how it went missing in the first place.
+   */
+  {
+    label: 'Erasure: capture-session key repair',
+    fn: 'capture_session_fk_repaired',
+    migration: '20250101000061_capture_session_fk_repair.sql',
+  },
 ];
 
 /**
@@ -197,6 +324,20 @@ const COLUMN_MIGRATIONS: Readonly<Record<string, { label: string; migration: str
   capture_session_id: {
     label: 'Posting a parcel with its selfie',
     migration: '20250101000044_selfie_with_the_parcel.sql',
+  },
+  /*
+   * ⚠ Read, not written — and it still belongs here.
+   *
+   *   `bookingToInsert` deliberately does not send `payment_status`; the column
+   *   default and the insert policy own it. But `fetchBookings` selects `*` and
+   *   `rowToBooking` reads the column, and the shipments screen asks whether a
+   *   parcel is awaiting payment. On a database without 56 that is a checkout
+   *   button on a parcel that can never be paid for, and the honest message is
+   *   the filename rather than a shrug about the connection.
+   */
+  payment_status: {
+    label: 'Parcel payments',
+    migration: '20250101000056_parcel_payments.sql',
   },
 };
 

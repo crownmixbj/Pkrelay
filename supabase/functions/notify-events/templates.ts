@@ -21,6 +21,7 @@
  */
 import {
   ROW,
+  absoluteUrl,
   escapeHtml,
   firstName,
   headerSafe,
@@ -41,7 +42,8 @@ export type EmailKind =
   | 'parcel_status_changed'
   | 'driver_offer'
   | 'driver_job_cancelled'
-  | 'payout_paid';
+  | 'payout_paid'
+  | 'parcel_payment_received';
 
 export type Rendered = { subject: string; html: string; text: string };
 
@@ -69,8 +71,16 @@ const support = (context: Context) =>
     ? `Questions? Reply to this email or write to ${context.supportEmail}.`
     : 'Questions? Reply to this email.';
 
+/*
+ * ⚠ Through `absoluteUrl`, never by interpolation.
+ *
+ *   `${context.appUrl}${path}` produces `app.pkrelay.com/profile` when the
+ *   secret was set without a scheme, and `https://host//profile` when it was set
+ *   with a trailing slash. The first is a relative URL that no mail client can
+ *   resolve — the button renders and does nothing.
+ */
 const link = (context: Context, path: string): string | null =>
-  context.appUrl ? `${context.appUrl}${path}` : null;
+  absoluteUrl(context.appUrl, path);
 
 /* ------------------------------------------------------ 1. the lifecycle -- */
 
@@ -194,7 +204,7 @@ function guarantorInvitation(payload: Payload, context: Context): Rendered {
   const token = str(payload, 'token');
   const expires = whenReadable(str(payload, 'expires_at'));
 
-  const url = token && context.appUrl ? `${context.appUrl}/guarantor/${token}` : null;
+  const url = token ? absoluteUrl(context.appUrl, `/guarantor/${token}`) : null;
 
   const text = [
     `Hello ${guarantor},`,
@@ -671,6 +681,109 @@ function payoutPaid(payload: Payload, context: Context): Rendered {
   };
 }
 
+/**
+ * The fare, confirmed by us rather than only by the gateway.
+ *
+ * ⚠ What this email exists to say, and what it deliberately does not.
+ *
+ *   Paystack already emails the sender. That message is about a charge: an
+ *   amount, a card, a merchant name. It cannot name the parcel, the route or
+ *   the tracking id, because Paystack does not know what any of that means —
+ *   so a sender who paid for two shipments in a morning has two identical
+ *   bank-ish emails and no way to tell which is which. This one answers "what
+ *   did I just pay for, and what happens now".
+ *
+ * ⚠ Called a confirmation, never a receipt, for 38's reason.
+ *
+ *   `delivery_completed` carries the same warning: a document headed "Receipt"
+ *   is one somebody may hand to an accountant. Paystack issues that document.
+ *   Claiming to would be claiming a standing this email does not have.
+ *
+ * ⚠ The reference is shown in full and the card is not shown at all.
+ *
+ *   The reference is what support needs to find a charge and is useless to
+ *   anybody else. `channel` is the *method* — "card", "bank transfer", "ussd" —
+ *   and never a card number or a last four, which this system does not receive
+ *   and would not put in an email if it did.
+ */
+function parcelPaymentReceived(payload: Payload, context: Context): Rendered {
+  const tracking = str(payload, 'tracking_id');
+  const amount = naira(num(payload, 'amount'));
+  const reference = str(payload, 'reference');
+  const at = whenReadable(str(payload, 'paid_at'));
+  const item = str(payload, 'item_description');
+  const recipient = str(payload, 'recipient_name');
+
+  /*
+   * ⚠ The route reads by delivery type, because the useful half differs.
+   *
+   *   "Ibadan to Ibadan" is what a local delivery looks like when the city is
+   *   the whole answer, and it tells the sender nothing they did not already
+   *   know. Within one city the neighbourhoods are the route; between two, the
+   *   cities are. Both halves are in the payload so this is a presentation
+   *   decision rather than a trigger one.
+   */
+  const local = str(payload, 'delivery_type') === 'local';
+  const from = local ? str(payload, 'pickup_area') : str(payload, 'origin_city');
+  const to = local ? str(payload, 'dropoff_area') : str(payload, 'destination_city');
+  const route = from && to ? `${from} to ${to}` : '';
+
+  /* "card", "bank transfer" — capitalised for a sentence, absent when unknown. */
+  const method = str(payload, 'channel').replace(/_/g, ' ').trim();
+
+  const url = link(context, '/my-packages?section=active');
+
+  const text = [
+    'Hi there,',
+    '',
+    `We have received your payment of ${amount} for parcel ${tracking}.`,
+    '',
+    `Parcel: ${tracking}`,
+    item ? `Item: ${item}` : '',
+    route ? `Route: ${route}` : '',
+    recipient ? `Recipient: ${recipient}` : '',
+    '',
+    `Amount paid: ${amount}`,
+    method ? `Paid by: ${method}` : '',
+    at ? `Paid: ${at}` : '',
+    reference ? `Payment reference: ${reference}` : '',
+    '',
+    'Your parcel is now live. Drivers already making that journey can claim it, and',
+    'you will hear from us again as soon as one does.',
+    '',
+    url ? `Track it here: ${url}` : '',
+    '',
+    'This is a confirmation from Package Relay. Your payment provider issues the receipt.',
+    '',
+    support(context),
+    '',
+    'Package Relay',
+  ]
+    .filter((line) => line !== '')
+    .join('\n');
+
+  return {
+    subject: headerSafe(`Payment received — ${tracking}`),
+    text,
+    html: layout({
+      heading: 'Payment received',
+      intro: `We have received ${amount} for parcel ${tracking}. It is now live, and drivers heading that way can claim it.`,
+      bodyHtml: [
+        ROW('Parcel', tracking),
+        item ? ROW('Item', item) : '',
+        route ? ROW('Route', route) : '',
+        recipient ? ROW('Recipient', recipient) : '',
+        ROW('Amount paid', amount),
+        method ? ROW('Paid by', method) : '',
+        at ? ROW('Paid', at) : '',
+        reference ? ROW('Reference', reference) : '',
+      ].join(''),
+      cta: url ? { label: 'Track your parcel', url } : null,
+      footerNote: `A confirmation from Package Relay — your payment provider issues the receipt. ${support(context)}`,
+    }),
+  };
+}
+
 const TEMPLATES: Record<EmailKind, (payload: Payload, context: Context) => Rendered> = {
   guarantor_invitation: guarantorInvitation,
   sender_verification_submitted: verificationSubmitted,
@@ -684,6 +797,7 @@ const TEMPLATES: Record<EmailKind, (payload: Payload, context: Context) => Rende
   driver_offer: driverOffer,
   driver_job_cancelled: driverJobCancelled,
   payout_paid: payoutPaid,
+  parcel_payment_received: parcelPaymentReceived,
 };
 
 export function isEmailKind(value: string): value is EmailKind {

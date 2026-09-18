@@ -26,7 +26,21 @@ export type WebcamState = {
   capture: () => string | null;
 };
 
-export function useWebcam(): WebcamState {
+/**
+ * ⚠ The remedy sentence belongs to the caller, because there are two callers
+ *   and only one of them has a QR code.
+ *
+ *   Every message here ended "Use the QR code instead." That was written for the
+ *   sender photo sheet, which renders one. The guarantor portal uses this same
+ *   hook and has no QR handoff at all — it cannot have one, because a capture
+ *   session is bound to an account and a guarantor has none. So a guarantor who
+ *   blocked their camera was told to use a thing that does not exist on the page
+ *   they are looking at, and had nothing to do next.
+ */
+export function useWebcam(options: { fallback?: string } = {}): WebcamState {
+  /* Appended to each message, so no sentence here names a control it cannot see. */
+  const fallback = options.fallback ? ` ${options.fallback}` : '';
+
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -55,7 +69,7 @@ export function useWebcam(): WebcamState {
 
   const start = async () => {
     if (!supported) {
-      setError('This browser cannot open a camera. Use the QR code instead.');
+      setError(`This browser cannot open a camera.${fallback}`);
       return;
     }
 
@@ -81,8 +95,8 @@ export function useWebcam(): WebcamState {
       const name = thrown instanceof Error ? thrown.name : '';
       setError(
         name === 'NotAllowedError'
-          ? 'Camera access was blocked. Allow it in your browser, or use the QR code.'
-          : 'No camera was available. Use the QR code instead.',
+          ? `Camera access was blocked. Allow it in your browser settings and try again.${fallback}`
+          : `No camera was available.${fallback}`,
       );
       setStreaming(false);
     }

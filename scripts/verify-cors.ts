@@ -88,6 +88,22 @@ const BROWSER_CALLED = [
    *   gone — and gone silently, because the function's own logs stay empty.
    */
   'guarantor-portal',
+  /*
+   * ⚠ Two of the three payment functions, and the third is deliberately absent.
+   *
+   *   `payments-initialize` and `payments-verify` are called by the app, which
+   *   on web is a browser — and `payments-verify` is called from
+   *   `/payment-return`, a page the sender lands on straight from Paystack with
+   *   a charge already made. A CORS fault there is a parcel that was paid for
+   *   and never dispatched, with the function's own logs empty.
+   *
+   *   `payments-webhook` is not on this list and must not be: nothing calls it
+   *   from a browser, it is deployed without JWT verification, and answering
+   *   `Access-Control-Allow-Origin: *` on an unauthenticated endpoint would let
+   *   any page on the internet POST to it and read the reply.
+   */
+  'payments-initialize',
+  'payments-verify',
 ] as const;
 
 for (const name of BROWSER_CALLED) {

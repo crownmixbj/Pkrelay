@@ -205,6 +205,25 @@ export const BOOKING_STAGES = [
 export type BookingStage = (typeof BOOKING_STAGES)[number] | 'Cancelled';
 
 /**
+ * Where a parcel's fare has got to.
+ *
+ *   pending   posted, not paid for, invisible to every driver
+ *   paid      verified against the gateway, and dispatched
+ *   waived    Package Relay chose not to charge for this one
+ *   refunded  charged and given back
+ *
+ * 'waived' and 'refunded' have no path in the app yet — they exist so the
+ * eventual admin action has something true to write rather than reusing 'paid'
+ * and losing the distinction. Both count as settled everywhere it matters.
+ */
+export type PaymentStatus = 'pending' | 'paid' | 'waived' | 'refunded';
+
+/** True while a parcel is still waiting on its fare. */
+export function isAwaitingPayment(booking: Booking): boolean {
+  return booking.paymentStatus === 'pending';
+}
+
+/**
  * Where a parcel changes hands at each end of the journey.
  *
  * - `hub` — a Package Relay partner hub (see `app/(tabs)/locations.tsx`). The sender
@@ -341,6 +360,30 @@ export type Booking = {
   createdAt: string;
 
   /**
+   * Whether the fare has actually been collected.
+   *
+   * ⚠ A separate axis from `status`, deliberately.
+   *
+   *   'Pending Payment' was the obvious thing to add to `BOOKING_STAGES`, and
+   *   it would have been wrong: the stages are the journey a parcel makes, and
+   *   every `stageIndex`, every progress bar, `advance_booking`,
+   *   `cancellation_allowed` and the notification triggers all read them as
+   *   such. Money is not a place the parcel is. 20250101000011_cancellation.sql
+   *   made the same argument for 'Cancelled' and accepted it only because a
+   *   cancelled parcel genuinely stops there.
+   *
+   *   So a parcel awaiting payment is `status: 'Booked'` — which is true, it is
+   *   booked — with `paymentStatus: 'pending'`. Nothing about the pipeline had
+   *   to learn a new stage, and the two questions stay separately answerable.
+   *
+   * Server-owned in every mode: `bookings_guard_payment` refuses a client that
+   * tries to write it. See 20250101000056_parcel_payments.sql.
+   */
+  paymentStatus: PaymentStatus;
+  /** When the charge was verified, or null while it has not been. */
+  paidAt: string | null;
+
+  /**
    * When each irreversible step actually happened, and the evidence for the
    * last one. See `supabase/migrations/20250101000010_delivery.sql`.
    *
@@ -382,6 +425,10 @@ export type NewBookingInput = Omit<
   | 'proofNote'
   | 'cancelledAt'
   | 'cancellationReason'
+  // Written by payment verification, never by the form. The insert policy
+  // refuses any value but 'pending'.
+  | 'paymentStatus'
+  | 'paidAt'
 > &
   Partial<Pick<Booking, 'status'>>;
 
@@ -671,6 +718,17 @@ export function declaredValueError(raw: string): string | null {
  * driver reads as "Pending Driver Pickup" — clearer than the raw stage name.
  */
 export function statusLabel(booking: Booking): string {
+  /*
+   * ⚠ Ahead of the driver line, because it is the truer sentence.
+   *
+   *   An unpaid parcel reads 'Booked' with no driver, which the line below
+   *   would render as "Pending Driver Pickup" — and no driver can see it, so
+   *   the sender would be waiting on something that is not coming. What they
+   *   are actually waiting on is themselves.
+   */
+  if (isAwaitingPayment(booking)) {
+    return 'Awaiting Payment';
+  }
   if (booking.status === 'Booked' && !booking.driver) {
     return 'Pending Driver Pickup';
   }
@@ -681,6 +739,9 @@ export function statusLabel(booking: Booking): string {
 export type StatusTone = 'primary' | 'success' | 'warning' | 'neutral';
 
 export function statusTone(booking: Booking): StatusTone {
+  // Amber, and before the switch for the reason `statusLabel` gives.
+  if (isAwaitingPayment(booking)) return 'warning';
+
   switch (booking.status) {
     case 'Delivered':
       return 'success';
@@ -739,6 +800,16 @@ function generateTrackingId(): string {
  * edit here, not one per seed row — and so a missing field is a type error
  * rather than an `undefined` that reads as "no record" at a glance.
  */
+/**
+ * The seed data and the offline store predate the gateway and have no way to
+ * reach one, so their parcels are settled by definition. Marking them 'pending'
+ * would empty the demo board — the driver feed hides unpaid parcels.
+ */
+const SETTLED_OFFLINE = {
+  paymentStatus: 'paid',
+  paidAt: null,
+} satisfies Pick<Booking, 'paymentStatus' | 'paidAt'>;
+
 const NO_DELIVERY_RECORD = {
   pickedUpAt: null,
   deliveredAt: null,
@@ -761,6 +832,7 @@ const NO_DELIVERY_RECORD = {
 const SEED_BOOKINGS: Booking[] = [
   {
     ...NO_DELIVERY_RECORD,
+    ...SETTLED_OFFLINE,
     id: 'seed-1',
     trackingId: 'PKG-9821',
     deliveryType: 'interstate',
@@ -798,6 +870,7 @@ const SEED_BOOKINGS: Booking[] = [
   },
   {
     ...NO_DELIVERY_RECORD,
+    ...SETTLED_OFFLINE,
     id: 'seed-2',
     trackingId: 'PKG-4410',
     deliveryType: 'local',
@@ -835,6 +908,7 @@ const SEED_BOOKINGS: Booking[] = [
   },
   {
     ...NO_DELIVERY_RECORD,
+    ...SETTLED_OFFLINE,
     id: 'seed-3',
     trackingId: 'PKG-7305',
     deliveryType: 'interstate',
@@ -872,6 +946,7 @@ const SEED_BOOKINGS: Booking[] = [
   },
   {
     ...NO_DELIVERY_RECORD,
+    ...SETTLED_OFFLINE,
     id: 'seed-4',
     trackingId: 'PKG-2288',
     deliveryType: 'local',
@@ -909,6 +984,7 @@ const SEED_BOOKINGS: Booking[] = [
   },
   {
     ...NO_DELIVERY_RECORD,
+    ...SETTLED_OFFLINE,
     id: 'seed-5',
     trackingId: 'PKG-6153',
     deliveryType: 'interstate',
@@ -1037,6 +1113,7 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
           acceptedAt: null,
           createdAt: new Date().toISOString(),
           ...NO_DELIVERY_RECORD,
+          ...SETTLED_OFFLINE,
         };
         setBookings((prev) => [booking, ...prev]);
         return booking;
@@ -1379,7 +1456,18 @@ export function activeMovements(
         `!== 'Delivered'` alone put cancelled parcels in the live ticker,
         scrolling past as though they were on their way somewhere.
       */
-      .filter((b) => !isFinished(b))
+      /*
+        And nothing that has not been paid for.
+
+        ⚠ This is the line the ticker complaint was actually about.
+
+          A parcel posted and left unpaid is not moving: no driver has been
+          offered it and none can see it. Putting it in a bar headed LIVE,
+          scrolling past as "On the way to: …", tells the sender their parcel
+          is under way when the only thing standing between it and a driver is
+          a payment they have not made.
+      */
+      .filter((b) => !isFinished(b) && !isAwaitingPayment(b))
       .map((b) => ({
         id: b.id,
         trackingId: b.trackingId,
@@ -1403,6 +1491,14 @@ export function availableBookings(
   return bookings.filter(
     (booking) =>
       !booking.driver &&
+      /*
+        The server already hides these — the select policy in
+        20250101000056_parcel_payments.sql gives a driver no unpaid row at all.
+        Repeated here because this function also runs over the offline seed
+        store, and because a filter that agrees with the policy is one less way
+        for the two to drift apart if the policy is ever relaxed.
+      */
+      !isAwaitingPayment(booking) &&
       (deliveryType === 'all' || booking.deliveryType === deliveryType) &&
       (originCity === 'all' || booking.originCity === originCity),
   );

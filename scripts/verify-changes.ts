@@ -651,10 +651,33 @@ check(
   bookBody.indexOf('{step === 2 &&') < bookBody.indexOf('<LiveSelfieCard'),
   'pages one and two are still unvalidated at that point',
 );
+/*
+ * ⚠ The two conjuncts that matter, not the whole expression.
+ *
+ *   This pinned `disabled={!confirmed || !photoSession || posting}` literally, and
+ *   went red the moment a fourth guard (`settling`) was added — a change that made
+ *   the button strictly harder to press, which is the opposite of the regression
+ *   this check exists to catch. A literal match on a guard list fails on every
+ *   tightening of it, so the claim is asserted instead: whatever else is in there,
+ *   the post is refused without the confirmation and without the photo session.
+ */
+/*
+ * ⚠ Anchored on the post button, not on "the first disabled after the selfie
+ *   card".
+ *
+ *   `LiveSelfieCard` carries its own `disabled={posting}` and sits a few lines
+ *   above the button, so slicing from the card and taking the first match read
+ *   the *card's* guard and reported `(guard: posting)` for a button that was
+ *   correctly gated. The guard this check is about belongs to the Button inside
+ *   `WizardNav`'s `finalAction`, so that is where the slice starts.
+ */
+const postGuard = /disabled=\{([^}]*)\}/g
+  .exec(bookBody.slice(bookBody.indexOf('finalAction=')))?.[1] ?? '';
+
 check(
   'the parcel cannot be posted without one',
-  /disabled=\{!confirmed \|\| !photoSession \|\| posting\}/.test(bookBody),
-  'the sheet used to be the only path to the post, so backing out was the only refusal',
+  /!confirmed/.test(postGuard) && /!photoSession/.test(postGuard),
+  `the sheet used to be the only path to the post, so backing out was the only refusal (guard: ${postGuard || 'none found'})`,
 );
 /*
  * ⚠ Both of these pinned an ordering that no longer exists, and the second

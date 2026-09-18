@@ -206,19 +206,33 @@ const BOOKING_VALUES = `
   'A box', 'general', 2, 1500, '${SENDER}', 'Booked'`;
 
 /**
- * A database with the whole chain applied, optionally with 48 mutated.
+ * A database with the whole chain applied, optionally with one file mutated.
  *
- * `mutate` receives 48's text and returns the text to run instead — which is how
- * every guard below is broken on purpose to prove the assertion notices.
+ * `mutate` receives that file's text and returns the text to run instead — which
+ * is how every guard below is broken on purpose to prove the assertion notices.
+ *
+ * ⚠ `mutateIn` names the file, and it is not always 48.
+ *
+ *   It was, and hardcoding it quietly stopped working the moment a later
+ *   migration recreated one of these policies. 56 rewrites "sender creates own"
+ *   to add the payment gate, repeating 48's guards verbatim as every rewrite
+ *   since 09 has — so breaking 48's copy changed nothing, the parcel was still
+ *   refused, and the mutant was reported as having survived. Which it had: the
+ *   mutation was landing on a statement that is overwritten eight files later.
+ *
+ *   The caller passes the *last* migration the mutation matches, which is by
+ *   definition the one that currently owns the rule. This keeps working the
+ *   next time somebody rewrites one of these policies, and the assertion goes
+ *   red rather than green if a rewrite ever drops a guard for real.
  */
-async function build({ mutate } = {}) {
+async function build({ mutate, mutateIn } = {}) {
   const db = await PGlite.create();
   await db.exec(SUPABASE_SHIM);
 
   for (const name of MIGRATIONS) {
     if (SKIP.has(name)) continue;
     const text = read(name);
-    await db.exec(name === '20250101000048_rls_hardening.sql' && mutate ? mutate(text) : text);
+    await db.exec(mutate && name === mutateIn ? mutate(text) : text);
   }
 
   await db.exec(SEED);
@@ -506,10 +520,23 @@ const MUTANTS = [
      *   replacement is taken literally.
      */
     name: 'the delivery guard is security definer',
+    /*
+     * ⚠ Anchored on the function's own name, not on the signature line alone.
+     *
+     *   `returns trigger language plpgsql as $$` is the shape every non-definer
+     *   guard in this codebase has, and 56 adds another one
+     *   (`bookings_guard_payment`, which must not be definer for exactly the
+     *   reason this one must not). With the bare pattern, the "last file that
+     *   matches" rule above picked 56 and mutated the wrong guard — the
+     *   delivery assertion then had nothing to notice and reported a survivor
+     *   that was really a misfire.
+     */
     apply: (sql) =>
       sql.replace(
-        'returns trigger language plpgsql as $$',
-        () => 'returns trigger language plpgsql security definer as $$',
+        `create or replace function public.guard_delivery_state()
+returns trigger language plpgsql as $$`,
+        () => `create or replace function public.guard_delivery_state()
+returns trigger language plpgsql security definer as $$`,
       ),
   },
   {
@@ -537,10 +564,15 @@ console.log('\nmutating each guard — every one of these must be caught…\n');
 let survivors = 0;
 
 for (const mutant of MUTANTS) {
-  const original = read('20250101000048_rls_hardening.sql');
-  const mutated = mutant.apply(original);
+  /*
+   * The last file in the chain the mutation actually changes — see `build`.
+   * An earlier copy of a rule that a later migration recreates is not the rule.
+   */
+  const owner = MIGRATIONS.filter((name) => !SKIP.has(name))
+    .filter((name) => mutant.apply(read(name)) !== read(name))
+    .pop();
 
-  if (mutated === original) {
+  if (!owner) {
     survivors += 1;
     console.error(`FAIL — mutation "${mutant.name}" changed nothing; the pattern has drifted`);
     continue;
@@ -558,7 +590,7 @@ for (const mutant of MUTANTS) {
   const before = failures;
   let mutantDb = null;
   try {
-    mutantDb = await build({ mutate: mutant.apply });
+    mutantDb = await build({ mutate: mutant.apply, mutateIn: owner });
   } catch (error) {
     survivors += 1;
     console.error(`FAIL — mutant "${mutant.name}" would not apply, so it proved nothing`);

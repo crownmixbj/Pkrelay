@@ -60,7 +60,18 @@ export function GuarantorUploadCard({
   const isWeb = Platform.OS === 'web';
   const live = kind === 'live_photo';
 
-  const { videoRef, error: webcamError, streaming, start, stop, capture } = useWebcam();
+  /*
+   * ⚠ No QR code here, so nothing may mention one.
+   *
+   *   The sender's sheet hands the camera to a phone through a capture session,
+   *   and a capture session is bound to an account. A guarantor has no account
+   *   and never will, so that handoff cannot exist on this page. What a guarantor
+   *   does have is the link itself, in an inbox they can open on a phone — which
+   *   is a real remedy and the only one this page can offer.
+   */
+  const { videoRef, error: webcamError, streaming, start, stop, capture } = useWebcam({
+    fallback: 'You can also open this link on your phone, where the camera is easier.',
+  });
 
   const [preview, setPreview] = useState('');
   const [busy, setBusy] = useState(false);

@@ -97,6 +97,19 @@ export const GUARANTOR_PRIVACY_NOTE =
   'is ever a dispute about a parcel this driver carried. The driver never sees your NIN, your ' +
   'ID photograph or your photo. Only Package Relay review staff can open them.';
 
+/**
+ * How long an invitation link lasts, in days.
+ *
+ * ⚠ One number, because it appears in three sentences and one SQL function.
+ *
+ *   The portal and the driver's tracking card both tell somebody how long they
+ *   have, and `guarantor_invitation_window()` decides it. Written out as prose
+ *   in each place, "seven days" survived in the UI for exactly as long as it
+ *   took somebody to change the interval — so `verify-guarantor-portal` reads
+ *   the interval out of the migration and fails if this disagrees with it.
+ */
+export const GUARANTOR_LINK_DAYS = 30;
+
 /** Employment statuses, matching the check constraint in migration 51. */
 export const EMPLOYMENT_STATUSES = [
   'Employed',
@@ -152,7 +165,26 @@ export const DOCUMENT_KINDS = ['government_id', 'live_photo'] as const;
 export type DocumentKind = (typeof DOCUMENT_KINDS)[number];
 
 export const DOCUMENT_LABELS: Record<DocumentKind, string> = {
-  government_id: 'Photo of your government ID',
+  /*
+   * ⚠ The NIN slip, not "a government ID", and the narrowing is deliberate.
+   *
+   *   This offered "NIN slip, driver's licence, voter's card or international
+   *   passport" — four documents, of which exactly one can be checked. The NIN
+   *   is the only identifier Package Relay can put against a government record,
+   *   and it is the number this same form asks the guarantor to type in. A
+   *   passport in that slot produces a document nobody can verify and a reviewer
+   *   approving on a glance, which is the same reasoning that narrowed the
+   *   *driver's* ID slot in `driver-signup.tsx` — it just never reached here.
+   *
+   *   The cost is that some guarantors have to go and find their slip. That is
+   *   the price, and it buys the difference between a document that was looked
+   *   at and one that was checked.
+   *
+   *   The storage key stays `government_id`: it is a path in a bucket and a
+   *   value in a check constraint, and renaming it would orphan every file
+   *   already uploaded under it.
+   */
+  government_id: 'Photo of your NIN slip',
   live_photo: 'Live photo of you',
 };
 

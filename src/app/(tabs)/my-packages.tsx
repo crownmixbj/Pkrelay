@@ -1,7 +1,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { PackageSearch } from 'lucide-react-native';
+import { CircleCheck, CreditCard, PackageSearch } from 'lucide-react-native';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Footer } from '@/components/Footer';
 import { RoutePill } from '@/components/ui/badge';
@@ -14,6 +14,7 @@ import { MaxContentWidth, Radius, Spacing, Typography, font } from '@/constants/
 import { useTheme } from '@/hooks/use-theme';
 import {
   formatNaira,
+  isAwaitingPayment,
   isCarrier,
   parcelsForUser,
   sortByPickupUrgency,
@@ -26,6 +27,13 @@ import {
 } from '@/store/bookings';
 import { SignedOutState } from '@/components/ui/signed-out-state';
 import { useSession } from '@/store/session';
+import { showDialog } from '@/components/ui/dialog';
+import { PaymentSheet, type CheckoutOutcome } from '@/components/ui/payment-sheet';
+import {
+  initializeParcelPayment,
+  verifyParcelPayment,
+  type CheckoutSession,
+} from '@/store/payments';
 
 /**
  * Two of the four Shipments views: Active / In-Transit, and History / Archives.
@@ -54,11 +62,25 @@ function parseSection(value: unknown): Section {
 
 export default function MyPackagesScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ section?: string }>();
-  const { bookings } = useBookings();
+  const params = useLocalSearchParams<{ section?: string; posted?: string }>();
+  const { bookings, refresh } = useBookings();
   const { viewerId } = useSession();
+  const theme = useTheme();
 
   const [section, setSection] = useState<Section>(() => parseSection(params.section));
+
+  /*
+    An unpaid parcel needs a way back to its checkout, and this is it.
+
+    ⚠ The same sheet the booking form uses, not a second implementation.
+
+      A sender who abandons a checkout has a real parcel sitting in this list
+      with everything they typed on it. Without a button here, the only way to
+      pay for it would be to fill the whole form in again — and they would,
+      producing a duplicate parcel and eventually a duplicate charge.
+  */
+  const [checkout, setCheckout] = useState<CheckoutSession | null>(null);
+  const [payingFor, setPayingFor] = useState<string | null>(null);
 
   // The URL leads: picking a section from the nav while already on this screen
   // changes the query string without remounting.
@@ -67,6 +89,63 @@ export default function MyPackagesScreen() {
   const choose = (next: Section) => {
     setSection(next);
     router.setParams({ section: next });
+  };
+
+  /*
+    The tracking id of a parcel posted a moment ago, from the booking form.
+
+    Read once into state rather than off the params on every render, because the
+    banner is dismissed by clearing it — and a value still in the URL would put
+    it straight back on the next render.
+  */
+  const [justPosted, setJustPosted] = useState<string | null>(
+    typeof params.posted === 'string' && params.posted ? params.posted : null,
+  );
+
+  const startPayment = async (bookingId: string) => {
+    setPayingFor(bookingId);
+    const opened = await initializeParcelPayment(bookingId);
+    setPayingFor(null);
+
+    if (opened.ok) {
+      setCheckout(opened.session);
+      return;
+    }
+
+    if (opened.alreadyPaid) {
+      /* Settled by a webhook while this list was stale. Catch the list up. */
+      await refresh();
+      return;
+    }
+
+    showDialog('Could not open the checkout', opened.error);
+  };
+
+  const finishPayment = async (outcome: CheckoutOutcome, session: CheckoutSession) => {
+    setCheckout(null);
+
+    if (outcome === 'failed') {
+      showDialog('The checkout would not load', 'Nothing has been charged. Try again in a moment.');
+      return;
+    }
+
+    const verdict = await verifyParcelPayment(session.reference);
+
+    /*
+      Refreshed on every outcome, not only on success.
+
+      A failed attempt changes the payment row and nothing else, but a verdict
+      of 'unknown' very often means the webhook settled it a second ago — and
+      the only way this screen finds that out is by asking the server again.
+    */
+    await refresh();
+
+    if (verdict.status === 'failed') {
+      showDialog(
+        'That payment did not go through',
+        verdict.error ?? 'The bank declined it. You can try again.',
+      );
+    }
   };
 
   // Null viewer = signed out. `parcelsForUser` would match nothing anyway, but
@@ -80,6 +159,13 @@ export default function MyPackagesScreen() {
     () => sortByPickupUrgency(mine.filter((b) => b.status !== 'Delivered')),
     [mine],
   );
+
+  /*
+    Counted separately, because "3 parcels still on the move" is a false
+    sentence when one of the three has not been paid for and no driver can see
+    it. The subtitle says both numbers or neither.
+  */
+  const awaitingPayment = useMemo(() => active.filter(isAwaitingPayment).length, [active]);
   /*
    * Newest first, unlike the active list.
    *
@@ -112,97 +198,165 @@ export default function MyPackagesScreen() {
   }
 
   return (
-    <ScrollView
-      contentContainerStyle={[styles.container, screenPadding]}
-      showsVerticalScrollIndicator={false}>
-      <ScreenHeader
-        title={SECTION_LABELS[section]}
-        subtitle={
-          section === 'active'
-            ? `${active.length} parcel${active.length === 1 ? '' : 's'} still on the move`
-            : `${delivered.length} delivered parcel${delivered.length === 1 ? '' : 's'}`
-        }
-      />
+    <>
+      {/*
+        Outside the scroller on purpose. It is a Modal, so where it sits in the
+        tree does not decide where it draws — and `verify-footer` is right to
+        insist that nothing comes after the footer inside a ScrollView.
+      */}
+      <PaymentSheet session={checkout} onOutcome={finishPayment} />
 
-      <View style={styles.sectionTabs}>
-        <ChipGroup
-          options={SECTIONS as unknown as string[]}
-          selected={section}
-          onSelect={(value) => choose(value as Section)}
-          renderLabel={(value) =>
-            value === 'active' ? `Active (${active.length})` : `History (${delivered.length})`
+      <ScrollView
+        contentContainerStyle={[styles.container, screenPadding]}
+        showsVerticalScrollIndicator={false}>
+        <ScreenHeader
+          title={SECTION_LABELS[section]}
+          subtitle={
+            section === 'active'
+              ? `${active.length} parcel${active.length === 1 ? '' : 's'} still on the move` +
+                (awaitingPayment > 0 ? ` · ${awaitingPayment} awaiting payment` : '')
+              : `${delivered.length} delivered parcel${delivered.length === 1 ? '' : 's'}`
           }
-          scrollable
         />
-      </View>
 
-      {mine.length === 0 ? (
-        <Card style={styles.emptyCard}>
-          <EmptyState
-            icon={(color, size) => <PackageSearch color={color} size={size} />}
-            title="Nothing here yet"
-            message="Parcels you send — and jobs you claim as a driver — collect here."
-          />
-          <Button
-            label="Book a Shipment"
-            size="md"
-            style={styles.emptyCta}
-            onPress={() => router.navigate('/book')}
-          />
-        </Card>
-      ) : (
-        <>
-          {(section === 'active' ? active : delivered).length === 0 ? (
-            <Card style={styles.emptyCard}>
-              <EmptyState
-                icon={(color, size) => <PackageSearch color={color} size={size} />}
-                title={section === 'active' ? 'Nothing in transit' : 'Nothing delivered yet'}
-                message={
-                  section === 'active'
-                    ? 'Everything you have sent has arrived. Book another and it will show here while it travels.'
-                    : 'Parcels move here once they are delivered, so you keep a record of what you sent and what it cost.'
+        {/*
+          The confirmation that used to be its own screen.
+
+          ⚠ A banner here rather than a `/parcel-confirmed` stop on the way.
+
+            The tracking id is the one thing a sender needs to keep, and the old
+            flow gave it its own page — which was right while posting ended in a
+            dialog. It ends here now, on the list the parcel is actually on, and
+            an interstitial between paying and seeing the parcel would be a page
+            whose only content is a number that is also on the card below it. The
+            full confirmation is still a tap away for anyone who wants it.
+        */}
+        {!!justPosted && section === 'active' && (
+          <Card style={[styles.postedBanner, { borderColor: theme.success }]}>
+            <View style={styles.postedRow}>
+              <CircleCheck color={theme.success} size={20} />
+              <View style={styles.postedText}>
+                <Text style={[styles.postedTitle, { color: theme.text }]}>
+                  Parcel posted and paid for
+                </Text>
+                <Text style={[styles.postedBody, { color: theme.textSecondary }]}>
+                  #{justPosted} is on the board. Drivers heading that way can claim it now.
+                </Text>
+              </View>
+            </View>
+            <View style={styles.postedActions}>
+              <Button
+                label="View confirmation"
+                variant="secondary"
+                size="md"
+                onPress={() =>
+                  router.push({ pathname: '/parcel-confirmed', params: { trackingId: justPosted } })
                 }
               />
               <Button
-                label={section === 'active' ? 'Book a Shipment' : 'See what is in transit'}
+                label="Dismiss"
+                variant="secondary"
                 size="md"
-                style={styles.emptyCta}
-                onPress={() => (section === 'active' ? router.navigate('/book') : choose('active'))}
+                onPress={() => setJustPosted(null)}
               />
-            </Card>
-          ) : (
-            <View style={styles.list}>
-              {(section === 'active' ? active : delivered).map((booking) => (
-                <ParcelRow
-                  key={booking.id}
-                  booking={booking}
-                  userId={viewerId}
-                  onPress={() =>
-                    router.push({ pathname: '/parcel/[id]', params: { id: booking.id } })
+            </View>
+          </Card>
+        )}
+
+        <View style={styles.sectionTabs}>
+          <ChipGroup
+            options={SECTIONS as unknown as string[]}
+            selected={section}
+            onSelect={(value) => choose(value as Section)}
+            renderLabel={(value) =>
+              value === 'active' ? `Active (${active.length})` : `History (${delivered.length})`
+            }
+            scrollable
+          />
+        </View>
+
+        {mine.length === 0 ? (
+          <Card style={styles.emptyCard}>
+            <EmptyState
+              icon={(color, size) => <PackageSearch color={color} size={size} />}
+              title="Nothing here yet"
+              message="Parcels you send — and jobs you claim as a driver — collect here."
+            />
+            <Button
+              label="Book a Shipment"
+              size="md"
+              style={styles.emptyCta}
+              onPress={() => router.navigate('/book')}
+            />
+          </Card>
+        ) : (
+          <>
+            {(section === 'active' ? active : delivered).length === 0 ? (
+              <Card style={styles.emptyCard}>
+                <EmptyState
+                  icon={(color, size) => <PackageSearch color={color} size={size} />}
+                  title={section === 'active' ? 'Nothing in transit' : 'Nothing delivered yet'}
+                  message={
+                    section === 'active'
+                      ? 'Everything you have sent has arrived. Book another and it will show here while it travels.'
+                      : 'Parcels move here once they are delivered, so you keep a record of what you sent and what it cost.'
                   }
                 />
-              ))}
-            </View>
-          )}
-        </>
-      )}
-      <Footer />
-    </ScrollView>
+                <Button
+                  label={section === 'active' ? 'Book a Shipment' : 'See what is in transit'}
+                  size="md"
+                  style={styles.emptyCta}
+                  onPress={() => (section === 'active' ? router.navigate('/book') : choose('active'))}
+                />
+              </Card>
+            ) : (
+              <View style={styles.list}>
+                {(section === 'active' ? active : delivered).map((booking) => (
+                  <ParcelRow
+                    key={booking.id}
+                    booking={booking}
+                    userId={viewerId}
+                    busy={payingFor === booking.id}
+                    onPay={() => void startPayment(booking.id)}
+                    onPress={() =>
+                      router.push({ pathname: '/parcel/[id]', params: { id: booking.id } })
+                    }
+                  />
+                ))}
+              </View>
+            )}
+          </>
+        )}
+        <Footer />
+      </ScrollView>
+    </>
   );
 }
 
 function ParcelRow({
   booking,
   userId,
+  busy,
+  onPay,
   onPress,
 }: {
   booking: Booking;
   userId: string;
+  busy: boolean;
+  onPay: () => void;
   onPress: () => void;
 }) {
   const theme = useTheme();
   const progress = stageProgress(booking.status);
   const carrying = isCarrier(booking, userId);
+  /*
+    Only the sender is ever shown this. A driver cannot see an unpaid parcel at
+    all — the select policy in 20250101000056_parcel_payments.sql does not return
+    one — so `carrying` is false here by construction; the test is written out
+    anyway, because a card that offered to charge somebody for a parcel they are
+    delivering would be a bad thing to leave to an invariant elsewhere.
+  */
+  const unpaid = isAwaitingPayment(booking) && !carrying;
 
   return (
     <Pressable
@@ -232,6 +386,27 @@ function ParcelRow({
           label={statusLabel(booking)}
           tone={statusTone(booking)}
         />
+
+        {unpaid && (
+          <View style={styles.unpaid}>
+            <Text style={[styles.unpaidNote, { color: theme.warningOnSoft }]}>
+              No driver can see this parcel until its fare is paid.
+            </Text>
+            <Button
+              label={busy ? 'Opening checkout…' : `Pay ${formatNaira(booking.estimatedFee)}`}
+              icon={(color, size) =>
+                busy ? (
+                  <ActivityIndicator color={color} size="small" />
+                ) : (
+                  <CreditCard color={color} size={size} />
+                )
+              }
+              size="md"
+              disabled={busy}
+              onPress={onPay}
+            />
+          </View>
+        )}
       </Card>
     </Pressable>
   );
@@ -289,5 +464,38 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.85,
+  },
+  postedBanner: {
+    gap: Spacing.three,
+    marginBottom: Spacing.three,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+  },
+  postedRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.two,
+  },
+  postedText: {
+    flex: 1,
+    gap: Spacing.half,
+  },
+  postedTitle: {
+    ...Typography.cardTitle,
+  },
+  postedBody: {
+    ...Typography.caption,
+  },
+  postedActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
+  unpaid: {
+    gap: Spacing.two,
+    marginTop: Spacing.half,
+  },
+  unpaidNote: {
+    ...Typography.caption,
   },
 });

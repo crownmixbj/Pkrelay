@@ -4,10 +4,12 @@ import {
   Archive,
   BellRing,
   BookOpen,
+  Banknote,
   ChartColumn,
   ChevronDown,
   ClipboardCheck,
   Clock,
+  Headset,
   IdCard,
   Info,
   LayoutDashboard,
@@ -138,6 +140,8 @@ type NavHref =
   | '/support'
   | '/tracking'
   | '/admin'
+  | '/admin-finance'
+  | '/admin-support'
   | '/admin-identity'
   | '/admin-logs'
   | '/admin-ops'
@@ -391,7 +395,14 @@ const NAV_LINKS: NavLink[] = [
     href: '/admin',
     icon: (color, size) => <ShieldCheck color={color} size={size} />,
     description: 'Run the platform',
-    also: ['/admin-users', '/admin-ops', '/admin-logs', '/admin-identity'],
+    also: [
+      '/admin-users',
+      '/admin-ops',
+      '/admin-logs',
+      '/admin-identity',
+      '/admin-finance',
+      '/admin-support',
+    ],
     children: [
       {
         key: 'overview',
@@ -424,6 +435,33 @@ const NAV_LINKS: NavLink[] = [
         label: 'Hubs & Operations',
         href: '/admin-ops',
         icon: (color, size) => <MapPinned color={color} size={size} />,
+      },
+      /*
+        ⚠ Below the queues and above the logs, which is where it belongs in the
+          day rather than in the alphabet.
+
+          The three above it are work that arrives — applications, IDs, hubs to
+          correct. Finance is work that accumulates: nobody is waiting on you to
+          open it, and you look at it on a rhythm. Logs sit last for the same
+          reason and always have.
+      */
+      {
+        /*
+          Above Finance by the same rule the comment there states: this is work
+          that arrives with somebody waiting at the other end of it, and every
+          hour it sits unopened is an hour a customer spends wondering whether
+          anyone read what they sent.
+        */
+        key: 'support',
+        label: 'Support Tickets',
+        href: '/admin-support',
+        icon: (color, size) => <Headset color={color} size={size} />,
+      },
+      {
+        key: 'finance',
+        label: 'Payments & Payouts',
+        href: '/admin-finance',
+        icon: (color, size) => <Banknote color={color} size={size} />,
       },
       {
         key: 'logs',

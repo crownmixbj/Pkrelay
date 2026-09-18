@@ -5,6 +5,7 @@ import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-na
 import { Footer } from '@/components/Footer';
 import { Card } from '@/components/ui/card';
 import { showDialog } from '@/components/ui/dialog';
+import { SupportTicketPanel } from '@/components/ui/support-ticket-panel';
 import { screenPadding, ScreenHeader, SectionLabel } from '@/components/ui/screen';
 import { CHANNELS, CONTACT_IS_PLACEHOLDER, SELF_SERVE, type Channel } from '@/constants/contact';
 import { MaxContentWidth, Radius, Spacing, Typography, font } from '@/constants/theme';
@@ -120,6 +121,17 @@ export default function SupportScreen() {
             </Pressable>
           ))}
         </View>
+
+        {/*
+          Below the channels, not above them.
+
+          Self-serve first is this screen's whole argument, and a ticket is not
+          self-serve — it is the slowest path on the page. It sits here for the
+          person who has read the rest and still needs somebody. Renders nothing
+          at all for a signed-out visitor, who has no account for a reply to
+          reach.
+        */}
+        <SupportTicketPanel />
 
         <Text style={[styles.footnote, { color: theme.textMuted }]}>
           If a parcel is in transit and something has gone wrong, call rather than email — email is

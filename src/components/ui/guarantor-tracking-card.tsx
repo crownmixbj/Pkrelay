@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Field } from '@/components/ui/field';
+import { GUARANTOR_LINK_DAYS } from '@/constants/guarantor';
 import { Radius, Spacing, Typography, font } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { isValidEmail } from '@/utils/validation';
@@ -215,7 +216,7 @@ export function GuarantorTrackingCard() {
         <>
           <Text style={[styles.body, { color: theme.textSecondary }]}>
             {state.state === 'expired'
-              ? 'Links are valid for seven days. Send a new one — and if the address above is wrong, correct it first.'
+              ? `Links are valid for ${GUARANTOR_LINK_DAYS} days. Send a new one — and if the address above is wrong, correct it first.`
               : 'Your guarantor fills this in themselves, through a private link. If the address above is wrong, correct it and send again — the old link stops working.'}
           </Text>
 
