@@ -293,3 +293,54 @@ export async function updateBookingStatus(id: string, status: BookingStage): Pro
   if (error) throw error;
   return rowToBooking(data);
 }
+
+/**
+ * Watches this account's parcels, so the app stops needing to be told.
+ *
+ * ⚠ This exists because one screen was the only thing keeping the list honest.
+ *
+ *   A parcel's `payment_status` is flipped by the server — by
+ *   `settle_parcel_payment`, reached from Paystack's webhook — at a moment no
+ *   client is part of. The app learned about it in exactly one place: the
+ *   payment-return screen calling `refresh()` before it navigated. Anything
+ *   that stopped that one call from happening — a crash on that page, a closed
+ *   tab, a sender who hit Back, a webhook that landed thirty seconds later —
+ *   left "Awaiting Payment" on a parcel that had been paid for, until the next
+ *   cold start. The fix is not a better call site; it is not depending on a
+ *   call site.
+ *
+ * ⚠ `UPDATE` only, and INSERT deliberately left out.
+ *
+ *   A parcel the sender just posted is already in the store, put there by the
+ *   insert's own response. Subscribing to INSERT as well would refresh the list
+ *   on the round trip that created it, for no new information.
+ *
+ * ⚠ Two subscriptions rather than one unfiltered.
+ *
+ *   Realtime filters are a single equality, and a person is a sender on some
+ *   parcels and the driver on others. Subscribing without a filter would work —
+ *   RLS still decides what is delivered — but it would wake every client in the
+ *   country on every parcel in the country. Two filtered channels cost one more
+ *   websocket topic and deliver only rows this account is in.
+ *
+ * Returns the unsubscribe.
+ */
+export function subscribeToBookings(userId: string, onChange: () => void): () => void {
+  const channel = supabase
+    .channel(`bookings:${userId}`)
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'bookings', filter: `sender_id=eq.${userId}` },
+      onChange,
+    )
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'bookings', filter: `driver_id=eq.${userId}` },
+      onChange,
+    )
+    .subscribe();
+
+  return () => {
+    void supabase.removeChannel(channel);
+  };
+}

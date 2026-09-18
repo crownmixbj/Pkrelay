@@ -7,20 +7,53 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { AppState } from 'react-native';
 
 import { errorMessage } from '@/lib/errors';
 import { schemaGapMessage } from '@/lib/schema-gap';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import { claimBooking, fetchBookings, insertBooking } from '@/store/bookings-remote';
+import {
+  claimBooking,
+  fetchBookings,
+  insertBooking,
+  subscribeToBookings,
+} from '@/store/bookings-remote';
 import { SESSION_USER, useSession } from '@/store/session';
 
 /**
  * What's inside the parcel. "Fragile" is deliberately absent — fragility is a
  * handling flag (`fragile`) that can apply to any category.
+ *
+ * ⚠ "Perishables" was here and is gone, and the reason is in the Terms.
+ *
+ *   `constants/legal.ts` forbids "nothing perishable that will spoil in
+ *   transit", and the claims section of `constants/services.ts` excludes
+ *   perishables from cover. Offering it in the picker invited exactly the
+ *   booking the Terms refuse and the cover will not pay for — a sender chose
+ *   it in good faith, and the first they heard otherwise was a driver
+ *   declining the parcel or a claim being turned down.
  */
-export const CATEGORIES = ['Electronics', 'Documents', 'Clothing', 'Perishables', 'Other'] as const;
+export const CATEGORIES = ['Electronics', 'Documents', 'Clothing', 'Other'] as const;
 
 export type Category = (typeof CATEGORIES)[number];
+
+/**
+ * A stored value narrowed back to a category this app still offers.
+ *
+ * ⚠ Needed because a removed category outlives its removal.
+ *
+ *   The booking form writes every keystroke to an on-device draft, and
+ *   `mergeDraft` copies whatever it finds there onto the current shape without
+ *   looking at it. A draft saved before this edit still says "Perishables", so
+ *   without this the one path left into the database is a form somebody started
+ *   last week. It also covers a phone that has not taken the new bundle yet.
+ *
+ *   Same shape as `asCategory` in `store/support-tickets.ts`, for the same
+ *   reason: the stored value and the offered list are allowed to disagree.
+ */
+export function asCategory(value: unknown): Category {
+  return CATEGORIES.includes(value as Category) ? (value as Category) : 'Other';
+}
 
 /**
  * One hub per state — the state capital, or the primary commercial city where
@@ -1090,6 +1123,55 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
 
     setLoading(true);
     void refresh();
+  }, [remote, user?.id, refresh]);
+
+  /*
+   * ⚠ And keep listening, because the most important change to a parcel is one
+   *   no client makes.
+   *
+   *   `payment_status` goes to 'paid' inside `settle_parcel_payment`, called by
+   *   Paystack's webhook — server to server, at a moment this app is not part
+   *   of. Until this subscription existed, the app found out in exactly one
+   *   place: the payment-return screen calling `refresh()` on its way to the
+   *   shipments list. Every other path — a crash on that screen, a closed tab,
+   *   the Back button, a webhook that arrived a minute late — left "Awaiting
+   *   Payment" on a parcel that was paid for until the next cold start.
+   *
+   *   The same applies to a driver accepting: that is `respond_to_offer` on the
+   *   server, and the sender's list learned about it only by being reopened.
+   *
+   * ⚠ Refetches rather than patching the row from the payload.
+   *
+   *   The payload carries the new row and applying it directly would be one
+   *   fewer request. It would also be a second mapping of the table into
+   *   `Booking`, living apart from `rowToBooking`, drifting from it, and doing
+   *   so in the one place nobody looks — a list that is right until it quietly
+   *   is not. A parcel changing state is rare and a refetch is one indexed
+   *   query.
+   */
+  useEffect(() => {
+    if (!remote || !user) return;
+    return subscribeToBookings(user.id, () => void refresh());
+  }, [remote, user?.id, refresh]);
+
+  /*
+   * ⚠ And a refresh when the app comes back, because a websocket is not a
+   *   guarantee.
+   *
+   *   A phone that slept, a laptop lid that closed, a tab left in the
+   *   background: the socket drops and the events sent while it was gone are
+   *   gone with it. Realtime resubscribes but does not replay. Whatever changed
+   *   in the meantime is caught here, on the one event that reliably precedes
+   *   somebody looking at the screen.
+   */
+  useEffect(() => {
+    if (!remote || !user) return;
+
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next === 'active') void refresh();
+    });
+
+    return () => subscription.remove();
   }, [remote, user?.id, refresh]);
 
   const addBooking = useCallback(

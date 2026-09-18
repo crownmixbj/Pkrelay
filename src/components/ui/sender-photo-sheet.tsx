@@ -7,7 +7,13 @@ import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from '
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { QrCode } from '@/components/ui/qr-code';
-import { useWebcam } from '@/components/ui/webcam-capture';
+import {
+  PREVIEW_ASPECT,
+  PREVIEW_MAX_HEIGHT,
+  PREVIEW_MAX_WIDTH,
+  WebcamPreview,
+  useWebcam,
+} from '@/components/ui/webcam-capture';
 import { Radius, Spacing, Typography, font } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { captureInstruction, captureLink } from '@/constants/links';
@@ -259,23 +265,12 @@ export function SenderPhotoSheet({
           <Image source={{ uri }} style={styles.preview} contentFit="cover" />
         ) : webcamOpen && isWeb ? (
           /*
-            A raw <video> element, only reachable on web.
-            react-native-web renders unknown intrinsics straight through.
+            The preview, framed and mirrored by the component that owns the
+            camera. It used to be a raw <video> with its styling written out
+            here and again in the guarantor card — two copies, both of which
+            drew a squat grey box until the stream's metadata arrived.
           */
-          <video
-            ref={webcam.videoRef}
-            playsInline
-            muted
-            style={{
-              width: '100%',
-              maxHeight: 260,
-              borderRadius: 12,
-              objectFit: 'cover',
-              // Mirrored preview only — `capture()` un-flips before saving.
-              transform: 'scaleX(-1)',
-              background: '#E2E8F0',
-            }}
-          />
+          <WebcamPreview webcam={webcam} />
         ) : isWeb ? (
           <WebHandoff sessionId={sessionId} />
         ) : (
@@ -490,10 +485,18 @@ const styles = StyleSheet.create({
     ...Typography.caption,
     lineHeight: 18,
   },
+  /**
+   * The same box the live preview occupies, so nothing moves when the photo is
+   * taken. `maxWidth` is what keeps it portrait — with only `width: '100%'` and
+   * a max height the ratio loses to the width on a wide sheet, which is how the
+   * live preview ended up a letterbox that clipped the sender's face.
+   */
   preview: {
     width: '100%',
-    aspectRatio: 3 / 4,
-    maxHeight: 260,
+    maxWidth: PREVIEW_MAX_WIDTH,
+    alignSelf: 'center',
+    aspectRatio: PREVIEW_ASPECT,
+    maxHeight: PREVIEW_MAX_HEIGHT,
     borderRadius: Radius.md,
     backgroundColor: '#E2E8F0',
   },

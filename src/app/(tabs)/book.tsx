@@ -77,6 +77,7 @@ import { measureDistance } from '@/store/places';
 import {
   areasForCity,
   CATEGORIES,
+  asCategory,
   cityHubLabel,
   CITIES,
   declaredValueError,
@@ -429,7 +430,13 @@ export default function BookScreen() {
     if (!draftReady || restoredDraft.current || !draft) return;
     restoredDraft.current = true;
     /* Merged onto the current shape — see `mergeDraft` for why never assigned. */
-    setForm(mergeDraft(INITIAL_FORM, draft));
+    const restored = mergeDraft(INITIAL_FORM, draft);
+    /*
+     * The one field a draft can carry out of date. `mergeDraft` copies stored
+     * values verbatim, so a draft started before a category was retired would
+     * otherwise put it straight back in the picker and into the booking.
+     */
+    setForm({ ...restored, category: asCategory(restored.category) });
   }, [draftReady, draft]);
 
   useEffect(() => {

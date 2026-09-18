@@ -22,11 +22,15 @@ import {
   estimateFee,
   handoverFeeLabel,
   isChargeableHandover,
+  CATEGORIES,
   PRICING,
+  asCategory,
   stageIndex,
   type Booking,
   type BookingStage,
 } from '../src/store/bookings';
+import { TERMS } from '../src/constants/legal';
+import { PREVIEW_ASPECT } from '../src/components/ui/webcam-capture';
 
 let failures = 0;
 
@@ -620,6 +624,139 @@ check(
   'the stored webcam photo is un-mirrored',
   flat(read('src/components/ui/webcam-capture.tsx')).includes('context.scale(-1, 1)'),
   'a mirrored face is subtly wrong to anyone comparing it to a person later',
+);
+
+// ------------------------------------------- the picker and the Terms agree --
+
+/*
+ * ⚠ A category the Terms forbid is a trap with a dropdown in front of it.
+ *
+ *   "Perishables" sat in the picker while `constants/legal.ts` said "nothing
+ *   perishable that will spoil in transit" and the claims copy excluded
+ *   perishables from cover. A sender picked it in good faith and found out
+ *   later — from a driver refusing the parcel, or a claim being turned down.
+ *   It is gone, and this is what keeps the list and the Terms in the same room.
+ */
+const conductClause = TERMS.find((clause) => clause.key === 'conduct');
+
+check(
+  'the Terms still forbid perishable items',
+  /perishable/i.test(conductClause?.body ?? ''),
+  'if this ever changes, the check below is the one to revisit — not to delete',
+);
+check(
+  'and the category picker does not offer one',
+  !CATEGORIES.some((category) => /perishable/i.test(category)),
+  'the picker may not offer what the Terms refuse',
+);
+
+/*
+ * The draft is the path that outlives the removal: the booking form writes every
+ * keystroke to AsyncStorage and merges it back verbatim, so a draft started
+ * before the edit still carries the retired value.
+ */
+check(
+  'a retired category coming back off a stored draft is narrowed',
+  asCategory('Perishables') === 'Other' && asCategory('Electronics') === 'Electronics',
+  'without this the one way left to book a perishable parcel is a form somebody started last week',
+);
+check(
+  'and the booking form actually narrows what it restores',
+  /category: asCategory\(restored\.category\)/.test(code(read('src/app/(tabs)/book.tsx'))),
+  'a correct helper nothing calls is a comment',
+);
+
+/*
+ * The desktop preview, and the four ways it used to fail.
+ *
+ * Every one of these was invisible in the source and obvious on a laptop: a
+ * black box where the camera should be, a grey letterbox that jumped shape when
+ * the stream warmed up, a face zoomed in past the ears, and a "Take photo"
+ * button that did nothing for the first second.
+ */
+const webcamSource = read('src/components/ui/webcam-capture.tsx');
+const webcamCode = code(webcamSource);
+const photoSheetCode = code(photoSheet);
+const guarantorCode = code(read('src/components/ui/guarantor-upload-card.tsx'));
+
+check(
+  'the stream attaches through a callback ref',
+  webcamCode.includes('attachVideo') && /ref=\{webcam\.attachVideo\}/.test(webcamCode),
+  'both callers mount the <video> from their own state, so a RefObject is a race with getUserMedia — and the race is lost exactly when the permission is already granted',
+);
+check(
+  'and the stream is bound whichever order the element and the permission arrive in',
+  /if \(element && streamRef\.current\) bind\(/.test(webcamCode) &&
+    /if \(videoRef\.current\) bind\(videoRef\.current, stream\)/.test(webcamCode),
+  'one branch covers the element arriving late, the other the stream arriving late',
+);
+check(
+  'streaming means there is a frame, not that a promise resolved',
+  /loadedmetadata/.test(webcamCode) && /videoWidth > 0\) setStreaming\(true\)/.test(webcamCode),
+  'capture() reads videoWidth; enabling the button before there is one is a button that does nothing',
+);
+check(
+  'the camera is asked for the shape a webcam is',
+  !/height: \{ ideal: 960 \}/.test(webcamCode) && /width: \{ ideal: 1280 \}/.test(webcamCode),
+  'a laptop sensor is landscape, and browsers satisfy an impossible portrait ideal by cropping the middle out of it',
+);
+check(
+  'the preview box owns the shape, and the video fills it',
+  /aspectRatio: `\$\{PREVIEW_ASPECT\}`/.test(webcamCode) &&
+    /maxHeight: PREVIEW_MAX_HEIGHT/.test(webcamCode) &&
+    /overflow: 'hidden'/.test(webcamCode) &&
+    /height: '100%'/.test(webcamCode) &&
+    /objectFit: 'cover'/.test(webcamCode),
+  'a <video> with no box is 300x150 until its metadata lands, and object-fit has nothing to fit',
+);
+
+/*
+ * ⚠ The box has to stay portrait, and a max height alone does not do it.
+ *
+ *   `width: 100%` + `aspect-ratio` + `max-height` is a letterbox on any wide
+ *   sheet: the width wins and the box came out 1000×185 on a desktop, clipping
+ *   the sender's crown and chin. The photo is then handed to a face check whose
+ *   blocking verdict includes "no face" (docs/DOJAH.md), so the framing is not
+ *   cosmetic — it decides whether the parcel can be posted at all.
+ */
+check(
+  'the preview is capped to a portrait width',
+  /PREVIEW_MAX_WIDTH = Math\.round\(PREVIEW_MAX_HEIGHT \* PREVIEW_ASPECT\)/.test(webcamCode) &&
+    /maxWidth: PREVIEW_MAX_WIDTH/.test(webcamCode),
+  'without the cap the ratio loses to the width and the face is clipped top and bottom',
+);
+check(
+  'and the photo that replaces it occupies the same box',
+  /maxWidth: PREVIEW_MAX_WIDTH/.test(photoSheetCode) &&
+    /aspectRatio: PREVIEW_ASPECT/.test(photoSheetCode),
+  'a different shape means the sheet jumps the moment the photo is taken',
+);
+check(
+  'the aspect the file is cropped to is portrait',
+  PREVIEW_ASPECT < 1,
+  'the file is compared against a NIN portrait, which is the same shape',
+);
+check(
+  'autoplay, muted and playsInline are all present',
+  /autoPlay/.test(webcamCode) && /muted/.test(webcamCode) && /playsInline/.test(webcamCode),
+  'muted is what lets autoplay run at all, and playsInline is what stops iOS taking the preview fullscreen',
+);
+check(
+  'stopping clears the element as well as the tracks',
+  /videoRef\.current\.srcObject = null/.test(webcamCode),
+  'a video holding a dead stream keeps its last frame, so reopening showed a frozen face',
+);
+check(
+  'the saved file is cropped to the box that was on screen',
+  /video\.clientWidth \/ video\.clientHeight/.test(webcamCode),
+  'the box is width:100% with a max height, so its real ratio is a layout outcome — assuming the constant saves a picture nobody saw',
+);
+check(
+  'there is one preview component, not a copy per caller',
+  !/<video/.test(photoSheetCode) && !/<video/.test(guarantorCode) &&
+    /<WebcamPreview webcam=/.test(photoSheetCode) &&
+    /<WebcamPreview webcam=/.test(guarantorCode),
+  'the markup was duplicated in both callers and wrong in both',
 );
 
 /*

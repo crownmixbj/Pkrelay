@@ -315,6 +315,81 @@ check('kobo formats back as naira', formatKobo(280000).includes('2,800'));
   );
 }
 
+// ------------------------------------------- the return page, and the list --
+
+/*
+ * ⚠ Three assertions for three bugs that all looked like Paystack being slow.
+ *
+ *   A successful test payment came back to a blank page, and the parcel stayed
+ *   on "Awaiting Payment". None of it was the gateway: the verify call went out
+ *   before the session was restored and answered 401, the store reported that
+ *   as the deliberately-soft 'unknown', and the one place that refreshed the
+ *   shipments list was the screen that had just crashed.
+ */
+{
+  const returnPage = read('src/app/payment-return.tsx');
+  /*
+   * ⚠ Comments stripped for the negative assertions.
+   *
+   *   This codebase explains what it removed and why, at length, so the note
+   *   saying "no `useBookings()` here any more, on purpose" is itself an
+   *   occurrence of the string. A check for absence has to read the code.
+   */
+  const stripComments = (source: string) =>
+    source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  const returnCode = stripComments(returnPage);
+  const bookingsStore = read('src/store/bookings.tsx');
+  const bookingsRemote = read('src/store/bookings-remote.ts');
+
+  check(
+    'the return page waits for the session before verifying',
+    /sessionReady/.test(returnPage) && /status !== 'loading'/.test(returnPage),
+    'payments-verify authenticates with the caller JWT, and Supabase restores it asynchronously.\n' +
+      "       Asking first gets 401 'Not signed in', which this app reports as 'unknown' — so a\n" +
+      '       charge that went through reads as the bank being slow',
+  );
+
+  check(
+    'and it exports an ErrorBoundary',
+    /export function ErrorBoundary/.test(returnPage),
+    'without one, a throw anywhere in this tree unmounts the app and leaves an empty document —\n' +
+      '       one second after the sender was charged, with nothing saying their money is safe',
+  );
+
+  check(
+    'which shows the real error rather than a generic apology',
+    /error\?\.message/.test(returnPage),
+    'this page is seen once per sender; "something went wrong" produces a support ticket with\n' +
+      '       nothing in it',
+  );
+
+  check(
+    'the return page does not depend on the bookings store',
+    !/useBookings/.test(returnCode),
+    'a page reached by an external redirect into a cold tab should not need a provider chain\n' +
+      '       several layers up to render at all',
+  );
+
+  check(
+    'the bookings store subscribes to its own rows',
+    /subscribeToBookings/.test(bookingsStore) && /postgres_changes/.test(bookingsRemote),
+    "payment_status is flipped by the webhook, server to server. Without a listener the app\n" +
+      '       learns about it only from the one screen that happened to call refresh()',
+  );
+
+  check(
+    'and refreshes when the app becomes active',
+    /AppState\.addEventListener/.test(bookingsStore) && /'active'/.test(bookingsStore),
+    'a websocket that dropped while the phone slept does not replay what it missed',
+  );
+
+  check(
+    'the subscription watches updates for both sides of a parcel',
+    /sender_id=eq\./.test(bookingsRemote) && /driver_id=eq\./.test(bookingsRemote),
+    'a person is the sender on some parcels and the driver on others; one filter misses half',
+  );
+}
+
 if (failures > 0) {
   console.error(`\n${failures} check(s) failed.\n`);
   process.exit(1);

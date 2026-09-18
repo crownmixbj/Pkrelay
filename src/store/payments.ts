@@ -125,6 +125,20 @@ export async function verifyParcelPayment(reference: string): Promise<VerifyOutc
        * A 502 from that function means "we could not ask Paystack", which is
        * 'unknown' rather than 'failed' — the charge may be fine and the webhook
        * may already have settled it.
+       *
+       * ⚠ 'Not signed in' arrives here too, and it is not the bank being slow.
+       *
+       *   `payments-verify` authenticates with the caller's JWT, and Supabase
+       *   restores that session from storage asynchronously. A call made before
+       *   it finishes — which is every call on a cold page load, which is
+       *   exactly what Paystack's redirect produces — answers 401, lands in
+       *   this branch, and used to be reported as "still waiting on the bank"
+       *   about a charge that had already gone through.
+       *
+       *   `payment-return.tsx` now waits for the session before asking, so this
+       *   should not happen. The message is passed through rather than replaced
+       *   so that if it ever does, the screen says the true thing instead of
+       *   blaming Paystack.
        */
       return {
         status: 'unknown',
