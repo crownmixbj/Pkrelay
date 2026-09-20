@@ -1,16 +1,9 @@
-import {
-  PlusJakartaSans_400Regular,
-  PlusJakartaSans_500Medium,
-  PlusJakartaSans_600SemiBold,
-  PlusJakartaSans_700Bold,
-  PlusJakartaSans_800ExtraBold,
-  useFonts,
-} from '@expo-google-fonts/plus-jakarta-sans';
+import { useFonts } from 'expo-font';
 import { DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import Head from 'expo-router/head';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
@@ -52,25 +45,77 @@ const navigationTheme = {
   },
 };
 
+/**
+ * How long the app will wait for type before giving up on it.
+ *
+ * ⚠ This number exists because the app shipped a white page to paying
+ *   customers, and this file is where it came from.
+ *
+ *   The gate below used to be `!fontsLoaded && !fontError`, on the reasoning —
+ *   still correct — that rendering in a fallback face and reflowing is worse
+ *   than a held splash. It assumed those two states are exhaustive. They are
+ *   not: a font request that resolves *but does not decode* leaves `useFonts`
+ *   waiting for a promise that will never settle either way, and this component
+ *   returns an empty, background-coloured View for ever.
+ *
+ *   That is precisely what a blank page is. No exception, so no error boundary
+ *   catches it; nothing in the console but a decode warning; and it bites
+ *   hardest on `/payment-return`, the one route reached by a cold document load
+ *   from an external redirect, where nothing is in the browser's font cache yet.
+ *   A sender was charged, redirected back, and shown nothing at all.
+ *
+ *   The comment above the effect already said "shipping the system font beats a
+ *   permanently stuck splash screen". This is that sentence made true.
+ */
+const FONT_DEADLINE_MS = 2500;
+
 export default function RootLayout() {
+  /*
+   * ⚠ Loaded from `assets/fonts/`, not from the `@expo-google-fonts` package.
+   *
+   *   Importing the package emits the files to
+   *   `assets/node_modules/@expo-google-fonts/…` in the web export — and
+   *   Cloudflare Pages silently refuses to upload any path containing a
+   *   `node_modules` segment. All five fonts 404, `_redirects` turns each 404
+   *   into `200 text/html` (the SPA fallback doing its job), and the browser
+   *   receives `<!DOCTYPE html>` where a TTF should be. Every FontFace ends in
+   *   `status: "error"` and nothing anywhere says so.
+   *
+   *   Copying the five faces into the repo removes the `node_modules` segment
+   *   from the emitted path, which is the whole fix. It costs 480KB in git and
+   *   buys fonts that actually deploy.
+   */
   const [fontsLoaded, fontError] = useFonts({
-    PlusJakartaSans_400Regular,
-    PlusJakartaSans_500Medium,
-    PlusJakartaSans_600SemiBold,
-    PlusJakartaSans_700Bold,
-    PlusJakartaSans_800ExtraBold,
+    PlusJakartaSans_400Regular: require('../../assets/fonts/PlusJakartaSans_400Regular.ttf'),
+    PlusJakartaSans_500Medium: require('../../assets/fonts/PlusJakartaSans_500Medium.ttf'),
+    PlusJakartaSans_600SemiBold: require('../../assets/fonts/PlusJakartaSans_600SemiBold.ttf'),
+    PlusJakartaSans_700Bold: require('../../assets/fonts/PlusJakartaSans_700Bold.ttf'),
+    PlusJakartaSans_800ExtraBold: require('../../assets/fonts/PlusJakartaSans_800ExtraBold.ttf'),
   });
 
-  // Hold the splash until the type is ready, so nothing renders in the fallback
-  // face and then reflows. A font error still releases it — shipping the
-  // system font beats a permanently stuck splash screen.
+  /*
+   * The deadline, as state rather than a ref, because the render has to change
+   * when it passes.
+   */
+  const [waitedLongEnough, setWaitedLongEnough] = useState(false);
+
   useEffect(() => {
-    if (fontsLoaded || fontError) {
+    const timer = setTimeout(() => setWaitedLongEnough(true), FONT_DEADLINE_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const ready = fontsLoaded || Boolean(fontError) || waitedLongEnough;
+
+  // Hold the splash until the type is ready, so nothing renders in the fallback
+  // face and then reflows. A font error — or the deadline above — still
+  // releases it: shipping the system font beats a permanently stuck splash.
+  useEffect(() => {
+    if (ready) {
       SplashScreen.hideAsync();
     }
-  }, [fontsLoaded, fontError]);
+  }, [ready]);
 
-  if (!fontsLoaded && !fontError) {
+  if (!ready) {
     return <View style={{ flex: 1, backgroundColor: Colors.light.background }} />;
   }
 

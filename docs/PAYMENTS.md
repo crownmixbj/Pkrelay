@@ -284,6 +284,24 @@ insert into private.app_settings (key, value) values ('commission_rate', '0.15')
 on conflict (key) do update set value = excluded.value;
 ```
 
+## The return URL
+
+`callbackUrl` builds `<origin>/payment-return` and **adds no query string of its
+own**. Paystack appends `?trxref=X&reference=X` to whatever callback it is
+given; a `reference` of ours made the key appear twice, expo-router represents a
+repeated key as an array, and `.trim()` on an array threw
+`A.trim is not a function` on the screen a sender sees one second after being
+charged. `payment-return` also reads params through `firstParam()` now, because
+the duplicate came from a third party and could come back.
+
+`origin` is `LOCI_APP_URL`, with one exception: a **localhost** origin sent by
+the client is honoured when the deployment is not production. Without it a
+checkout started on `localhost:8081` returns you to staging — a different
+origin, a different session, and a parcel you cannot see. It is safe because
+nobody can serve anything on a victim's localhost; anything else the client asks
+for is ignored, because a caller-chosen callback is an open redirect with a
+payment attached.
+
 ## Things that are not done
 
 - **Refunds.** A charge that lands on a parcel cancelled meanwhile is settled,

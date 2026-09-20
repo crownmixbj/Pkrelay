@@ -335,6 +335,107 @@ check(
   '"it crashes" is unactionable when four builds are in circulation',
 );
 
+// ------------------------------------------------- the type, and the blank page --
+
+/*
+ * ⚠ Every assertion below is one bug, and the bug was a white page shown to a
+ *   sender one second after their card was charged.
+ *
+ *   `_layout.tsx` holds the app behind `!fontsLoaded && !fontError`, so that
+ *   nothing renders in a fallback face and then reflows. That is right, and it
+ *   assumed those two states are exhaustive. A font that downloads but does not
+ *   *decode* is neither: `useFonts` waits on a promise that never settles and
+ *   the root renders an empty background-coloured View for ever. No exception,
+ *   so no error boundary catches it. Nothing in the console but a decode
+ *   warning.
+ *
+ *   And the fonts did not decode, in production, all five of them — because
+ *   importing them from `@expo-google-fonts` emits them to
+ *   `assets/node_modules/@expo-google-fonts/…`, Cloudflare Pages will not
+ *   upload a path containing `node_modules`, and `public/_redirects` turns each
+ *   404 into `200 text/html`. The browser was handed `<!DOCTYPE html>` where a
+ *   TTF should be, on every page load, for the life of that deployment.
+ */
+{
+  const layout = read('src/app/_layout.tsx');
+
+  check(
+    'the font gate cannot hang the app for ever',
+    /*
+     * ⚠ The `ready` expression itself, not "is the deadline mentioned anywhere".
+     *
+     *   The first version of this check looked for `FONT_DEADLINE_MS` in the
+     *   file, and passed happily when the deadline was declared, the timer was
+     *   set, and the result was simply left out of the condition — which is the
+     *   most likely way for somebody to reintroduce the bug while tidying.
+     */
+    /const ready =[^;]*waitedLongEnough/.test(layout) && /FONT_DEADLINE_MS/.test(layout),
+    'loaded-or-errored is not exhaustive: a font that resolves but fails to decode settles\n' +
+      '       neither way, and the root layout then renders an empty View permanently',
+  );
+
+  check(
+    'and the deadline releases the splash too',
+    /if \(ready\) \{[\s\S]{0,80}SplashScreen\.hideAsync/.test(layout),
+    'a released render behind a held splash is the same blank page with extra steps',
+  );
+
+  check(
+    'fonts are loaded from the repo, not from node_modules',
+    /assets\/fonts\/PlusJakartaSans/.test(layout) && !/from '@expo-google-fonts/.test(layout),
+    'the web export emits a package import to assets/node_modules/…, and Cloudflare Pages\n' +
+      '       silently refuses to upload any path with a node_modules segment',
+  );
+
+  /*
+   * ⚠ The files themselves, checked by their magic bytes.
+   *
+   *   A missing font is caught by the check above; a *corrupt* one is not, and
+   *   corrupt is what the deployment produced. A git-lfs pointer, a truncated
+   *   copy or an HTML error page committed by accident all pass a
+   *   "does the file exist" test and fail in exactly the way that started this.
+   */
+  for (const weight of [
+    '400Regular',
+    '500Medium',
+    '600SemiBold',
+    '700Bold',
+    '800ExtraBold',
+  ]) {
+    const path = `assets/fonts/PlusJakartaSans_${weight}.ttf`;
+
+    check(`${weight} is present`, existsSync(join(ROOT, path)));
+    if (!existsSync(join(ROOT, path))) continue;
+
+    /*
+     * ⚠ Read as latin1, not as a Buffer.
+     *
+     *   This project's Node types declare `readFileSync` with a required
+     *   encoding, so the Buffer overload does not typecheck here — the suite
+     *   passed alone and `tsc` at the end of `verify` refused it, which is the
+     *   same trap the directory walk above documents. latin1 is one byte per
+     *   character, so the first four characters are the first four bytes.
+     */
+    const head = readFileSync(join(ROOT, path), 'latin1').slice(0, 4);
+    const tag = [...head].map((c) => c.charCodeAt(0).toString(16).padStart(2, '0')).join('');
+
+    check(
+      `${weight} is a real font file`,
+      /* 00010000 is a TrueType outline; OTTO and 'true' are the other valid tags. */
+      tag === '00010000' || head === 'OTTO' || head === 'true',
+      `starts with ${tag} — an HTML error page starts 3c21444f ("<!DO"), which is exactly what\n` +
+        '       the CDN was serving for every font on the site',
+    );
+  }
+
+  check(
+    'the SPA fallback is still a catch-all, which is why a missing asset is silent',
+    read('public/_redirects').includes('/*    /index.html    200'),
+    'not a fault — dynamic routes need it — but it is the reason a 404 on a font arrives as a\n' +
+      '       200 full of HTML, and the reason the checks above have to exist',
+  );
+}
+
 if (failures > 0) {
   console.error(`\n${failures} assertion(s) failed.`);
   process.exit(1);

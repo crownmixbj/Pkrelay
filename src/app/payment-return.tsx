@@ -31,6 +31,26 @@ import { verifyParcelPayment } from '@/store/payments';
  *   it like an ordinary screen. It now assumes nothing except its own URL.
  */
 
+/**
+ * One value out of a query parameter, whatever shape the router gives it.
+ *
+ * ⚠ This route received `reference` twice, every single time.
+ *
+ *   `callbackUrl` used to build `…/payment-return?reference=X`, and Paystack
+ *   then appends its own `trxref=X&reference=X` to whatever callback it was
+ *   given. The result is `?reference=X&trxref=X&reference=X` — two `reference`
+ *   keys — and expo-router represents a repeated key as an array.
+ *
+ *   `callbackUrl` no longer adds one (Paystack supplies both), so the duplicate
+ *   is gone at the source. This stays because the source is a third party: a
+ *   provider that decides to echo a parameter twice must not be able to blank
+ *   this page again.
+ */
+function firstParam(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) return (value[0] ?? '').trim();
+  return (value ?? '').trim();
+}
+
 /** How many times to ask, and how long to leave between asks. */
 const ATTEMPTS = 5;
 const GAP_MS = 1500;
@@ -78,8 +98,21 @@ export default function PaymentReturnScreen() {
    * back. Reading ours first and falling back keeps working if they ever stop
    * echoing the query string we sent.
    */
-  const params = useLocalSearchParams<{ reference?: string; trxref?: string }>();
-  const reference = (params.reference ?? params.trxref ?? '').trim();
+  const params = useLocalSearchParams<{
+    /*
+      ⚠ `string | string[]`, and the array case is the normal one here.
+
+        `useLocalSearchParams` hands back an array whenever a key appears more
+        than once in the query string — and on this route it always did. Typing
+        these as plain strings was a lie the compiler believed and the browser
+        did not: `.trim()` on an array is `A.trim is not a function`, which is
+        what a sender saw after paying.
+    */
+    reference?: string | string[];
+    trxref?: string | string[];
+  }>();
+
+  const reference = firstParam(params.reference) || firstParam(params.trxref);
 
   const [phase, setPhase] = useState<Phase>(() => {
     if (!reference) return 'no-reference';

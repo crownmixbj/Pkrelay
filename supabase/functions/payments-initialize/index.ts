@@ -106,9 +106,19 @@ Deno.serve(async (request: Request) => {
   if (!person) return json({ error: 'Not signed in' }, 401);
 
   let bookingId = '';
+  let returnOrigin: string | null = null;
   try {
-    const body = (await request.json()) as { booking_id?: unknown };
+    const body = (await request.json()) as { booking_id?: unknown; return_origin?: unknown };
     bookingId = typeof body.booking_id === 'string' ? body.booking_id : '';
+    /*
+     * ⚠ A request, not an instruction. `resolveReturnOrigin` decides.
+     *
+     *   It is honoured only when it matches the configured origin, or when it
+     *   is a localhost origin off production — so a developer running the web
+     *   build locally comes back to their own machine instead of to staging,
+     *   and nobody else can aim this anywhere at all.
+     */
+    returnOrigin = typeof body.return_origin === 'string' ? body.return_origin : null;
   } catch {
     return json({ error: 'Bad request' }, 400);
   }
@@ -205,7 +215,7 @@ Deno.serve(async (request: Request) => {
     reference: payment.reference,
     amountKobo,
     email: person.email,
-    callbackUrl: callbackUrl(ENV, payment.reference),
+    callbackUrl: callbackUrl(ENV, returnOrigin),
     /*
      * Metadata is for the human in the Paystack dashboard reconciling a
      * disputed charge. The tracking id is what a support conversation is

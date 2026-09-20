@@ -65,7 +65,26 @@ export function koboToNaira(kobo: number): number {
 export async function initializeParcelPayment(bookingId: string): Promise<InitializeOutcome> {
   try {
     const { data, error } = await supabase.functions.invoke('payments-initialize', {
-      body: { booking_id: bookingId },
+      body: {
+        booking_id: bookingId,
+        /*
+          ⚠ Where this build is actually being served from, so a local run comes
+            back to itself.
+
+            Without it the callback is always the project's configured
+            `LOCI_APP_URL`, which on the staging project is
+            `https://staging.pkrelay.com` — so a checkout started on
+            `localhost:8081` returns the developer to staging, a different
+            origin with a different session and a parcel they cannot see.
+
+            It is a request, not an instruction: the edge function honours it
+            only when it matches the configured origin, or when it is a
+            localhost origin and the deployment is not production. Anything else
+            falls back. A caller-chosen callback would otherwise be an open
+            redirect with a payment attached.
+        */
+        return_origin: typeof window === 'undefined' ? null : window.location.origin,
+      },
     });
 
     if (error) {

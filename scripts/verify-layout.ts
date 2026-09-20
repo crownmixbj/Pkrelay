@@ -828,6 +828,70 @@ check(
   'a hardcoded line height is right until somebody changes the font size',
 );
 
+// ------------------------------------------------ a button inside a button --
+
+/*
+ * ⚠ react-native-web turns `accessibilityRole="button"` into a real `<button>`
+ *   element, and one of those inside another is invalid HTML.
+ *
+ *   The shipments list had exactly that: the whole parcel card was wrapped in a
+ *   Pressable so tapping it opened the parcel, and the "Pay ₦2,300" button sat
+ *   inside that wrapper. React said so on screen — `<button> cannot contain a
+ *   nested <button>` — in front of somebody who had just paid.
+ *
+ *   The warning is the cosmetic half. The real fault is that tapping Pay also
+ *   fired the card's own handler, so the checkout opened behind a parcel detail
+ *   screen nobody asked for. `stopPropagation` would hide that; the structure
+ *   is what fixes it, and the structure is what this checks.
+ *
+ * ⚠ Scoped to Pressables that actually carry the role.
+ *
+ *   A Pressable with no `accessibilityRole` renders a plain `<div>`, and
+ *   nesting inside one is fine and common — every modal in this app is a
+ *   backdrop Pressable wrapping a sheet Pressable. Flagging those would make
+ *   this rule noise, and a noisy rule is one somebody turns off.
+ */
+const nestedButtons: string[] = [];
+
+for (const file of screenFiles) {
+  const source = code(read(file));
+
+  /* Pressables still open at this point in the file, innermost last. */
+  const open: { roleIsButton: boolean }[] = [];
+
+  const tokens = source.matchAll(/<Pressable\b[^>]*?(\/?)>|<\/Pressable>|<Button\b/g);
+
+  for (const token of tokens) {
+    const text = token[0];
+
+    if (text === '</Pressable>') {
+      open.pop();
+      continue;
+    }
+
+    if (text.startsWith('<Pressable')) {
+      /* Self-closing: opens and shuts, so it never contains anything. */
+      if (token[1] === '/') continue;
+      open.push({ roleIsButton: /accessibilityRole=["']button["']|role=["']button["']/.test(text) });
+      continue;
+    }
+
+    /* A <Button> — ours always renders with the button role. */
+    if (open.some((entry) => entry.roleIsButton)) {
+      const line = source.slice(0, token.index).split('\n').length;
+      nestedButtons.push(`${file}:${line}`);
+    }
+  }
+}
+
+check(
+  'no Button sits inside a Pressable that is itself a button',
+  nestedButtons.length === 0,
+  `${nestedButtons.join(', ')}\n` +
+    '       invalid DOM on web, and a tap on the inner control fires the outer one too — the\n' +
+    '       checkout sheet opening behind a screen nobody asked for',
+);
+
 if (failures > 0) {
   console.error(`\n${failures} assertion(s) failed.`);
   process.exit(1);
@@ -840,5 +904,6 @@ console.log(
     '       identity and bell stay put while the hub scrolls under them, no route stretches\n' +
     '       its content across a desktop viewport, the top header stays a plain block in\n' +
     '       normal flow — no scroll listener, no animated layout, nothing to stutter — and the\n' +
-    '       app download is one band under the hero rather than two badges beside the ticker.',
+    '       app download is one band under the hero rather than two badges beside the ticker,\n' +
+    '       and no button is nested inside another.',
 );

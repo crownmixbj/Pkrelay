@@ -23,6 +23,7 @@ import { join } from 'node:path';
 import {
   callbackUrl,
   formatKobo,
+  isLocalhostOrigin,
   nairaToKobo,
   paymentReference,
   readPaystackConfig,
@@ -115,19 +116,68 @@ check('kobo formats back as naira', formatKobo(280000).includes('2,800'));
 // -------------------------------------------------------------- the callback --
 
 {
+  const STAGING = { LOCI_APP_URL: 'https://staging.pkrelay.com', LOCI_ENVIRONMENT: 'staging' };
+  const PROD = { LOCI_APP_URL: 'https://pkrelay.com' };
+
   check(
     'the callback is built from the configured origin',
-    callbackUrl({ LOCI_APP_URL: 'https://staging.pkrelay.com' }, 'pkr_1') ===
-      'https://staging.pkrelay.com/payment-return?reference=pkr_1',
+    callbackUrl(STAGING) === 'https://staging.pkrelay.com/payment-return',
   );
+
+  /*
+   * ⚠ And it carries no `reference` of its own. This is the bug that reached a
+   *   paying customer.
+   *
+   *   Paystack appends `trxref=X&reference=X` to whatever callback it is given.
+   *   Ours added a third — `?reference=X&trxref=X&reference=X` — expo-router
+   *   turns a repeated key into an array, and `.trim()` on an array threw
+   *   `A.trim is not a function` on the screen a sender sees one second after
+   *   being charged.
+   */
+  check(
+    'and adds no reference of its own',
+    !callbackUrl(STAGING).includes('reference='),
+    'Paystack appends its own; a second one makes the key an array and the return page throws',
+  );
+
   check(
     'a trailing slash does not double up',
-    callbackUrl({ LOCI_APP_URL: 'https://pkrelay.com/' }, 'pkr_1').includes('.com/payment-return'),
+    callbackUrl({ LOCI_APP_URL: 'https://pkrelay.com/' }).includes('.com/payment-return'),
   );
   check(
     'and with no origin configured there is no callback rather than a wrong one',
-    callbackUrl({}, 'pkr_1') === '',
+    callbackUrl({}) === '',
     'a relative or invented callback silently drops the sender somewhere that is not this app',
+  );
+
+  /* ---- the localhost exception, and its limits ---- */
+
+  check(
+    'a local build off production comes back to itself',
+    callbackUrl(STAGING, 'http://localhost:8081') === 'http://localhost:8081/payment-return',
+    'otherwise a checkout started on localhost returns the developer to staging — a different\n' +
+      '       origin, a different session, and a parcel they cannot see',
+  );
+  check(
+    'but never on production',
+    callbackUrl(PROD, 'http://localhost:8081') === 'https://pkrelay.com/payment-return',
+    'a live deployment has no reason to emit a localhost callback, so it does not get to',
+  );
+  check(
+    'and never to somebody else\u2019s origin',
+    callbackUrl(STAGING, 'https://pkrelay.evil.example') ===
+      'https://staging.pkrelay.com/payment-return',
+    'a caller-chosen callback is an open redirect with a payment attached: a crafted initialize\n' +
+      '       would drop a sender mid-checkout on a page that asks for their card again',
+  );
+  check(
+    'a hostname that merely contains localhost is refused',
+    !isLocalhostOrigin('https://localhost.evil.example'),
+    'a substring test here is the whole guard defeated',
+  );
+  check(
+    'and a non-http scheme is refused',
+    !isLocalhostOrigin('javascript://localhost'),
   );
 
   const initialize = read('supabase/functions/payments-initialize/index.ts');
@@ -361,6 +411,14 @@ check('kobo formats back as naira', formatKobo(280000).includes('2,800'));
     /error\?\.message/.test(returnPage),
     'this page is seen once per sender; "something went wrong" produces a support ticket with\n' +
       '       nothing in it',
+  );
+
+  check(
+    'the return page survives a query key arriving twice',
+    /firstParam/.test(returnCode) && /Array\.isArray/.test(returnCode),
+    'expo-router represents a repeated key as an array, and `.trim()` on an array is the\n' +
+      '       `A.trim is not a function` a sender saw after paying. Paystack is a third party:\n' +
+      '       it must not be able to blank this page by echoing a parameter',
   );
 
   check(

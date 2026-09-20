@@ -359,12 +359,29 @@ function ParcelRow({
   const unpaid = isAwaitingPayment(booking) && !carrying;
 
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`${booking.itemDescription}, ${booking.trackingId}. View details`}
-      style={({ pressed }) => pressed && styles.pressed}>
-      <Card style={styles.card}>
+    /*
+      ⚠ The card is the Card, and the Pressable is inside it — not the other way
+        round, which is how this was written and what it cost.
+
+        Wrapping the whole Card in a Pressable put the Pay button *inside* a
+        button. Two things follow, and only one of them is cosmetic:
+
+          - react-native-web maps `accessibilityRole="button"` onto a real
+            `<button>` element, so the DOM was `<button>` inside `<button>` —
+            invalid HTML, and React says so on screen in development.
+          - Tapping Pay also fired the card's own handler, so the checkout sheet
+            opened behind a parcel detail screen nobody asked for.
+
+        The fix is structural rather than a `stopPropagation`: the tappable
+        region is the part of the card that means "open this parcel", and the
+        payment block is a sibling of it.
+    */
+    <Card style={styles.card}>
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={`${booking.itemDescription}, ${booking.trackingId}. View details`}
+        style={({ pressed }) => [styles.cardBody, pressed && styles.pressed]}>
         <View style={styles.cardHeader}>
           <View style={styles.cardHeaderText}>
             <Text style={[styles.itemName, { color: theme.text }]} numberOfLines={1}>
@@ -387,28 +404,29 @@ function ParcelRow({
           tone={statusTone(booking)}
         />
 
-        {unpaid && (
-          <View style={styles.unpaid}>
-            <Text style={[styles.unpaidNote, { color: theme.warningOnSoft }]}>
-              No driver can see this parcel until its fare is paid.
-            </Text>
-            <Button
-              label={busy ? 'Opening checkout…' : `Pay ${formatNaira(booking.estimatedFee)}`}
-              icon={(color, size) =>
-                busy ? (
-                  <ActivityIndicator color={color} size="small" />
-                ) : (
-                  <CreditCard color={color} size={size} />
-                )
-              }
-              size="md"
-              disabled={busy}
-              onPress={onPay}
-            />
-          </View>
-        )}
-      </Card>
-    </Pressable>
+      </Pressable>
+
+      {unpaid && (
+        <View style={styles.unpaid}>
+          <Text style={[styles.unpaidNote, { color: theme.warningOnSoft }]}>
+            No driver can see this parcel until its fare is paid.
+          </Text>
+          <Button
+            label={busy ? 'Opening checkout…' : `Pay ${formatNaira(booking.estimatedFee)}`}
+            icon={(color, size) =>
+              busy ? (
+                <ActivityIndicator color={color} size="small" />
+              ) : (
+                <CreditCard color={color} size={size} />
+              )
+            }
+            size="md"
+            disabled={busy}
+            onPress={onPay}
+          />
+        </View>
+      )}
+    </Card>
   );
 }
 
@@ -431,6 +449,15 @@ const styles = StyleSheet.create({
   card: {
     gap: Spacing.two + 2,
     borderRadius: Radius.lg,
+  },
+  /*
+    The gap the Card used to give these three children directly. It moved with
+    them when they moved inside the Pressable — a flex container only spaces its
+    own children, and without this the header, the route pill and the progress
+    bar collapse against each other.
+  */
+  cardBody: {
+    gap: Spacing.two + 2,
   },
   cardHeader: {
     flexDirection: 'row',

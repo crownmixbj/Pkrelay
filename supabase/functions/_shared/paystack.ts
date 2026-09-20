@@ -23,7 +23,7 @@
  *      only thing that makes it Paystack's.
  */
 
-import { isStaging, type EnvRecord } from './environment.ts';
+import { isStaging, readEnvironment, type EnvRecord } from './environment.ts';
 
 export const PAYSTACK_API = 'https://api.paystack.co';
 
@@ -312,8 +312,73 @@ export async function verifyWebhookSignature(
  *   card again. `LOCI_APP_URL` is the same secret the emails already use to
  *   build their buttons, and it is set per project.
  */
-export function callbackUrl(env: EnvRecord, reference: string): string {
-  const origin = (env.LOCI_APP_URL ?? '').trim().replace(/\/+$/, '');
+export function callbackUrl(env: EnvRecord, requestedOrigin?: string | null): string {
+  const configured = (env.LOCI_APP_URL ?? '').trim().replace(/\/+$/, '');
+  const origin = resolveReturnOrigin(env, configured, requestedOrigin);
   if (!origin) return '';
-  return `${origin}/payment-return?reference=${encodeURIComponent(reference)}`;
+
+  /*
+    ⚠ No `?reference=` of our own, and its absence is a bug fix.
+
+      This used to append one. Paystack then appends *its* own
+      `trxref=X&reference=X` to whatever callback it was handed, so every sender
+      came back to `?reference=X&trxref=X&reference=X` — the key twice.
+      expo-router represents a repeated key as an array, `.trim()` on an array
+      throws, and the return page died with `A.trim is not a function` one
+      second after the card was charged.
+
+      Ours was redundant from the start: the reference the page reads is the one
+      Paystack sends back. `payment-return` reads either key and tolerates an
+      array now, but the duplicate is fixed here, where it was created.
+  */
+  return `${origin}/payment-return`;
+}
+
+/**
+ * Which origin the sender is sent back to.
+ *
+ * ⚠ Never simply what the caller asked for — that is an open redirect with a
+ *   payment attached.
+ *
+ *   A callback taken from the request body would let a crafted initialize call
+ *   drop a sender, mid-checkout, on a page that looks like Package Relay and
+ *   asks for their card again. The configured `LOCI_APP_URL` is the answer in
+ *   every deployment.
+ *
+ * ⚠ The one exception is localhost, and only off production.
+ *
+ *   Without it, a checkout started against `localhost:8081` returns the
+ *   developer to staging — a different origin, a different session, and a
+ *   parcel they cannot see. That is not a bug in the code so much as a hole in
+ *   being able to test it at all.
+ *
+ *   It is safe because an attacker cannot serve anything on their victim's
+ *   localhost: redirecting somebody to their own machine reaches whatever they
+ *   are already running, which is nothing an attacker controls. The production
+ *   guard is belt and braces — a live deployment has no reason to ever emit a
+ *   localhost callback, so it does not get to.
+ */
+export function resolveReturnOrigin(
+  env: EnvRecord,
+  configured: string,
+  requested?: string | null,
+): string {
+  const asked = (requested ?? '').trim().replace(/\/+$/, '');
+  if (!asked) return configured;
+  if (asked === configured) return asked;
+
+  if (readEnvironment(env) === 'production') return configured;
+
+  return isLocalhostOrigin(asked) ? asked : configured;
+}
+
+/** `http://localhost:8081`, `http://127.0.0.1:19006` — and nothing else. */
+export function isLocalhostOrigin(value: string): boolean {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+    return url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]';
+  } catch {
+    return false;
+  }
 }
