@@ -18,6 +18,7 @@ import {
   insertBooking,
   subscribeToBookings,
 } from '@/store/bookings-remote';
+import { findParcel } from '@/lib/parcel-link';
 import { SESSION_USER, useSession } from '@/store/session';
 
 /**
@@ -1055,6 +1056,8 @@ const SEED_BOOKINGS: Booking[] = [
   },
 ];
 
+export { findParcel } from '@/lib/parcel-link';
+
 /** What a claim attempt actually did — the UI has to distinguish these. */
 export type ClaimResult = 'claimed' | 'taken' | 'error';
 
@@ -1092,7 +1095,24 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
 
   // Ownership is stamped here rather than by the form, so no screen can post a
   // parcel on someone else's behalf.
-  const { user } = useSession();
+  const { user, status } = useSession();
+
+  /**
+   * True while a stored session is still being restored.
+   *
+   * ⚠ This is the difference between "signed out" and "we do not know yet",
+   *   and conflating them is what made every screen flash an empty state.
+   *
+   *   On a cold load `status` is 'loading' and `user` is null — indistinguishable,
+   *   from here, from a genuine visitor. The effect below saw the null, emptied
+   *   the list and set `loading` to false, so every screen was told "loaded, and
+   *   there is nothing". A beat later the session resolved, `user` arrived, and
+   *   the real list replaced it.
+   *
+   *   That is the flash on a tracking link: not-found, then the parcel. The fix
+   *   is to decide nothing until the session has.
+   */
+  const authSettling = status === 'loading';
 
   const refresh = useCallback(async () => {
     if (!remote) return;
@@ -1115,6 +1135,13 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!remote) return;
 
+    /*
+     * Nothing is decided while the session is restoring — see `authSettling`.
+     * Returning early leaves `loading` exactly as it was, which on a cold load
+     * is the `true` it was initialised with.
+     */
+    if (authSettling) return;
+
     if (!user) {
       setBookings([]);
       setLoading(false);
@@ -1123,7 +1150,7 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
 
     setLoading(true);
     void refresh();
-  }, [remote, user?.id, refresh]);
+  }, [remote, user?.id, authSettling, refresh]);
 
   /*
    * ⚠ And keep listening, because the most important change to a parcel is one
@@ -1275,13 +1302,37 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
 
   const getBooking = useCallback(
     (trackingId: string) =>
-      bookings.find((booking) => booking.trackingId.toLowerCase() === trackingId.toLowerCase()),
+      /*
+       * Delegates rather than matching again. `findParcel` also accepts a uuid,
+       * which is a strict superset for a search box and keeps one answer to
+       * "which parcel is this string".
+       */
+      findParcel(bookings, trackingId),
     [bookings],
   );
 
   const value = useMemo(
-    () => ({ bookings, loading, error, refresh, addBooking, acceptBooking, getBooking }),
-    [bookings, loading, error, refresh, addBooking, acceptBooking, getBooking],
+    () => ({
+      /*
+       * ⚠ Reported as loading while auth settles, even though no fetch is in
+       *   flight yet.
+       *
+       *   A consumer asking "is this loading" means "should I show a
+       *   placeholder or an empty state". Until the session resolves, the
+       *   honest answer is the placeholder — there may well be parcels, we
+       *   simply cannot know. Leaving the flag literal here would push this
+       *   same `status === 'loading'` check into every screen that reads the
+       *   store, and the one that forgets is the one that flashes.
+       */
+      loading: loading || authSettling,
+      bookings,
+      error,
+      refresh,
+      addBooking,
+      acceptBooking,
+      getBooking,
+    }),
+    [bookings, loading, authSettling, error, refresh, addBooking, acceptBooking, getBooking],
   );
 
   return <BookingsContext.Provider value={value}>{children}</BookingsContext.Provider>;
