@@ -170,6 +170,50 @@ check(
   'iOS needs the first, Android the second — one alone leaves the other reading out placeholders',
 );
 
+// ------------------- 5. the session settles once, not twice ---------------
+
+/*
+ * ⚠ The flash that survived the skeleton.
+ *
+ *   Supabase emits INITIAL_SESSION the instant a listener is attached, before
+ *   the stored session has finished being read, and on web that first event
+ *   often carries null. The listener took it at face value: status left
+ *   'loading' and landed on 'signedOut', every guard waiting on 'loading' let
+ *   go, and the sign-in prompt painted — for one frame, until getSession()
+ *   resolved with a perfectly good session.
+ */
+const session = code(read('src/store/session.tsx'));
+
+check(
+  'the initial event is left to getSession, which awaits the storage read',
+  session.includes("if (event === 'INITIAL_SESSION') return;"),
+  'this is the frame the sign-in prompt was painting in',
+);
+check(
+  'and no empty event may report signed-out before the restore finishes',
+  session.includes('if (!next && !restored.current) return;'),
+  'Supabase has more than one way to announce "nothing yet" on startup',
+);
+check(
+  'the restore marks itself finished either way',
+  session.includes('restored.current = true;') && session.includes('.finally('),
+  'a rejected getSession that never sets this would pin the app on loading',
+);
+check(
+  'and a promise that never settles cannot pin it there',
+  session.includes('AUTH_RESTORE_DEADLINE_MS'),
+  'the same lesson _layout.tsx learned from a font promise that resolved without decoding',
+);
+check(
+  'the deadline is cleared on unmount',
+  session.includes('clearTimeout(deadline);'),
+);
+check(
+  'the deadline settles to signed out, which is the recoverable direction',
+  /setStatus\(\(current\) => \(current === 'loading' \? 'signedOut' : current\)\)/.test(session),
+  'the sign-in screen works; a stuck skeleton does not',
+);
+
 // -------------------------------------------------------------------------
 
 if (failures > 0) {

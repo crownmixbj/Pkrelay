@@ -120,14 +120,12 @@ export function layout(options: {
   const cta = options.cta && url
     ? `
       <tr><td align="left" style="padding-top:24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+        <table class="pkr-button-table" role="presentation" cellpadding="0" cellspacing="0" border="0">
           <tr>
             <td align="center" bgcolor="#0B5FFF" style="background:#0B5FFF;border-radius:8px;">
-              <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer"
-                 style="display:block;padding:14px 24px;color:#FFFFFF;text-decoration:none;
-                        font-size:15px;font-weight:600;line-height:20px;">${escapeHtml(
-                          options.cta.label,
-                        )}</a>
+              <a class="pkr-button" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="display:block;padding:15px 28px;min-height:20px;color:#FFFFFF;text-decoration:none;font-size:16px;font-weight:600;line-height:20px;text-align:center;">${escapeHtml(
+                options.cta.label,
+              )}</a>
             </td>
           </tr>
         </table>
@@ -154,8 +152,46 @@ export function layout(options: {
     : '';
 
   return `<!doctype html>
-<html>
-  <body style="margin:0;padding:24px;background:#F1F5F9;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      ⚠ There was no head at all, and this is the mobile Gmail report.
+
+        The Gmail Android and iOS apps render a message in a webview. Without a
+        viewport the webview lays the mail out at desktop width and scales the
+        whole thing down to fit — so a 48px button becomes roughly 28px of
+        actual screen, below the ~44px minimum a thumb reliably hits. It looks
+        like a button, it is a real link, and tapping it misses. "Unclickable"
+        is exactly how that is reported.
+
+        Desktop clients ignore this tag, so it costs nothing anywhere else.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Stops iOS Mail shrinking the message to fit, which does the same thing. -->
+    <meta name="x-apple-disable-message-reformatting" />
+    <meta name="color-scheme" content="light" />
+    <meta name="supported-color-schemes" content="light" />
+    <style>
+      /*
+       * ⚠ Progressive enhancement only. Every rule here is already inlined
+       *   above, because Gmail drops style blocks in several contexts — a
+       *   clipped message, and any non-Gmail account added to the Gmail app.
+       *   Nothing below is load-bearing; it makes an already-working button
+       *   easier to hit.
+       */
+      @media only screen and (max-width: 480px) {
+        .pkr-button-table { width: 100% !important; }
+        .pkr-button {
+          display: block !important;
+          width: auto !important;
+          padding: 17px 24px !important;
+          font-size: 17px !important;
+        }
+      }
+    </style>
+  </head>
+  <body style="margin:0;padding:24px;background:#F1F5F9;-webkit-text-size-adjust:100%;text-size-adjust:100%;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto;background:#FFFFFF;border-radius:12px;">
       <tr><td style="padding:28px 28px 0;">
         <div style="color:#0B5FFF;font-size:20px;font-weight:800;letter-spacing:1.6px;">PKRELAY</div>
@@ -169,7 +205,11 @@ export function layout(options: {
           ${options.bodyHtml}
         </table>
       </td></tr>
-      ${cta ? `<tr><td style="padding:0 28px;"><table role="presentation">${cta}</table></td></tr>` : ''}
+      ${
+        cta
+          ? `<tr><td style="padding:0 28px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${cta}</table></td></tr>`
+          : ''
+      }
       <tr><td style="padding:24px 28px 28px;">
         <p style="margin:0;color:#94A3B8;font-size:12px;line-height:18px;">${escapeHtml(options.footerNote)}</p>
       </td></tr>

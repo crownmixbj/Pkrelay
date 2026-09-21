@@ -128,6 +128,14 @@ const recoveryKey = (userId: string) => `loci.recovery.${userId}`;
 /** `loading` covers the moment at launch before a stored session is restored. */
 export type SessionStatus = 'loading' | 'signedIn' | 'signedOut';
 
+/**
+ * How long the app will wait for a stored session before giving up on one.
+ *
+ * See the note beside the timer in the restore effect: this exists so a promise
+ * that never settles cannot pin every guard in the app on 'loading'.
+ */
+const AUTH_RESTORE_DEADLINE_MS = 8000;
+
 export type SignUpParams = {
   email: string;
   password: string;
@@ -392,6 +400,15 @@ export function SessionProvider({
   const greetedUserId = useRef<string | null>(null);
 
   /**
+   * Whether the initial session restore has finished, either way.
+   *
+   * A ref rather than state: nothing renders from it, and it is read inside an
+   * auth callback that must see the current value rather than the one captured
+   * when the listener was attached.
+   */
+  const restored = useRef(false);
+
+  /**
    * Restore any stored session, then follow it. `onAuthStateChange` covers sign
    * in, sign out, token refresh and expiry, so no screen has to poll.
    */
@@ -410,19 +427,74 @@ export function SessionProvider({
      *   later would open exactly one frame in which a half-reset session looks
      *   like a good one, and one frame is all a redirect needs.
      */
-    supabase.auth.getSession().then(async ({ data }) => {
-      const restoring = data.session?.user?.id ?? null;
-      const stored = restoring
-        ? await AsyncStorage.getItem(recoveryKey(restoring)).catch(() => null)
-        : null;
+    supabase.auth
+      .getSession()
+      .then(async ({ data }) => {
+        const restoring = data.session?.user?.id ?? null;
+        const stored = restoring
+          ? await AsyncStorage.getItem(recoveryKey(restoring)).catch(() => null)
+          : null;
 
-      if (!active) return;
-      setRecovering(stored === '1');
-      setSession(data.session);
-      setStatus(data.session ? 'signedIn' : 'signedOut');
-    });
+        if (!active) return;
+        setRecovering(stored === '1');
+        setSession(data.session);
+        setStatus(data.session ? 'signedIn' : 'signedOut');
+      })
+      .catch(() => {
+        /* Storage unreadable, or the client refused. Signed out is the safe read. */
+        if (active) setStatus('signedOut');
+      })
+      .finally(() => {
+        restored.current = true;
+      });
+
+    /*
+     * ⚠ A deadline, for the same reason `_layout.tsx` has one for fonts.
+     *
+     *   Everything downstream treats `loading` as "do not decide yet", so a
+     *   `getSession()` that never settles is not a slow app — it is a permanent
+     *   skeleton on every screen that waits for it. That file learned this the
+     *   expensive way with a font promise that resolved without decoding and
+     *   shipped a white page.
+     *
+     *   Eight seconds is far longer than a storage read plus a token refresh
+     *   and short enough that somebody has not yet given up. It settles to
+     *   signed out, which is the recoverable direction: the sign-in screen
+     *   works, where a stuck skeleton does not.
+     */
+    const deadline = setTimeout(() => {
+      if (!active || restored.current) return;
+      restored.current = true;
+      setStatus((current) => (current === 'loading' ? 'signedOut' : current));
+    }, AUTH_RESTORE_DEADLINE_MS);
 
     const { data: subscription } = supabase.auth.onAuthStateChange((event, next) => {
+      /*
+       * ⚠ INITIAL_SESSION is ignored here, and this is the sign-in flash.
+       *
+       *   Supabase emits INITIAL_SESSION the moment this listener is attached —
+       *   before the stored session has finished being read. On the web that
+       *   first event frequently carries `next = null`, and the two lines below
+       *   used to take it at face value: `status` left 'loading' and landed on
+       *   'signedOut'. Every guard that waits on 'loading' let go, the parcel
+       *   screen painted its sign-in prompt, and a moment later `getSession()`
+       *   resolved with a perfectly good session and it all flipped back.
+       *
+       *   One frame is all a wrong answer needs. `getSession()` above is the
+       *   authority on the initial state — it awaits the storage read — so this
+       *   listener's job is changes, not the beginning.
+       *
+       * ⚠ And no event may report signed-out before the restore has finished.
+       *
+       *   Supabase has more than one way to announce "nothing yet" on startup,
+       *   and each new one would reintroduce exactly this bug. Rather than
+       *   enumerate them, anything arriving empty before `restored` is set is
+       *   left for `getSession()` to answer. A real sign-out cannot happen
+       *   before the restore completes: there is nothing to sign out of.
+       */
+      if (event === 'INITIAL_SESSION') return;
+      if (!next && !restored.current) return;
+
       setSession(next);
       setStatus(next ? 'signedIn' : 'signedOut');
 
@@ -487,6 +559,7 @@ export function SessionProvider({
 
     return () => {
       active = false;
+      clearTimeout(deadline);
       subscription.subscription.unsubscribe();
     };
   }, []);
