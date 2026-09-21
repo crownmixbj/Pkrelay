@@ -30,7 +30,7 @@ import {
   Wallet,
   X,
 } from 'lucide-react-native';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Modal,
   Platform,
@@ -53,6 +53,7 @@ import { SettingsMenu } from '@/components/ui/settings-menu';
 import { useSession } from '@/store/session';
 import { useExperience } from '@/hooks/use-experience';
 import { routeAllowed } from '@/lib/experience';
+import { inlineLinksFit, navFitMeasured, type NavFitInput } from '@/lib/nav-fit';
 
 /** Deep navy for nav links at rest — 11.2:1 on the white capsule. */
 const NavLinkColor = '#0B3C5D';
@@ -107,6 +108,17 @@ function initials(name: string | undefined): string {
  *   the hamburger already opens, which is what a web app is expected to do.
  */
 const LABEL_BREAKPOINT = 1040;
+
+/**
+ * The capsule's own spacing, in one place because the fit arithmetic needs the
+ * same numbers the stylesheet uses. Reading them from two places is how the
+ * measurement quietly stops matching the thing it measures.
+ */
+const CAPSULE_PADDING_X = Spacing.four;
+const CAPSULE_GAP = Spacing.three;
+
+/** Below this the probe is not rendered at all — see `worthMeasuring`. */
+const MEASURE_FLOOR = 820;
 
 /**
  * The admin entry adds an eighth link, and "Applications" is a long word.
@@ -556,7 +568,64 @@ export function AppNavBar() {
    *   tier. Inline links now exist only when they can carry their labels, so
    *   there is no width at which a link renders without its name.
    */
-  const showLabels = width >= (isAdmin ? ADMIN_LABEL_BREAKPOINT : LABEL_BREAKPOINT);
+  /*
+   * ⚠ The header now measures itself instead of consulting a constant.
+   *
+   *   `LABEL_BREAKPOINT` was written down after measuring the row in a browser,
+   *   and the comments above record it going stale twice. It survives below as
+   *   the answer for the first frame and for native, where there is no inline
+   *   row to fit — but on web the browser is asked, because the browser is the
+   *   only thing that knows how wide this particular row is for this particular
+   *   person.
+   *
+   *   Nothing here oscillates: the three measured clusters keep their widths
+   *   whether or not the links are showing, and the links are measured off
+   *   screen at their natural size rather than in the slot they are competing
+   *   for. So the inputs do not move when the output flips.
+   */
+  const [fit, setFit] = useState<Omit<NavFitInput, 'horizontalPadding' | 'gap'>>({
+    capsuleWidth: 0,
+    logoWidth: 0,
+    actionsWidth: 0,
+    linksWidth: 0,
+  });
+
+  /** Only the width matters, and only when it changes — onLayout fires on every paint. */
+  const setMeasurement = useCallback((key: keyof typeof fit, value: number) => {
+    const rounded = Math.round(value);
+    setFit((current) => (current[key] === rounded ? current : { ...current, [key]: rounded }));
+  }, []);
+
+  const fitInput: NavFitInput = {
+    ...fit,
+    horizontalPadding: CAPSULE_PADDING_X,
+    gap: CAPSULE_GAP,
+  };
+
+  /*
+   * The old constant, kept for the frame before onLayout has reported and for
+   * native, where these links never render inline at all. Being wrong here for
+   * one frame on a 1024px window is the failure mode, and it is the one the
+   * measurement then corrects — in the direction of showing more, never less.
+   */
+  const breakpointSaysShow = width >= (isAdmin ? ADMIN_LABEL_BREAKPOINT : LABEL_BREAKPOINT);
+
+  const showLabels =
+    Platform.OS === 'web' && navFitMeasured(fitInput)
+      ? inlineLinksFit(fitInput)
+      : breakpointSaysShow;
+
+  /*
+   * Whether to render the off-screen probe at all.
+   *
+   * Measuring costs a second render of every link, so it is not done on a phone
+   * where the answer cannot change: below this there is no width at which a
+   * seven-item labelled row could fit, and the drawer is the expected pattern
+   * anyway. 820 is comfortably under the narrowest plausible fit and well over
+   * any phone.
+   */
+  const worthMeasuring = Platform.OS === 'web' && width >= MEASURE_FLOOR;
+
   const tight = width < TIGHT_BREAKPOINT;
 
   /**
@@ -656,6 +725,7 @@ export function AppNavBar() {
           { paddingTop: insets.top + Spacing.two + 4 },
         ]}>
         <View
+          onLayout={(event) => setMeasurement('capsuleWidth', event.nativeEvent.layout.width)}
           style={[
             styles.capsule,
             tight && styles.capsuleTight,
@@ -669,6 +739,7 @@ export function AppNavBar() {
           {/* Logo */}
           <Pressable
             onPress={() => router.push('/')}
+            onLayout={(event) => setMeasurement('logoWidth', event.nativeEvent.layout.width)}
             accessibilityRole="button"
             accessibilityLabel="PKRELAY, go to home"
             style={({ pressed }) => [styles.logo, pressed && styles.pressed]}>
@@ -700,7 +771,43 @@ export function AppNavBar() {
               ))}
           </View>
 
-          <View style={[styles.actions, tight && styles.actionsTight]}>
+          {/*
+            ⚠ The same row, off screen, at its natural width.
+
+              It is measured here rather than in place because in place it is
+              competing for the space we are asking about: `styles.links` has
+              `flexShrink`, so a row that does not fit reports the width it was
+              squeezed into, which always "fits". Absolutely positioned with no
+              width, it reports what it actually wants.
+
+              Hidden from everything that could notice it: no pointer events, no
+              accessibility tree, zero opacity. It is a ruler, not a control.
+          */}
+          {worthMeasuring && (
+            <View
+              onLayout={(event) => setMeasurement('linksWidth', event.nativeEvent.layout.width)}
+              pointerEvents="none"
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+              style={styles.linksProbe}>
+              {navLinks.map((link, index) => (
+                <NavLinkItem
+                  key={`probe-${link.key}`}
+                  link={link}
+                  active={false}
+                  alignEnd={index >= navLinks.length - 2}
+                  submenuOpen={false}
+                  onSubmenuChange={() => {}}
+                  onPress={() => {}}
+                  onSelectChild={() => {}}
+                />
+              ))}
+            </View>
+          )}
+
+          <View
+            onLayout={(event) => setMeasurement('actionsWidth', event.nativeEvent.layout.width)}
+            style={[styles.actions, tight && styles.actionsTight]}>
             {/*
               Settings.
 
@@ -1335,9 +1442,33 @@ const styles = StyleSheet.create({
   links: {
     flexDirection: 'row',
     alignItems: 'center',
-    // Uniform 24px between every item.
-    gap: Spacing.four,
+    /*
+     * ⚠ 16px, down from 24px, and this is what buys a 1024px window its links.
+     *
+     *   Six gaps between seven items, so the eight pixels are worth 48 across
+     *   the row — the difference between the labelled tier starting at roughly
+     *   1040 and starting comfortably below 1024, which is a laptop window and
+     *   the width this was reported at. 16px is still a normal nav rhythm and
+     *   matches the drawer's own spacing.
+     *
+     *   Revert this one line to go back to the roomier row; the measurement
+     *   below adapts either way, it just collapses sooner.
+     */
+    gap: Spacing.three,
     flexShrink: 1,
+  },
+  /**
+   * The ruler. Out of flow, out of sight, out of the accessibility tree — it
+   * exists so `onLayout` can report the row's natural width.
+   */
+  linksProbe: {
+    position: 'absolute',
+    left: -9999,
+    top: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    opacity: 0,
   },
   /*
    * `linksCompact` sat here — a tighter gap for the icon tier. There is no icon
