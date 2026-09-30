@@ -6,7 +6,7 @@
  *   escaping that is missing from eight of them.
  */
 
-import { resolveRecipient, type EnvRecord } from './environment.ts';
+import { readEnvironment, resolveRecipient, type EnvRecord } from './environment.ts';
 
 /**
  * Escapes text going into the HTML part.
@@ -219,26 +219,6 @@ export function layout(options: {
 }
 
 /**
- * Who Package Relay's mail comes from.
- *
- * ⚠ A constant with an override, rather than a secret that must be set.
- *
- *   This was `env('LOCI_FROM_EMAIL') ?? ''`, and an unset secret meant the
- *   function recorded "LOCI_FROM_EMAIL is not set" against the row and sent
- *   nothing — a deployment step standing between a queued email and a person,
- *   for a value that is not a secret and is the same on every deployment.
- *
- *   `LOCI_FROM_EMAIL` still wins where it is set, because staging uses it to
- *   send from an address that is obviously not production.
- *
- * ⚠ The display name follows the prose rule: `Package Relay`, not `PKRELAY`.
- *   A From line is the most-read user-facing string this system produces.
- *
- * ⚠ The domain has to be verified with Resend before anything sends from it.
- *   An unverified domain is a 403 from the provider, recorded against the row
- *   as `Resend 403: …`, which is the one failure this default cannot prevent.
- */
-/**
  * An absolute URL for an email, or null when one cannot be built.
  *
  * ⚠ A mail client has no page to be relative to.
@@ -326,7 +306,56 @@ export function absoluteUrl(base: string | null | undefined, path = ''): string 
   return `${left}${right}`;
 }
 
-export const DEFAULT_FROM = 'Package Relay <noreply@app.pkrelay.com>';
+/**
+ * Who Package Relay's mail comes from, per environment.
+ *
+ * ⚠ Decided by `LOCI_ENVIRONMENT`, not by a secret somebody has to remember.
+ *
+ *   The sender used to be `DEFAULT_FROM` with a `LOCI_FROM_EMAIL` override, and
+ *   staging was expected to set that override to something "obviously not
+ *   production". Nothing enforced it — a staging project without the secret
+ *   sent test mail from the production address, and a staging project with a
+ *   production value pasted in did the same. The address is now a function of
+ *   the environment the function is already running in, read through the same
+ *   `readEnvironment` that gates recipients, Slack, Dojah and push. There is no
+ *   override: one input, two answers, nothing to drift.
+ *
+ * ⚠ Unset or unrecognised `LOCI_ENVIRONMENT` is production, as everywhere else
+ *   in `environment.ts`. Staging is only ever staging because somebody said so.
+ *
+ * ⚠ No reply-to. Replies go to the From address, which is a `noreply@` box.
+ *   Templates that invite a reply should point people at the support address
+ *   in the body instead.
+ *
+ * ⚠ The display name follows the prose rule: `Package Relay`, not `PKRELAY`.
+ *
+ * ⚠ Each domain has to be verified with Resend separately — `app.pkrelay.com`
+ *   and `staging.pkrelay.com` are two domains to Resend, not one. An unverified
+ *   domain is a 403, recorded against the row as `Resend 403: …`.
+ */
+export const PRODUCTION_FROM = 'Package Relay <noreply@app.pkrelay.com>';
+export const STAGING_FROM = 'Package Relay <noreply@staging.pkrelay.com>';
+
+export function senderFor(env: EnvRecord): string {
+  return readEnvironment(env) === 'staging' ? STAGING_FROM : PRODUCTION_FROM;
+}
+
+/**
+ * The address an email tells people to write to.
+ *
+ * ⚠ Every email names one, because none of them can be replied to.
+ *
+ *   The From address is a `noreply@` box and no reply-to header is sent, so
+ *   "reply to this email" would send somebody's question nowhere. Each
+ *   template points at this address instead. `LOCI_SUPPORT_EMAIL` wins when it
+ *   is set; otherwise this default, so an email never ends without a way to
+ *   reach a person.
+ */
+export const DEFAULT_SUPPORT_EMAIL = 'support@pkrelay.com';
+
+export function supportAddress(configured: string | null | undefined): string {
+  return (configured ?? '').trim() || DEFAULT_SUPPORT_EMAIL;
+}
 
 export type SendResult = { ok: true; id: string | null } | { ok: false; error: string };
 
@@ -338,12 +367,11 @@ export type SendResult = { ok: true; id: string | null } | { ok: false; error: s
  */
 export async function sendEmail(input: {
   apiKey: string;
-  from: string;
   to: string;
   subject: string;
   html: string;
   text: string;
-  replyTo?: string | null;
+  /** Decides both the sender and, on staging, where the mail actually goes. */
   env: EnvRecord;
 }): Promise<SendResult> {
   /*
@@ -370,7 +398,7 @@ export async function sendEmail(input: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: input.from,
+        from: senderFor(input.env),
         to: [destination.to],
         subject: headerSafe(`${destination.subjectPrefix}${input.subject}`),
         html: input.html,
@@ -382,7 +410,7 @@ export async function sendEmail(input: {
          *   the HTML at all.
          */
         text: input.text,
-        ...(input.replyTo ? { reply_to: input.replyTo } : {}),
+        /* No reply_to, deliberately — see `senderFor`. */
       }),
     });
 

@@ -76,10 +76,8 @@ supabase secrets set RESEND_API_KEY="re_..."
 supabase secrets set LOCI_APP_URL="https://app.yourdomain.com"
 supabase secrets set LOCI_SUPPORT_EMAIL="support@yourdomain.com"
 
-# LOCI_FROM_EMAIL is OPTIONAL. Mail comes from DEFAULT_FROM in
-# _shared/email.ts — Package Relay <noreply@app.pkrelay.com> — unless this
-# secret is set, in which case the secret wins. Set it only to send from
-# somewhere else, e.g. an obviously-not-production address on staging.
+# There is no sender secret. From follows LOCI_ENVIRONMENT — see "The
+# sending domain" below.
 
 # ⚠ On staging, also set these two or it will email real people:
 supabase secrets set LOCI_ENVIRONMENT="staging"
@@ -133,30 +131,29 @@ no log line here to find. Store the JWT-format service role key.
 
 ## The sending domain
 
-Mail comes from **`Package Relay <noreply@app.pkrelay.com>`** — `DEFAULT_FROM` in
-`supabase/functions/_shared/email.ts`. It is a constant rather than a required
-secret because it is not a secret and does not vary, and because an unset secret
-used to mean a queued email was marked "LOCI_FROM_EMAIL is not set" and never
-sent.
+The From address is decided by `senderFor()` in
+`supabase/functions/_shared/email.ts`, from `LOCI_ENVIRONMENT`:
 
-⚠ **`app.pkrelay.com` has to be verified in Resend before anything sends from
-it.** Add the domain in the Resend dashboard and publish the DKIM and SPF records
-it gives you. Until that resolves, every send comes back as `Resend 403: …`,
-written onto the row — the one failure this default cannot prevent.
+| `LOCI_ENVIRONMENT` | From |
+| --- | --- |
+| `staging` | `Package Relay <noreply@staging.pkrelay.com>` |
+| anything else, or unset | `Package Relay <noreply@app.pkrelay.com>` |
 
-⚠ A set `LOCI_FROM_EMAIL` still wins. If mail is arriving from something else,
-that secret is set:
+Both `notify-events` and `notify-application` use it. There is no override:
+`LOCI_FROM_EMAIL` is no longer read, so a stale value left in a project's
+secrets does nothing (unset it to keep things tidy). No `reply_to` header is
+sent, so a reply goes to the `noreply@` address.
 
-```bash
-supabase secrets list | grep LOCI_FROM_EMAIL
-supabase secrets unset LOCI_FROM_EMAIL     # to fall back to the default
-```
+⚠ **Each domain has to be verified in Resend on its own.** `app.pkrelay.com`
+and `staging.pkrelay.com` are two domains to Resend. Add each in the Resend
+dashboard and publish the DKIM and SPF records it gives you. Until one
+resolves, every send from that environment comes back as `Resend 403: …`,
+written onto the row.
 
-Note the app's own contact addresses in `src/constants/contact.ts` are still
-`@pkrelay.ng` placeholders with `CONTACT_IS_PLACEHOLDER = true`, so a recipient
-sees mail from `app.pkrelay.com` with support addresses on a different domain.
-Worth reconciling before launch; not something to change quietly, because
-`verify-about.ts` fails if that flag lies.
+The app's contact addresses in `src/constants/contact.ts` are on the same
+domain as the email default: `support@`, `business@` and `privacy@pkrelay.com`.
+`CONTACT_IS_PLACEHOLDER` is still `true` because the phone number is not real
+yet; flip it once it is and every inbox is staffed.
 
 ## Retries, and flushing a backlog
 

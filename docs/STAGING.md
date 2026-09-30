@@ -88,7 +88,6 @@ supabase secrets set --project-ref <staging-ref> \
   LOCI_ENVIRONMENT="staging" \
   LOCI_STAGING_EMAIL="you@yourdomain.com" \
   RESEND_API_KEY="re_..." \
-  LOCI_FROM_EMAIL="LOCI staging <staging@yourdomain.com>" \
   LOCI_APP_URL="https://<preview>.pages.dev" \
   LOCI_SUPPORT_EMAIL="support@yourdomain.com" \
   GOOGLE_PLACES_KEY="..." \
@@ -97,6 +96,10 @@ supabase secrets set --project-ref <staging-ref> \
 ```
 
 Deliberately absent:
+
+- **`LOCI_FROM_EMAIL`** — no longer read. Staging mail comes from
+  `Package Relay <noreply@staging.pkrelay.com>` because `LOCI_ENVIRONMENT` is
+  `staging`; `staging.pkrelay.com` must be verified in Resend for that to send.
 
 - **`SLACK_WEBHOOK_URL`** — staging skips Slack regardless, so setting it only
   creates the chance of it being read by something added later.

@@ -27,6 +27,7 @@ import {
   headerSafe,
   layout,
   naira,
+  supportAddress,
   whenReadable,
 } from '../_shared/email.ts';
 
@@ -66,10 +67,9 @@ export type Context = {
   supportEmail: string | null;
 };
 
+/* No email can be replied to — the sender is noreply@ — so each names support. */
 const support = (context: Context) =>
-  context.supportEmail
-    ? `Questions? Reply to this email or write to ${context.supportEmail}.`
-    : 'Questions? Reply to this email.';
+  `Questions? Please contact ${supportAddress(context.supportEmail)}.`;
 
 /*
  * ⚠ Through `absoluteUrl`, never by interpolation.
@@ -147,7 +147,7 @@ function applicationRejected(payload: Payload, context: Context): Rendered {
     '',
     reason
       ? `Reason given: ${reason}`
-      : 'No specific reason was recorded against your application. If you would like more detail, reply to this email quoting the reference above and we will look into it.',
+      : `No specific reason was recorded against your application. If you would like more detail, please contact ${supportAddress(context.supportEmail)} quoting the reference above and we will look into it.`,
     '',
     'You are welcome to apply again if your circumstances change — a new vehicle, updated documents, or a different operating city.',
     '',
@@ -164,7 +164,7 @@ function applicationRejected(payload: Payload, context: Context): Rendered {
       intro: `Hi ${name}, we have reviewed your application and we are not able to approve it this time.`,
       bodyHtml: [
         ROW('Reference', reference),
-        ROW('Reason', reason || 'Not recorded — reply and we will look into it'),
+        ROW('Reason', reason || `Not recorded — please contact ${supportAddress(context.supportEmail)}`),
       ].join(''),
       cta: null,
       footerNote: `You can apply again if your circumstances change. ${support(context)}`,
@@ -359,7 +359,7 @@ function senderRejected(payload: Payload, context: Context): Rendered {
     '',
     reason
       ? `What we found: ${reason}`
-      : 'No specific reason was recorded. Reply to this email and we will look into it.',
+      : `No specific reason was recorded. Please contact ${supportAddress(context.supportEmail)} and we will look into it.`,
     '',
     'You can submit again from your profile — most of the time it only takes a clearer photo.',
     url ? `Submit again: ${url}` : '',
@@ -380,7 +380,7 @@ function senderRejected(payload: Payload, context: Context): Rendered {
       heading: 'We could not accept that ID',
       intro:
         'We looked at the ID you submitted and we are not able to accept it as it is. You can submit again — most of the time it only takes a clearer photo.',
-      bodyHtml: ROW('What we found', reason || 'Not recorded — reply and we will look into it'),
+      bodyHtml: ROW('What we found', reason || `Not recorded — please contact ${supportAddress(context.supportEmail)}`),
       cta: url ? { label: 'Submit again', url } : null,
       footerNote: `Until you do, you will not be able to post a parcel. ${support(context)}`,
     }),
@@ -653,7 +653,7 @@ function payoutPaid(payload: Payload, context: Context): Rendered {
     at ? `Processed: ${at}` : '',
     hint ? `Account ending: ${hint}` : '',
     '',
-    'Bank transfers usually land the same day. If it has not arrived within one working day, reply to this email.',
+    `Bank transfers usually land the same day. If it has not arrived within one working day, please contact ${supportAddress(context.supportEmail)}.`,
     '',
     url ? `See your wallet: ${url}` : '',
     '',
@@ -676,7 +676,7 @@ function payoutPaid(payload: Payload, context: Context): Rendered {
       ].join(''),
       cta: url ? { label: 'See your wallet', url } : null,
       footerNote:
-        'Bank transfers usually land the same day. If it has not arrived within one working day, reply to this email.',
+        `Bank transfers usually land the same day. If it has not arrived within one working day, please contact ${supportAddress(context.supportEmail)}.`,
     }),
   };
 }

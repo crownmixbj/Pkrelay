@@ -136,6 +136,42 @@ for (const kind of EMAIL_KINDS) {
   );
 }
 
+// ------------------------------------------- nobody is told to reply ----
+
+/*
+ * ⚠ Mail comes from a noreply@ address with no reply-to header.
+ *
+ *   An email that says "reply to this email" sends somebody's question to a box
+ *   nobody reads. Every kind, with and without a configured support address,
+ *   must point at support instead.
+ */
+for (const kind of EMAIL_KINDS) {
+  for (const [label, context] of [
+    ['configured', CONTEXT],
+    ['unconfigured', { appUrl: null, supportEmail: null }],
+  ] as const) {
+    const mail = render(kind, HOSTILE, context);
+    if (!mail) continue;
+    const body = `${mail.text}\n${mail.html}`;
+    check(
+      `${kind} (${label}) never asks for a reply`,
+      !/\breply\b/i.test(body),
+      'replies go to noreply@ and are never read',
+    );
+  }
+}
+check(
+  'the configured support address is the one named',
+  render('driver_application_rejected', {}, CONTEXT)!.text.includes('support@pkrelay.test'),
+);
+check(
+  'and without one, the default is named rather than nothing',
+  render('driver_application_rejected', {}, { appUrl: null, supportEmail: null })!.text.includes(
+    'support@pkrelay.com',
+  ),
+  'an email that cannot be replied to must still say how to reach a person',
+);
+
 // --------------------------------------------- what must never be in one ----
 
 /*

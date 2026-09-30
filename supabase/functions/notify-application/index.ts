@@ -14,13 +14,13 @@
  *
  *   supabase functions deploy notify-application
  *   supabase secrets set RESEND_API_KEY="re_..."
- *   supabase secrets set LOCI_FROM_EMAIL="Package Relay <noreply@yourdomain.com>"
+ *   # The sender follows LOCI_ENVIRONMENT — see senderFor in _shared/email.ts.
  *
  * Called by the `on_driver_application_created` trigger in
  * `20250101000005_storage_and_alerts.sql`.
  */
 
-import { DEFAULT_FROM } from '../_shared/email.ts';
+import { senderFor } from '../_shared/email.ts';
 import { resolveRecipient, slackEnabled } from '../_shared/environment.ts';
 
 import { renderApplicationEmail, headerSafe } from './email.ts';
@@ -138,15 +138,7 @@ type Outcome = { ok: true } | { ok: false; error: string } | { skipped: string }
  */
 async function sendApplicantEmail(payload: ApplicationPayload): Promise<Outcome> {
   const apiKey = env('RESEND_API_KEY');
-  /*
-   * ⚠ The same default as `notify-events`, so the two emails a driver receives
-   *   do not come from two different addresses — or, worse, so one sends and the
-   *   other silently does not because a secret was set for one deployment step
-   *   and not another.
-   */
-  const from = (env('LOCI_FROM_EMAIL') ?? '').trim() || DEFAULT_FROM;
-
-  /* `from` now always has a value, so only the key can be missing. */
+  /* Only the key can be missing: the sender is derived below, never configured. */
   if (!apiKey) {
     console.warn('RESEND_API_KEY is not set — confirmation email skipped.');
     return { skipped: 'no email provider configured' };
@@ -162,10 +154,11 @@ async function sendApplicantEmail(payload: ApplicationPayload): Promise<Outcome>
    *   a test — a driver who filled in the real form. On staging it goes to the
    *   test inbox instead, and if no test inbox is configured it goes nowhere.
    */
-  const destination = resolveRecipient(to, {
+  const environment = {
     LOCI_ENVIRONMENT: env('LOCI_ENVIRONMENT') ?? undefined,
     LOCI_STAGING_EMAIL: env('LOCI_STAGING_EMAIL') ?? undefined,
-  });
+  };
+  const destination = resolveRecipient(to, environment);
   if (!destination) {
     console.warn('staging has no LOCI_STAGING_EMAIL — confirmation email skipped.');
     return { skipped: 'staging has no test inbox configured' };
@@ -191,17 +184,16 @@ async function sendApplicantEmail(payload: ApplicationPayload): Promise<Outcome>
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: headerSafe(from),
+        /*
+         * ⚠ The same `senderFor` as `notify-events`, so the two emails a driver
+         *   receives never come from two different addresses.
+         */
+        from: senderFor(environment),
         to: [headerSafe(destination.to)],
         subject: headerSafe(`${destination.subjectPrefix}${subject}`),
         text,
         html,
-        /*
-         * Replies go to a human. A confirmation the applicant cannot answer is
-         * where "I sent the wrong account number" turns into a support ticket
-         * nobody ever files.
-         */
-        reply_to: env('LOCI_SUPPORT_EMAIL') ?? undefined,
+        /* No reply_to, deliberately — see `senderFor` in _shared/email.ts. */
       }),
     });
 

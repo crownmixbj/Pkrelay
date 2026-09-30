@@ -145,7 +145,7 @@ check(
 const application = code(read('supabase/functions/notify-application/index.ts'));
 check(
   'the applicant confirmation resolves the recipient too',
-  application.includes('resolveRecipient(to, {') && application.includes('destination.to'),
+  application.includes('resolveRecipient(to, environment)') && application.includes('destination.to'),
   'it has its own Resend call rather than going through _shared/email.ts',
 );
 check(

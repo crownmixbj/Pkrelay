@@ -20,6 +20,11 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { isServiceRole, jwtRole, timingSafeEqual } from '../supabase/functions/_shared/service-role';
+import {
+  PRODUCTION_FROM,
+  STAGING_FROM,
+  senderFor,
+} from '../supabase/functions/_shared/email';
 
 let failures = 0;
 
@@ -102,49 +107,71 @@ check('the comparison is length-guarded', !timingSafeEqual('abc', 'abcd'));
 // ------------------------------------------------------- who it comes from --
 
 /*
- * ⚠ The sender is a constant with an override, not a secret that must be set.
+ * ⚠ The sender is a function of LOCI_ENVIRONMENT, with no override.
  *
- *   It was `env('LOCI_FROM_EMAIL') ?? ''`, and an unset secret meant the row was
- *   marked "LOCI_FROM_EMAIL is not set" and nothing was sent — a deployment step
- *   standing between a queued email and a person, for a value that is not a
- *   secret and does not vary.
+ *   It was a constant plus a `LOCI_FROM_EMAIL` secret that staging was meant to
+ *   set. Nothing enforced that, so staging could send test mail from the
+ *   production address. Now the environment decides, the same way it decides
+ *   recipients, Slack, Dojah and push.
  */
-const shared = read('supabase/functions/_shared/email.ts');
-const defaultFrom = /DEFAULT_FROM = '([^']+)'/.exec(shared)?.[1] ?? '';
+check(
+  'production sends from noreply@app.pkrelay.com',
+  PRODUCTION_FROM === 'Package Relay <noreply@app.pkrelay.com>',
+  PRODUCTION_FROM,
+);
+check(
+  'staging sends from noreply@staging.pkrelay.com',
+  STAGING_FROM === 'Package Relay <noreply@staging.pkrelay.com>',
+  STAGING_FROM,
+);
+check('an unset environment is production', senderFor({}) === PRODUCTION_FROM);
+check('"staging" is staging', senderFor({ LOCI_ENVIRONMENT: 'staging' }) === STAGING_FROM);
+check(
+  'a padded, capitalised value is still staging',
+  senderFor({ LOCI_ENVIRONMENT: '  Staging ' }) === STAGING_FROM,
+);
+check(
+  'a typo is production, never staging',
+  senderFor({ LOCI_ENVIRONMENT: 'stagng' }) === PRODUCTION_FROM,
+);
+check(
+  'and LOCI_FROM_EMAIL no longer overrides anything',
+  senderFor({ LOCI_ENVIRONMENT: 'staging', LOCI_FROM_EMAIL: 'Other <x@y.com>' }) === STAGING_FROM,
+);
+for (const from of [PRODUCTION_FROM, STAGING_FROM]) {
+  check(
+    `"${from}" is Resend's "Name <address>" shape, branded in prose`,
+    /^Package Relay <[^@\s]+@[^@\s]+\.[a-z]{2,}>$/.test(from),
+  );
+}
 
-check('there is a default sender', defaultFrom.length > 0, 'nothing to fall back to');
+const strip = (source: string) => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+const shared = strip(read('supabase/functions/_shared/email.ts'));
+const application = strip(read('supabase/functions/notify-application/index.ts'));
+const handlerCode = strip(handler);
+
 check(
-  'it is a real address on the app domain',
-  /^[^<]*<[^@\s]+@[^@\s]+\.[a-z]{2,}>$/.test(defaultFrom),
-  `DEFAULT_FROM is "${defaultFrom}" — Resend needs "Name <address>"`,
-);
-/*
- * The display name follows the prose rule — `Package Relay`, not `PKRELAY`. A
- * From line is the most-read user-facing string this system produces.
- */
-check(
-  'and it is branded in prose, not in the wordmark',
-  defaultFrom.startsWith('Package Relay <'),
-  `DEFAULT_FROM is "${defaultFrom}"`,
+  'the shared sender derives From from the environment',
+  shared.includes('from: senderFor(input.env)'),
+  'the chokepoint every notify-events template goes through',
 );
 check(
-  'the handler falls back to it',
-  /const FROM = \(env\('LOCI_FROM_EMAIL'\) \?\? ''\)\.trim\(\) \|\| DEFAULT_FROM/.test(handler),
-  'a whitespace-only secret must fall back too, which `??` alone does not do',
+  'the application confirmation uses the same function',
+  application.includes('from: senderFor(environment)'),
+  'two functions email a driver; two addresses would be two reputations to warm up',
 );
-check(
-  'and an unset sender is no longer a reason not to send',
-  !handler.includes("LOCI_FROM_EMAIL is not set"),
-  'that branch recorded a refusal for a value the code can supply itself',
-);
-/*
- * Both functions that email a driver use the same one. Two addresses would be
- * two reputations to warm up and two things for a recipient to distrust.
- */
-check(
-  'the application confirmation sends from the same address',
-  read('supabase/functions/notify-application/index.ts').includes('|| DEFAULT_FROM'),
-);
+for (const [name, source] of [
+  ['_shared/email.ts', shared],
+  ['notify-events/index.ts', handlerCode],
+  ['notify-application/index.ts', application],
+] as const) {
+  check(`${name} never reads LOCI_FROM_EMAIL`, !source.includes('LOCI_FROM_EMAIL'));
+  check(
+    `${name} sets no reply-to header`,
+    !/reply_to|replyTo/.test(source),
+    'replies go to the From address by design',
+  );
+}
 
 // ------------------------------------------- every exit leaves a record ----
 

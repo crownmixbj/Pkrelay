@@ -235,7 +235,7 @@ function Privacy() {
           </View>
         ))}
         <Text style={[styles.rightsFootnote, { color: theme.textMuted }]}>
-          Exercise any of these by writing to privacy@pkrelay.ng. Under the NDPR we must answer within
+          Exercise any of these by writing to privacy@pkrelay.com. Under the NDPR we must answer within
           30 days.
         </Text>
       </Card>

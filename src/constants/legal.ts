@@ -93,7 +93,7 @@ export const TERMS: Clause[] = [
   {
     key: 'data',
     title: 'Contact details on a job',
-    body: 'A driver sees the addresses and phone numbers on a job so they can complete it. Using them for anything else ends their access. If that happens to you, write to privacy@pkrelay.ng.',
+    body: 'A driver sees the addresses and phone numbers on a job so they can complete it. Using them for anything else ends their access. If that happens to you, write to privacy@pkrelay.com.',
   },
 ];
 

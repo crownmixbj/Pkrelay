@@ -72,10 +72,12 @@ supabase functions deploy notify-application
 ```bash
 # --- Applicant confirmation email -------------------------------------------
 supabase secrets set RESEND_API_KEY="re_..."
-# LOCI_FROM_EMAIL is optional — defaults to DEFAULT_FROM in _shared/email.ts
-# supabase secrets set LOCI_FROM_EMAIL="Package Relay <noreply@app.pkrelay.com>"
+# No sender secret: From follows LOCI_ENVIRONMENT (senderFor in _shared/email.ts)
+#   production -> Package Relay <noreply@app.pkrelay.com>
+#   staging    -> Package Relay <noreply@staging.pkrelay.com>
+# No reply-to header is set, so replies go to the noreply@ address.
 
-# Optional but strongly recommended: replies land somewhere a human reads.
+# Shown in the email body as the address to write to.
 supabase secrets set LOCI_SUPPORT_EMAIL="support@yourdomain.com"
 
 # --- Ops alert ---------------------------------------------------------------
@@ -108,8 +110,8 @@ Swapping to SendGrid or Postmark means editing `sendApplicantEmail` in
 `index.ts` — one function. The template and the orchestration do not know which
 provider is in use.
 
-⚠ `LOCI_FROM_EMAIL` must be on a domain you have verified with the provider.
-Sending as `@gmail.com` will fail DMARC and be rejected or junked.
+⚠ Both sending domains — `app.pkrelay.com` and `staging.pkrelay.com` — must be
+verified with the provider separately. An unverified domain is a 403.
 
 ### Point the trigger at the function
 

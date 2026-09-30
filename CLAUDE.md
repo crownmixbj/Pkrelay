@@ -80,8 +80,9 @@ turn the suite red. Run `npm run verify` before declaring anything done.
   `src/constants/site.ts` holds the tab title, the meta description and the
   share-card image, read by both `src/app/+html.tsx` (the head tags a crawler
   sees) and the root layout (which owns the one and only `<title>`).
-- `src/constants/contact.ts` has `CONTACT_IS_PLACEHOLDER = true`; the
-  addresses on `pkrelay.ng` are placeholders on a domain nobody owns, and
+- `src/constants/contact.ts` has `CONTACT_IS_PLACEHOLDER = true`. The
+  support, business and privacy addresses are on `pkrelay.com` (moved from
+  `pkrelay.ng`, Sep 2026); the phone number is still a placeholder.
   `verify-about.ts` fails if the flag lies.
 - `supabase/functions/_shared/environment.ts` is the single source of truth
   for which deployment a function is in. Nothing else may read `Deno.env`
@@ -237,7 +238,7 @@ by how it sounds.
   characters and iOS truncates it to `Package Rela…`, so the short form wins
   here even though a user reads it;
 - the build stamp in `settings-menu.tsx` that people copy into bug reports;
-- domains and addresses, which are lower case: `pkrelay.ng`, `support@`,
+- domains and addresses, which are lower case: `pkrelay.com`, `support@`,
   `business@`, `privacy@`, and the `pkrelay.example` / `pkrelay.test` fixtures;
 - code identifiers, variables and file names.
 
@@ -274,7 +275,7 @@ same pass, both times.
 Everything below still says `loci` **on purpose.** None of it is a missed
 find-and-replace. Renaming any of it is a separate, riskier job:
 
-1. **Config identifiers** — `LOCI_ENVIRONMENT`, `LOCI_FROM_EMAIL`,
+1. **Config identifiers** — `LOCI_ENVIRONMENT`,
    `LOCI_STAGING_EMAIL`, `LOCI_SUPPORT_EMAIL`, `LOCI_APP_URL`, the
    `LociEnvironment` type. Renaming these means re-setting secrets in
    Supabase, EAS and Cloudflare Pages in step with the deploy, or staging

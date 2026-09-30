@@ -37,13 +37,13 @@
  * Deploy:
  *   supabase functions deploy notify-events
  *   supabase secrets set RESEND_API_KEY="re_..."
- *   supabase secrets set LOCI_FROM_EMAIL="…"   # optional; defaults to DEFAULT_FROM
+ *   # The sender is not a secret: it follows LOCI_ENVIRONMENT (see senderFor).
  *   supabase secrets set LOCI_APP_URL="https://app.yourdomain.com"
  *   supabase secrets set LOCI_SUPPORT_EMAIL="support@yourdomain.com"
  */
 
 import { json, preflight } from '../_shared/cors.ts';
-import { absoluteUrl, DEFAULT_FROM, sendEmail } from '../_shared/email.ts';
+import { absoluteUrl, sendEmail } from '../_shared/email.ts';
 import { render } from './templates.ts';
 import { isServiceRole, logger } from '../_shared/service-role.ts';
 
@@ -52,8 +52,6 @@ const env = (key: string) => Deno.env.get(key) ?? null;
 const SUPABASE_URL = env('SUPABASE_URL') ?? '';
 const SERVICE_KEY = env('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const RESEND_KEY = env('RESEND_API_KEY') ?? '';
-/* `LOCI_FROM_EMAIL` overrides it; a whitespace-only secret does not. */
-const FROM = (env('LOCI_FROM_EMAIL') ?? '').trim() || DEFAULT_FROM;
 const APP_URL = env('LOCI_APP_URL');
 const SUPPORT_EMAIL = env('LOCI_SUPPORT_EMAIL');
 
@@ -268,8 +266,8 @@ Deno.serve(async (request: Request) => {
      * Not configured is recorded rather than thrown, so the row shows why it is
      * sitting there instead of looking like a provider outage.
      *
-     * Only the key can be missing now: the sender falls back to `DEFAULT_FROM`,
-     * so an unset `LOCI_FROM_EMAIL` is no longer a reason not to send.
+     * Only the key can be missing now: the sender is derived from
+     * `LOCI_ENVIRONMENT` inside `sendEmail`, so it can never be unset.
      */
     const why = 'RESEND_API_KEY is not set';
     log('unconfigured', { outbox: outboxId, why });
@@ -333,12 +331,10 @@ Deno.serve(async (request: Request) => {
 
   const result = await sendEmail({
     apiKey: RESEND_KEY,
-    from: FROM,
     to: row.recipient,
     subject: rendered.subject,
     html: rendered.html,
     text: rendered.text,
-    replyTo: SUPPORT_EMAIL,
     env: {
       LOCI_ENVIRONMENT: env('LOCI_ENVIRONMENT') ?? undefined,
       LOCI_STAGING_EMAIL: env('LOCI_STAGING_EMAIL') ?? undefined,
