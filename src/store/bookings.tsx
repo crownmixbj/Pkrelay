@@ -7,20 +7,54 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { AppState } from 'react-native';
 
 import { errorMessage } from '@/lib/errors';
 import { schemaGapMessage } from '@/lib/schema-gap';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import { claimBooking, fetchBookings, insertBooking } from '@/store/bookings-remote';
+import {
+  claimBooking,
+  fetchBookings,
+  insertBooking,
+  subscribeToBookings,
+} from '@/store/bookings-remote';
+import { findParcel } from '@/lib/parcel-link';
 import { SESSION_USER, useSession } from '@/store/session';
 
 /**
  * What's inside the parcel. "Fragile" is deliberately absent — fragility is a
  * handling flag (`fragile`) that can apply to any category.
+ *
+ * ⚠ "Perishables" was here and is gone, and the reason is in the Terms.
+ *
+ *   `constants/legal.ts` forbids "nothing perishable that will spoil in
+ *   transit", and the claims section of `constants/services.ts` excludes
+ *   perishables from cover. Offering it in the picker invited exactly the
+ *   booking the Terms refuse and the cover will not pay for — a sender chose
+ *   it in good faith, and the first they heard otherwise was a driver
+ *   declining the parcel or a claim being turned down.
  */
-export const CATEGORIES = ['Electronics', 'Documents', 'Clothing', 'Perishables', 'Other'] as const;
+export const CATEGORIES = ['Electronics', 'Documents', 'Clothing', 'Other'] as const;
 
 export type Category = (typeof CATEGORIES)[number];
+
+/**
+ * A stored value narrowed back to a category this app still offers.
+ *
+ * ⚠ Needed because a removed category outlives its removal.
+ *
+ *   The booking form writes every keystroke to an on-device draft, and
+ *   `mergeDraft` copies whatever it finds there onto the current shape without
+ *   looking at it. A draft saved before this edit still says "Perishables", so
+ *   without this the one path left into the database is a form somebody started
+ *   last week. It also covers a phone that has not taken the new bundle yet.
+ *
+ *   Same shape as `asCategory` in `store/support-tickets.ts`, for the same
+ *   reason: the stored value and the offered list are allowed to disagree.
+ */
+export function asCategory(value: unknown): Category {
+  return CATEGORIES.includes(value as Category) ? (value as Category) : 'Other';
+}
 
 /**
  * One hub per state — the state capital, or the primary commercial city where
@@ -205,6 +239,25 @@ export const BOOKING_STAGES = [
 export type BookingStage = (typeof BOOKING_STAGES)[number] | 'Cancelled';
 
 /**
+ * Where a parcel's fare has got to.
+ *
+ *   pending   posted, not paid for, invisible to every driver
+ *   paid      verified against the gateway, and dispatched
+ *   waived    Package Relay chose not to charge for this one
+ *   refunded  charged and given back
+ *
+ * 'waived' and 'refunded' have no path in the app yet — they exist so the
+ * eventual admin action has something true to write rather than reusing 'paid'
+ * and losing the distinction. Both count as settled everywhere it matters.
+ */
+export type PaymentStatus = 'pending' | 'paid' | 'waived' | 'refunded';
+
+/** True while a parcel is still waiting on its fare. */
+export function isAwaitingPayment(booking: Booking): boolean {
+  return booking.paymentStatus === 'pending';
+}
+
+/**
  * Where a parcel changes hands at each end of the journey.
  *
  * - `hub` — a Package Relay partner hub (see `app/(tabs)/locations.tsx`). The sender
@@ -341,6 +394,30 @@ export type Booking = {
   createdAt: string;
 
   /**
+   * Whether the fare has actually been collected.
+   *
+   * ⚠ A separate axis from `status`, deliberately.
+   *
+   *   'Pending Payment' was the obvious thing to add to `BOOKING_STAGES`, and
+   *   it would have been wrong: the stages are the journey a parcel makes, and
+   *   every `stageIndex`, every progress bar, `advance_booking`,
+   *   `cancellation_allowed` and the notification triggers all read them as
+   *   such. Money is not a place the parcel is. 20250101000011_cancellation.sql
+   *   made the same argument for 'Cancelled' and accepted it only because a
+   *   cancelled parcel genuinely stops there.
+   *
+   *   So a parcel awaiting payment is `status: 'Booked'` — which is true, it is
+   *   booked — with `paymentStatus: 'pending'`. Nothing about the pipeline had
+   *   to learn a new stage, and the two questions stay separately answerable.
+   *
+   * Server-owned in every mode: `bookings_guard_payment` refuses a client that
+   * tries to write it. See 20250101000056_parcel_payments.sql.
+   */
+  paymentStatus: PaymentStatus;
+  /** When the charge was verified, or null while it has not been. */
+  paidAt: string | null;
+
+  /**
    * When each irreversible step actually happened, and the evidence for the
    * last one. See `supabase/migrations/20250101000010_delivery.sql`.
    *
@@ -382,6 +459,10 @@ export type NewBookingInput = Omit<
   | 'proofNote'
   | 'cancelledAt'
   | 'cancellationReason'
+  // Written by payment verification, never by the form. The insert policy
+  // refuses any value but 'pending'.
+  | 'paymentStatus'
+  | 'paidAt'
 > &
   Partial<Pick<Booking, 'status'>>;
 
@@ -671,6 +752,17 @@ export function declaredValueError(raw: string): string | null {
  * driver reads as "Pending Driver Pickup" — clearer than the raw stage name.
  */
 export function statusLabel(booking: Booking): string {
+  /*
+   * ⚠ Ahead of the driver line, because it is the truer sentence.
+   *
+   *   An unpaid parcel reads 'Booked' with no driver, which the line below
+   *   would render as "Pending Driver Pickup" — and no driver can see it, so
+   *   the sender would be waiting on something that is not coming. What they
+   *   are actually waiting on is themselves.
+   */
+  if (isAwaitingPayment(booking)) {
+    return 'Awaiting Payment';
+  }
   if (booking.status === 'Booked' && !booking.driver) {
     return 'Pending Driver Pickup';
   }
@@ -681,6 +773,9 @@ export function statusLabel(booking: Booking): string {
 export type StatusTone = 'primary' | 'success' | 'warning' | 'neutral';
 
 export function statusTone(booking: Booking): StatusTone {
+  // Amber, and before the switch for the reason `statusLabel` gives.
+  if (isAwaitingPayment(booking)) return 'warning';
+
   switch (booking.status) {
     case 'Delivered':
       return 'success';
@@ -739,6 +834,16 @@ function generateTrackingId(): string {
  * edit here, not one per seed row — and so a missing field is a type error
  * rather than an `undefined` that reads as "no record" at a glance.
  */
+/**
+ * The seed data and the offline store predate the gateway and have no way to
+ * reach one, so their parcels are settled by definition. Marking them 'pending'
+ * would empty the demo board — the driver feed hides unpaid parcels.
+ */
+const SETTLED_OFFLINE = {
+  paymentStatus: 'paid',
+  paidAt: null,
+} satisfies Pick<Booking, 'paymentStatus' | 'paidAt'>;
+
 const NO_DELIVERY_RECORD = {
   pickedUpAt: null,
   deliveredAt: null,
@@ -761,6 +866,7 @@ const NO_DELIVERY_RECORD = {
 const SEED_BOOKINGS: Booking[] = [
   {
     ...NO_DELIVERY_RECORD,
+    ...SETTLED_OFFLINE,
     id: 'seed-1',
     trackingId: 'PKG-9821',
     deliveryType: 'interstate',
@@ -798,6 +904,7 @@ const SEED_BOOKINGS: Booking[] = [
   },
   {
     ...NO_DELIVERY_RECORD,
+    ...SETTLED_OFFLINE,
     id: 'seed-2',
     trackingId: 'PKG-4410',
     deliveryType: 'local',
@@ -835,6 +942,7 @@ const SEED_BOOKINGS: Booking[] = [
   },
   {
     ...NO_DELIVERY_RECORD,
+    ...SETTLED_OFFLINE,
     id: 'seed-3',
     trackingId: 'PKG-7305',
     deliveryType: 'interstate',
@@ -872,6 +980,7 @@ const SEED_BOOKINGS: Booking[] = [
   },
   {
     ...NO_DELIVERY_RECORD,
+    ...SETTLED_OFFLINE,
     id: 'seed-4',
     trackingId: 'PKG-2288',
     deliveryType: 'local',
@@ -909,6 +1018,7 @@ const SEED_BOOKINGS: Booking[] = [
   },
   {
     ...NO_DELIVERY_RECORD,
+    ...SETTLED_OFFLINE,
     id: 'seed-5',
     trackingId: 'PKG-6153',
     deliveryType: 'interstate',
@@ -945,6 +1055,8 @@ const SEED_BOOKINGS: Booking[] = [
     createdAt: '2026-08-03T06:20:00.000Z',
   },
 ];
+
+export { findParcel } from '@/lib/parcel-link';
 
 /** What a claim attempt actually did — the UI has to distinguish these. */
 export type ClaimResult = 'claimed' | 'taken' | 'error';
@@ -983,7 +1095,24 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
 
   // Ownership is stamped here rather than by the form, so no screen can post a
   // parcel on someone else's behalf.
-  const { user } = useSession();
+  const { user, status } = useSession();
+
+  /**
+   * True while a stored session is still being restored.
+   *
+   * ⚠ This is the difference between "signed out" and "we do not know yet",
+   *   and conflating them is what made every screen flash an empty state.
+   *
+   *   On a cold load `status` is 'loading' and `user` is null — indistinguishable,
+   *   from here, from a genuine visitor. The effect below saw the null, emptied
+   *   the list and set `loading` to false, so every screen was told "loaded, and
+   *   there is nothing". A beat later the session resolved, `user` arrived, and
+   *   the real list replaced it.
+   *
+   *   That is the flash on a tracking link: not-found, then the parcel. The fix
+   *   is to decide nothing until the session has.
+   */
+  const authSettling = status === 'loading';
 
   const refresh = useCallback(async () => {
     if (!remote) return;
@@ -1006,6 +1135,13 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!remote) return;
 
+    /*
+     * Nothing is decided while the session is restoring — see `authSettling`.
+     * Returning early leaves `loading` exactly as it was, which on a cold load
+     * is the `true` it was initialised with.
+     */
+    if (authSettling) return;
+
     if (!user) {
       setBookings([]);
       setLoading(false);
@@ -1014,6 +1150,55 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
 
     setLoading(true);
     void refresh();
+  }, [remote, user?.id, authSettling, refresh]);
+
+  /*
+   * ⚠ And keep listening, because the most important change to a parcel is one
+   *   no client makes.
+   *
+   *   `payment_status` goes to 'paid' inside `settle_parcel_payment`, called by
+   *   Paystack's webhook — server to server, at a moment this app is not part
+   *   of. Until this subscription existed, the app found out in exactly one
+   *   place: the payment-return screen calling `refresh()` on its way to the
+   *   shipments list. Every other path — a crash on that screen, a closed tab,
+   *   the Back button, a webhook that arrived a minute late — left "Awaiting
+   *   Payment" on a parcel that was paid for until the next cold start.
+   *
+   *   The same applies to a driver accepting: that is `respond_to_offer` on the
+   *   server, and the sender's list learned about it only by being reopened.
+   *
+   * ⚠ Refetches rather than patching the row from the payload.
+   *
+   *   The payload carries the new row and applying it directly would be one
+   *   fewer request. It would also be a second mapping of the table into
+   *   `Booking`, living apart from `rowToBooking`, drifting from it, and doing
+   *   so in the one place nobody looks — a list that is right until it quietly
+   *   is not. A parcel changing state is rare and a refetch is one indexed
+   *   query.
+   */
+  useEffect(() => {
+    if (!remote || !user) return;
+    return subscribeToBookings(user.id, () => void refresh());
+  }, [remote, user?.id, refresh]);
+
+  /*
+   * ⚠ And a refresh when the app comes back, because a websocket is not a
+   *   guarantee.
+   *
+   *   A phone that slept, a laptop lid that closed, a tab left in the
+   *   background: the socket drops and the events sent while it was gone are
+   *   gone with it. Realtime resubscribes but does not replay. Whatever changed
+   *   in the meantime is caught here, on the one event that reliably precedes
+   *   somebody looking at the screen.
+   */
+  useEffect(() => {
+    if (!remote || !user) return;
+
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next === 'active') void refresh();
+    });
+
+    return () => subscription.remove();
   }, [remote, user?.id, refresh]);
 
   const addBooking = useCallback(
@@ -1037,6 +1222,7 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
           acceptedAt: null,
           createdAt: new Date().toISOString(),
           ...NO_DELIVERY_RECORD,
+          ...SETTLED_OFFLINE,
         };
         setBookings((prev) => [booking, ...prev]);
         return booking;
@@ -1116,13 +1302,37 @@ export function BookingsProvider({ children }: { children: ReactNode }) {
 
   const getBooking = useCallback(
     (trackingId: string) =>
-      bookings.find((booking) => booking.trackingId.toLowerCase() === trackingId.toLowerCase()),
+      /*
+       * Delegates rather than matching again. `findParcel` also accepts a uuid,
+       * which is a strict superset for a search box and keeps one answer to
+       * "which parcel is this string".
+       */
+      findParcel(bookings, trackingId),
     [bookings],
   );
 
   const value = useMemo(
-    () => ({ bookings, loading, error, refresh, addBooking, acceptBooking, getBooking }),
-    [bookings, loading, error, refresh, addBooking, acceptBooking, getBooking],
+    () => ({
+      /*
+       * ⚠ Reported as loading while auth settles, even though no fetch is in
+       *   flight yet.
+       *
+       *   A consumer asking "is this loading" means "should I show a
+       *   placeholder or an empty state". Until the session resolves, the
+       *   honest answer is the placeholder — there may well be parcels, we
+       *   simply cannot know. Leaving the flag literal here would push this
+       *   same `status === 'loading'` check into every screen that reads the
+       *   store, and the one that forgets is the one that flashes.
+       */
+      loading: loading || authSettling,
+      bookings,
+      error,
+      refresh,
+      addBooking,
+      acceptBooking,
+      getBooking,
+    }),
+    [bookings, loading, authSettling, error, refresh, addBooking, acceptBooking, getBooking],
   );
 
   return <BookingsContext.Provider value={value}>{children}</BookingsContext.Provider>;
@@ -1379,7 +1589,18 @@ export function activeMovements(
         `!== 'Delivered'` alone put cancelled parcels in the live ticker,
         scrolling past as though they were on their way somewhere.
       */
-      .filter((b) => !isFinished(b))
+      /*
+        And nothing that has not been paid for.
+
+        ⚠ This is the line the ticker complaint was actually about.
+
+          A parcel posted and left unpaid is not moving: no driver has been
+          offered it and none can see it. Putting it in a bar headed LIVE,
+          scrolling past as "On the way to: …", tells the sender their parcel
+          is under way when the only thing standing between it and a driver is
+          a payment they have not made.
+      */
+      .filter((b) => !isFinished(b) && !isAwaitingPayment(b))
       .map((b) => ({
         id: b.id,
         trackingId: b.trackingId,
@@ -1403,6 +1624,14 @@ export function availableBookings(
   return bookings.filter(
     (booking) =>
       !booking.driver &&
+      /*
+        The server already hides these — the select policy in
+        20250101000056_parcel_payments.sql gives a driver no unpaid row at all.
+        Repeated here because this function also runs over the offline seed
+        store, and because a filter that agrees with the policy is one less way
+        for the two to drift apart if the policy is ever relaxed.
+      */
+      !isAwaitingPayment(booking) &&
       (deliveryType === 'all' || booking.deliveryType === deliveryType) &&
       (originCity === 'all' || booking.originCity === originCity),
   );

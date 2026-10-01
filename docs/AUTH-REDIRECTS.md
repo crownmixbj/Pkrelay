@@ -20,9 +20,19 @@ follows is the dashboard configuration it depends on.
 |---|---|---|
 | Google OAuth | `<current origin>/sign-in` | `Linking.createURL('/sign-in')` |
 | Email confirmation | `<current origin>/confirm?email=…` | `https://<LINK_DOMAIN>/confirm`, or `parcelmobile://confirm` |
-| Password reset | project Site URL | project Site URL |
+| Password reset | `<current origin>/update-password?email=…` | `https://<LINK_DOMAIN>/update-password`, or `parcelmobile://update-password` |
 
-Both live in `src/constants/links.ts`.
+All three live in `src/constants/links.ts`.
+
+Password reset used to fall back to the project Site URL, because
+`resetPasswordForEmail` was called without a `redirectTo`. That is the same
+failure email confirmation had: the marketing home reads no parameters, so the
+recovery token was never exchanged, `PASSWORD_RECOVERY` never fired, and the
+person landed on an ordinary home page believing the link had done something.
+
+**No allowlist change was needed for it.** Every entry below is already a `/**`
+pattern, which covers `/update-password?email=…` exactly as it covers
+`/confirm?email=…`. A new *origin*, on the other hand, still needs adding.
 
 **"Current origin" means `window.location.origin` — read at the moment of the
 click, from the page the person is actually on.** That is the whole mechanism,

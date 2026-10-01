@@ -187,6 +187,17 @@ await db.exec(read('supabase/migrations/20250101000039_guarantor_verification.sq
  */
 await db.exec(read('supabase/migrations/20250101000051_guarantor_full_form.sql'));
 
+/*
+ * ⚠ And 54, which is only one line but is the line the portal's copy quotes.
+ *
+ *   It widens the invitation window from seven days to thirty. Running the chain
+ *   without it would test a window the product no longer has, and
+ *   `verify-guarantor-portal` compares the app's stated number against this same
+ *   function — so the two halves of that promise are checked in both places.
+ */
+await db.exec(read('supabase/migrations/20250101000054_guarantor_link_window.sql'));
+await db.exec(read('supabase/migrations/20250101000055_guarantor_invite_payload_refresh.sql'));
+
 const DELE = '22222222-2222-2222-2222-222222222222';
 await db.exec(`insert into auth.users (id) values ('${DELE}');`);
 await db.exec(`insert into public.who (id) values ('${DELE}');`);
@@ -1007,6 +1018,150 @@ await run('an admin sees the record, and four digits of the NIN', async () => {
   await db.exec(`update public.who set admin = false;`);
   const none = await q('select * from public.admin_guarantor_summary($1)', [app.id]);
   check('and it answers nothing to somebody who is not an admin', none.length === 0);
+});
+
+await run('an invitation lasts thirty days, not seven', async () => {
+  const { app } = await submit('window@example.test');
+
+  const [invite] = await q(
+    'select created_at, expires_at from public.guarantor_invitations where application_id = $1',
+    [app.id],
+  );
+  const days = (new Date(invite.expires_at) - new Date(invite.created_at)) / 86400000;
+
+  check('the window is thirty days', Math.round(days) === 30, `${days.toFixed(1)} days`);
+
+  const [window] = await q('select public.guarantor_invitation_window() as w');
+  check('and the function agrees', /30 days|30:00:00/.test(String(window.w.days ?? window.w)),
+    JSON.stringify(window.w));
+});
+
+/*
+ * ⚠ 54 extends live invitations and leaves lapsed ones alone.
+ *
+ *   Without the extension, the guarantor sitting on a seven-day link at the
+ *   moment of the deploy still loses it — which is the person the change is for.
+ *   Resurrecting an *expired* one is a different act: somebody was told it had
+ *   died, and a single-use token that comes back to life is the thing the design
+ *   exists to prevent.
+ */
+await run('the widening reaches links that are still alive, and no further', async () => {
+  const { app: live } = await submit('stillalive@example.test');
+  const { app: dead } = await submit('lapsed@example.test');
+
+  await q(
+    `update public.guarantor_invitations
+        set expires_at = now() + interval '2 days' where application_id = $1`,
+    [live.id],
+  );
+  await q(
+    `update public.guarantor_invitations
+        set expires_at = now() - interval '1 day' where application_id = $1`,
+    [dead.id],
+  );
+
+  await db.exec(read('supabase/migrations/20250101000054_guarantor_link_window.sql'));
+
+  const [after] = await q(
+    'select expires_at from public.guarantor_invitations where application_id = $1',
+    [live.id],
+  );
+  check(
+    'a live invitation is extended',
+    new Date(after.expires_at) > new Date(Date.now() + 20 * 86400000),
+    `expires ${after.expires_at}`,
+  );
+
+  const [lapsed] = await q(
+    'select expires_at from public.guarantor_invitations where application_id = $1',
+    [dead.id],
+  );
+  check(
+    'and a lapsed one stays lapsed',
+    new Date(lapsed.expires_at) < new Date(),
+    'a link somebody was told had expired must not come back to life',
+  );
+});
+
+/*
+ * ⚠ The date the email states has to be the date the link actually dies.
+ *
+ *   54 widened the window and extended live invitations; the emails already
+ *   queued went on saying seven days, because `queue_email` snapshots the
+ *   payload at mint time. Both behaviours are correct and together they send a
+ *   stranger a date to plan around that is not the date the link expires.
+ */
+await run('an unsent invitation email carries the real expiry', async () => {
+  const { app } = await submit('payload@example.test');
+
+  const [invite] = await q(
+    'select id, expires_at from public.guarantor_invitations where application_id = $1',
+    [app.id],
+  );
+
+  /* The state 54 leaves behind: row widened, snapshot stale. */
+  await q(
+    `update public.email_outbox set payload = jsonb_set(payload, '{expires_at}', to_jsonb('2020-01-01T00:00:00+00'::text))
+      where kind = 'guarantor_invitation' and subject_id like $1 || '%'`,
+    [app.id],
+  );
+
+  await db.exec(read('supabase/migrations/20250101000055_guarantor_invite_payload_refresh.sql'));
+
+  const [mail] = await q(
+    `select payload from public.email_outbox
+      where kind = 'guarantor_invitation' and subject_id like $1 || '%'`,
+    [app.id],
+  );
+  const stated = new Date(mail.payload.expires_at);
+  const actual = new Date(invite.expires_at);
+
+  /*
+   * ⚠ Parsed with `new Date`, because that is what the template does.
+   *
+   *   `whenReadable` in `notify-events/templates.ts` reads this field with
+   *   `new Date(iso)` and renders nothing at all when it cannot parse it. A
+   *   refreshed date in a format JS refuses is the same bug as a wrong date,
+   *   wearing a better disguise.
+   */
+  check('the refreshed date is one JavaScript can read', !Number.isNaN(stated.getTime()),
+    `new Date(${JSON.stringify(mail.payload.expires_at)}) is Invalid Date`);
+  check(
+    'the snapshot is refreshed to the invitation row',
+    Math.abs(stated - actual) < 2000,
+    `email says ${mail.payload.expires_at}, the link dies ${invite.expires_at}`,
+  );
+  check('and it is the thirty-day window', stated > new Date(Date.now() + 20 * 86400000));
+});
+
+await run('an email that has already gone out is left exactly as it was', async () => {
+  const { app } = await submit('alreadysent@example.test');
+
+  await q(
+    `update public.email_outbox
+        set sent_at = now(), payload = jsonb_set(payload, '{expires_at}', to_jsonb('2020-01-01T00:00:00+00'::text))
+      where kind = 'guarantor_invitation' and subject_id like $1 || '%'`,
+    [app.id],
+  );
+
+  await db.exec(read('supabase/migrations/20250101000055_guarantor_invite_payload_refresh.sql'));
+
+  const [mail] = await q(
+    `select payload from public.email_outbox
+      where kind = 'guarantor_invitation' and subject_id like $1 || '%'`,
+    [app.id],
+  );
+  /*
+   * ⚠ A sent email is a record of what somebody was told, not a draft.
+   *
+   *   Rewriting it would make the outbox disagree with the inbox it produced,
+   *   which is the one thing this table is for.
+   */
+  check(
+    'the record of what was said stands',
+    String(mail.payload.expires_at).startsWith('2020-01-01'),
+    `it became ${mail.payload.expires_at}`,
+  );
 });
 
 await db.close();

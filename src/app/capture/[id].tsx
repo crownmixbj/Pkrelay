@@ -25,6 +25,32 @@ import { useSession } from '@/store/session';
 /**
  * The screen a QR code opens.
  *
+ * ⚠ Nothing on this screen names a parcel or an application, and that is not
+ *   vagueness — it is the only accurate option available to it.
+ *
+ *   `photo_capture_sessions` carries an owner and an expiry and nothing else, so
+ *   the phone genuinely cannot know which of the two flows opened the browser
+ *   tab. It said "Photo for your parcel", "You started a parcel in a browser"
+ *   and "finish posting your parcel" throughout — and the driver application
+ *   uses this same handoff, so an applicant photographing their face for a job
+ *   was told about a parcel they were not posting, on a screen sitting beside a
+ *   browser tab headed "Photo of you, to finish your application".
+ *
+ *   The fix that names it properly is a `purpose` column on the session, set by
+ *   whichever screen opened it. That is a migration, a change to
+ *   `start_capture_session`, and a read here. Worth doing; not worth guessing in
+ *   the meantime, because a wrong noun is worse than no noun.
+ *
+ * ⚠ And the privacy notice no longer denies the identity check.
+ *
+ *   It read "It is a photo record, not an identity check." `sender-photo-sheet`
+ *   withdrew that exact sentence for being "the most misleading kind of privacy
+ *   copy — a specific, reassuring denial of the thing being done": both photos
+ *   are now compared against the photo on the person's NIN record. The
+ *   withdrawal never reached this screen, so the phone went on telling a driver
+ *   applicant their face was not being matched against a government record at
+ *   the moment they photographed it for exactly that.
+ *
  * Reached only by deep link — `parcelmobile://capture/<session id>` — from a
  * code shown on the web dashboard. It exists to do one thing: take the photo
  * the browser cannot, and hand it back.
@@ -99,7 +125,7 @@ export default function CaptureScreen() {
     return (
       <StickyHeaderScreen>
         <ScrollView contentContainerStyle={screenPadding}>
-          <ScreenHeader brand={false} title="Photo for your parcel" />
+          <ScreenHeader brand={false} title="Photo of you" />
           <Card style={styles.card}>
             <View style={styles.row}>
               <ShieldAlert color={theme.warningOnSoft} size={20} />
@@ -113,7 +139,7 @@ export default function CaptureScreen() {
               to use that computer&apos;s camera instead.
             </Text>
             <Text style={[styles.body, { color: theme.textMuted }]}>
-              Either way your parcel details are still there. Nothing has been lost.
+              Either way, what you were doing in the browser is still there. Nothing has been lost.
             </Text>
           </Card>
         </ScrollView>
@@ -125,10 +151,10 @@ export default function CaptureScreen() {
     return (
       <StickyHeaderScreen>
         <ScrollView contentContainerStyle={screenPadding}>
-          <ScreenHeader brand={false} title="Photo for your parcel" />
+          <ScreenHeader brand={false} title="Photo of you" />
           <SignedOutState
             title="Sign in to continue"
-            message="This code belongs to a parcel on your account. Sign in on this phone with the same account you used in the browser."
+            message="This code belongs to your account. Sign in on this phone with the same account you used in the browser."
             next={`/capture/${sessionId}`}
           />
         </ScrollView>
@@ -192,7 +218,7 @@ export default function CaptureScreen() {
   return (
     <StickyHeaderScreen>
       <ScrollView contentContainerStyle={screenPadding}>
-        <ScreenHeader brand={false} title="Photo for your parcel" />
+        <ScreenHeader brand={false} title="Photo of you" />
 
         {state === 'invalid' ? (
           <Card style={styles.card}>
@@ -202,7 +228,7 @@ export default function CaptureScreen() {
             </View>
             <Text style={[styles.body, { color: theme.textSecondary }]}>
               Codes last ten minutes and work only on the account that made them. Go back to the
-              browser and reload the booking page for a new one.
+              browser and reload the page for a new one.
             </Text>
             <Button label="Done" variant="secondary" onPress={() => router.replace('/')} />
           </Card>
@@ -240,22 +266,22 @@ export default function CaptureScreen() {
             )}
 
             <Text style={[styles.body, { color: theme.textSecondary }]}>
-              Go back to the browser to finish posting your parcel. That page has already continued
-              — you do not need to press anything else here.
+              Go back to the browser to finish. That page has already continued — you do not need
+              to press anything else here.
             </Text>
             <Button label="Done" onPress={() => router.replace('/')} />
           </Card>
         ) : (
           <Card style={styles.card}>
             <Text style={[styles.body, { color: theme.textSecondary }]}>
-              You started a parcel in a browser. Take a photo of yourself here and it will appear on
+              You started this in a browser. Take a photo of yourself here and it will appear on
               that page automatically.
             </Text>
 
             <View style={[styles.notice, { backgroundColor: theme.primarySoft }]}>
               <Text style={[styles.noticeText, { color: theme.primaryOnSoft }]}>
-                Stored privately and visible only to you and to Package Relay staff — never to the driver. It
-                is a photo record, not an identity check.
+                Stored privately and seen only by you and Package Relay staff. It is compared with
+                the photo held on your NIN record.
               </Text>
             </View>
 

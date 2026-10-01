@@ -7,7 +7,7 @@ import { Radius, Spacing, Typography, font } from '@/constants/theme';
 import { useAddressSuggestions } from '@/hooks/use-address-suggestions';
 import { useTheme } from '@/hooks/use-theme';
 import type { Point } from '@/lib/distance';
-import type { Suggestion } from '@/store/places';
+import { unavailableCause, type Suggestion } from '@/store/places';
 
 export type ResolvedAddress = {
   /** Exactly what will be shown to whoever has to find the place. */
@@ -166,7 +166,21 @@ export function AddressLookup({
       {!searching && !resolving && suggestions.length === 0 && (
         <Text style={[styles.note, { color: theme.textMuted }]}>
           {unavailable
-            ? 'Address search is unavailable — type the address in full.'
+            ? /*
+                 ⚠ Which kind of unavailable, not just that it is.
+
+                   This said "Address search is unavailable" for all three
+                   reasons, and the flatness cost real debugging time: a key
+                   Google was refusing looked exactly like a key nobody had set,
+                   which looked exactly like a function nobody had deployed. The
+                   other address field has always named the reason — both now
+                   read the cause from `unavailableCause`.
+
+                   The trailing sentence is this field's own: here the typed
+                   address is accepted as it stands, so it says to type it in
+                   full rather than to pick a city.
+               */
+              `${unavailableCause(unavailable)} — type the address in full.`
             : emptyResult
               ? 'No matches — type the address in full, that works too.'
               : (hint ?? 'Start typing to search, or write the address out in full.')}

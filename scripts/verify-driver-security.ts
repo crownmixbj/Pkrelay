@@ -337,11 +337,24 @@ check(
   flat(signup).includes('identityLabel(identity)'),
   'someone whose selfie failed a government photo match has a right to know before a reviewer decides',
 );
+/*
+ * ⚠ Repointed. This pinned "Your application has still been sent, and a person
+ *   will review it." — a sentence that was true when the photo was taken inside
+ *   the submit handler and false once `LiveSelfieCard` moved the capture above
+ *   the confirmation checkbox. It told an applicant their application was in
+ *   while they were still filling it, and on a submission that then failed it
+ *   sat directly above "Could not submit your application".
+ *
+ *   The property being defended is the one worth keeping: a face that did not
+ *   match a government photo is not a rejection, and a person decides. That is
+ *   asserted here without pinning a claim about a row that may not exist yet.
+ */
 check(
   'and it is not phrased as a rejection',
   flat(read('src/store/capture-session.ts')).includes(
-    'Your application has still been sent, and a person will review it.',
+    'That does not stop your application — a person will review it.',
   ),
+  'a mismatch is as often a ten-year-old NIMC photo as a fraud',
 );
 
 check(

@@ -39,7 +39,12 @@ import {
 import { memberSince, saveOwnDetails } from '@/store/own-details';
 import { useSession } from '@/store/session';
 import { fetchBalance, type Balance } from '@/store/wallet';
-import { isValidNigerianPhone, nigerianPhoneError } from '@/utils/validation';
+import {
+  formatNigerianPhoneInput,
+  isValidNigerianPhone,
+  NG_PHONE_LENGTH,
+  nigerianPhoneError,
+} from '@/utils/validation';
 
 /**
  * Profile — everything about this account on one page, no overlays.
@@ -584,12 +589,22 @@ function PersonalInformation({
         <InlineEditor
           label="Phone number"
           value={draft}
-          onChange={setDraft}
+          /*
+            ⚠ Masked on the way in, not only checked on the way out.
+
+              `save` already refuses a bad number, but without the mask the box
+              accepted twenty-four digits and only objected once Save was pressed.
+              `formatNigerianPhoneInput` plus `maxLength` makes the invalid value
+              untypeable, which is the same guard the guarantor portal and the
+              signup form use — one shape of phone input across the app.
+          */
+          onChange={(next) => setDraft(formatNigerianPhoneInput(next))}
           onSave={() => void save('phone')}
           onCancel={() => setEditing(null)}
           error={error}
           saving={saving}
           keyboardType="phone-pad"
+          maxLength={NG_PHONE_LENGTH}
           notice={
             hasApplication
               ? 'Changing your number pauses your driver approval until an admin reviews it.'
@@ -633,6 +648,7 @@ function InlineEditor({
   saving,
   notice,
   keyboardType,
+  maxLength,
 }: {
   label: string;
   value: string;
@@ -643,6 +659,7 @@ function InlineEditor({
   saving: boolean;
   notice: string | null;
   keyboardType?: 'phone-pad';
+  maxLength?: number;
 }) {
   const theme = useTheme();
 
@@ -654,6 +671,7 @@ function InlineEditor({
         onChangeText={onChange}
         error={error ?? undefined}
         keyboardType={keyboardType}
+        maxLength={maxLength}
         autoCapitalize={keyboardType ? 'none' : 'words'}
         compact
       />

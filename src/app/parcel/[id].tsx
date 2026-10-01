@@ -1,4 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useMemo } from 'react';
 import {
   Ban,
   Bike,
@@ -25,10 +26,14 @@ import { Badge, RoutePill } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/screen';
+import { Skeleton, SkeletonGroup, SkeletonText } from '@/components/ui/skeleton';
 import { CancelAction } from '@/components/ui/cancel-action';
 import { MapView, type MapMarker } from '@/components/ui/map-view';
 import { StickyHeaderScreen } from '@/components/ui/sticky-header';
 import { FontSize, MaxContentWidth, Radius, Spacing, Typography, font } from '@/constants/theme';
+import { findParcel } from '@/lib/parcel-link';
+import { SignedOutState } from '@/components/ui/signed-out-state';
+import { useSession } from '@/store/session';
 import { useTheme } from '@/hooks/use-theme';
 import {
   BOOKING_STAGES,
@@ -60,9 +65,84 @@ export default function ParcelDetailScreen() {
   const theme = useTheme();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { bookings } = useBookings();
+  const { bookings, loading } = useBookings();
+  const { isAuthenticated } = useSession();
 
-  const booking = bookings.find((b) => b.id === id);
+  /**
+   * The parcel, by whichever identifier the link carried.
+   *
+   * ⚠ Two kinds of link reach this screen, and this used to resolve only one.
+   *
+   *   Everything inside the app navigates with the row's uuid —
+   *   `router.navigate(`/parcel/${booking.id}`)` in tracking, parcel-confirmed,
+   *   the driver hub and the notification centre. The emails do not: every
+   *   template in `notify-events/templates.ts` builds
+   *   `/parcel/${encodeURIComponent(tracking_id)}`, because a tracking id is
+   *   the thing a person can read out over the phone and a uuid is not.
+   *
+   *   `bookings.find((b) => b.id === id)` matched the first and silently missed
+   *   the second, so every tracking link ever emailed landed on "Parcel not
+   *   found" — permanently, not briefly.
+   *
+   *   Fixed here rather than by changing the emails, because emails already
+   *   sent cannot be changed. A link in an August delivery notice has to keep
+   *   working, so the screen is what learns to accept both.
+   *
+   * `getBooking` is the store's own tracking-id lookup — case-insensitive,
+   * already written, already used by the tracking screen. Matching the string
+   * again here would be a second implementation of one question.
+   */
+  const booking = useMemo(() => findParcel(bookings, id), [bookings, id]);
+
+  /*
+   * ⚠ Loading is checked before "not found", and that ordering is the fix for
+   *   the flash.
+   *
+   *   `bookings` starts empty and fills after a round trip, so on every cold
+   *   load — which is what a tracking link is — this screen rendered the
+   *   not-found empty state first and swapped it for the parcel a moment later.
+   *   The store has carried a `loading` flag the whole time, documented as
+   *   "True during the first load, so screens can avoid flashing an empty
+   *   state". This screen was not reading it.
+   *
+   *   The skeleton is shaped like the content it precedes, so the swap moves
+   *   nothing. See `components/ui/skeleton.tsx`.
+   */
+  if (!booking && loading) {
+    return <ParcelDetailSkeleton />;
+  }
+
+  /*
+   * ⚠ Signed out is a different answer from not found, and a tracking link is
+   *   the likeliest place to meet it.
+   *
+   *   `bookings` is emptied whenever there is no user, and RLS scopes the table
+   *   to the sender and the assigned driver — so a sender who opens their
+   *   delivery email on a laptop they have never signed in on resolves nothing
+   *   at all. Telling them the parcel "may have been removed" is wrong and
+   *   alarming about their own parcel, moments after we emailed them about it.
+   *
+   *   `next` carries them back here afterwards rather than to the home screen,
+   *   which is the whole reason they followed the link.
+   */
+  if (!booking && !isAuthenticated) {
+    return (
+      <StickyHeaderScreen>
+        <ScrollView
+          style={{ backgroundColor: theme.background }}
+          contentContainerStyle={styles.container}>
+          <View style={styles.content}>
+            <SignedOutState
+              title="Sign in to track this parcel"
+              message="Your parcels are tied to your account, so we need to know it is you before showing this one."
+              next={`/parcel/${id ?? ''}`}
+            />
+          </View>
+          <Footer />
+        </ScrollView>
+      </StickyHeaderScreen>
+    );
+  }
 
   if (!booking) {
     return (
@@ -432,5 +512,75 @@ const styles = StyleSheet.create({
   totalValue: {
     fontSize: FontSize.heading,
     ...font(700),
+  },
+});
+
+/**
+ * The parcel screen, one beat earlier.
+ *
+ * ⚠ It reuses the real screen's style keys rather than defining its own.
+ *
+ *   That is what makes the swap invisible: the badge, title, tracking line and
+ *   pill row occupy the same box in both, so the real content replaces the
+ *   placeholder without moving anything. A skeleton with its own spacing is a
+ *   second layout, and swapping one layout for another is the flash again, half
+ *   a second later.
+ *
+ *   The consequence is that this has to be edited when the header above is. It
+ *   is directly beneath it for that reason.
+ */
+function ParcelDetailSkeleton() {
+  const theme = useTheme();
+
+  return (
+    <StickyHeaderScreen>
+      <ScrollView
+        style={{ backgroundColor: theme.background }}
+        contentContainerStyle={styles.container}>
+        <SkeletonGroup label="Loading parcel" style={styles.content}>
+          <View style={styles.header}>
+            <View style={styles.headerText}>
+              {/* Badge, then title, then the tracking line. */}
+              <Skeleton width={96} height={26} radius={Radius.pill} />
+              <Skeleton width="80%" height={FontSize.heading} />
+              <Skeleton width="55%" height={FontSize.small} />
+            </View>
+            {/* The close button's 34pt square, so the row keeps its height. */}
+            <Skeleton width={34} height={34} radius={Radius.md} />
+          </View>
+
+          <View style={styles.pillRow}>
+            <Skeleton width={150} height={26} radius={Radius.pill} />
+            <Skeleton width={110} height={26} radius={Radius.pill} />
+          </View>
+
+          {/*
+            One card's worth of body. Deliberately not the whole screen: a
+            placeholder for content below the fold is motion nobody sees, and
+            on a slow connection it is the part most likely to be wrong about
+            what actually arrives.
+          */}
+          <Card>
+            <View style={skeletonStyles.card}>
+              <Skeleton width="40%" height={FontSize.small} />
+              <SkeletonText lines={3} />
+            </View>
+          </Card>
+
+          <Card>
+            <View style={skeletonStyles.card}>
+              <Skeleton width="35%" height={FontSize.small} />
+              <SkeletonText lines={2} />
+            </View>
+          </Card>
+        </SkeletonGroup>
+      </ScrollView>
+    </StickyHeaderScreen>
+  );
+}
+
+const skeletonStyles = StyleSheet.create({
+  card: {
+    gap: Spacing.three,
   },
 });

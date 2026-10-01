@@ -220,6 +220,85 @@ check(
   'a client cap above the bucket limit turns a local refusal into a remote one',
 );
 
+// ------------------------------------- what the applicant is allowed to send -
+
+/*
+ * ⚠ The formats, on both sides of the picker, and on the screen.
+ *
+ *   The size cap above was checked and the *type* was not. `getDocumentAsync`
+ *   was given `image/*`, which offers an applicant every TIFF, BMP and SVG on
+ *   the device and is only a filter anyway — a file manager's "All files" mode
+ *   ignores it. Nothing then looked at what came back, so a .docx was accepted
+ *   into the form, survived thirty more fields and five more attachments, and
+ *   was refused by Storage at submit with the failure attached to the wrong
+ *   action.
+ */
+const documentsStore = read('src/store/driver-documents.ts');
+
+check(
+  'the file browser filters on what the bucket accepts',
+  /type: ACCEPTED_MIME_TYPES/.test(signup),
+  "image/* offers formats Storage refuses, so the picker invites a choice the upload rejects",
+);
+check(
+  'and the form checks the file it was handed',
+  /isAcceptedDocument\(/.test(code(signup)),
+  'a picker filter is a suggestion; every file manager can hand back something else',
+);
+check(
+  'a missing size is not read as a small file',
+  /asset\.size \?\? \(await fileSizeOf\(/.test(code(signup)),
+  '`if (asset.size && asset.size > MAX)` is not a check when the picker reports no size',
+);
+
+/*
+ * ⚠ The stated formats have to be a SUBSET of the accepted ones, never the
+ *   other way round.
+ *
+ *   The label names JPEG, PNG and PDF; the validator also takes HEIC, HEIF and
+ *   WebP because the bucket does, and because refusing HEIC would strand every
+ *   iPhone applicant picking an existing photo — which is what
+ *   `20250101000035_heif_uploads.sql` exists for. Accepting more than was
+ *   promised costs nobody anything. Promising more than is accepted is a
+ *   refusal the applicant was told would not happen.
+ */
+const stated = (/ACCEPTED_FORMATS_LABEL =\s*'([^']+)'/.exec(documentsStore)?.[1] ?? '')
+  .toLowerCase()
+  .split(/,| or /)
+  .map((word) => word.trim())
+  .filter(Boolean);
+
+check('the stated formats were found', stated.length === 3, stated.join('|'));
+
+const acceptedExtensions = accepts('driver-documents');
+for (const format of stated) {
+  const mime = format === 'jpeg' ? 'image/jpeg' : format === 'png' ? 'image/png' : 'application/pdf';
+  check(
+    `the bucket accepts ${format}, which the form promises`,
+    acceptedExtensions.has(mime),
+    'the hint under the button would be promising a format Storage refuses',
+  );
+}
+
+/*
+ * ⚠ Rendered, not merely imported.
+ *
+ *   The first version of this matched `DOCUMENT_RULE` anywhere in the file,
+ *   which the import line satisfies on its own — deleting the `<Text>` that
+ *   shows it left the assertion green. It has to look for the element.
+ */
+check(
+  'the rule is shown next to the upload fields',
+  />\{DOCUMENT_RULE\}</.test(signup) && /up to \$\{MAX_DOCUMENT_MB\} MB/.test(documentsStore),
+  'the formats and the limit are needed where the file is chosen, not in a paragraph above five rows',
+);
+check(
+  'and a refusal names the file and the size',
+  /export function sizeRejection/.test(documentsStore) &&
+    /toFixed\(1\)/.test(documentsStore),
+  '"must be under 10 MB" leaves somebody unable to tell whether retaking the photo would help',
+);
+
 // ------------------------------------------------------ the camera itself ---
 
 /*

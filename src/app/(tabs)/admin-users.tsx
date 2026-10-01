@@ -1,3 +1,4 @@
+import { useLocalSearchParams } from 'expo-router';
 import { Ban, History, ShieldCheck, ShieldOff, Trash2, UserRound } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -68,13 +69,23 @@ export default function AdminUsersScreen() {
   const theme = useTheme();
   const { user, isAdmin } = useSession();
 
+  /*
+   * `?q=` seeds the search box, and nothing else reads it.
+   *
+   * The Support queue links here to get an operator to one account — it has a
+   * name, not a row id, and this screen already filters on name or phone. A
+   * per-user route would be a second way to render the same list; seeding the
+   * filter it already has is the same destination with nothing new to maintain.
+   */
+  const params = useLocalSearchParams<{ q?: string }>();
+
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [applications, setApplications] = useState<ApplicationSummary[]>([]);
   const [grants, setGrants] = useState<RoleGrant[]>([]);
   const [segment, setSegment] = useState<Segment>('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(() => params.q ?? '');
   const [busyId, setBusyId] = useState<string | null>(null);
 
   /**

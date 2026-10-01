@@ -6,6 +6,8 @@
  * `scripts/verify-application-email.ts`.
  */
 
+import { supportAddress } from '../_shared/email.ts';
+
 export type ApplicationEmailInput = {
   fullName: string;
   reference: string;
@@ -93,15 +95,14 @@ export function textBody(input: ApplicationEmailInput): string {
     lines.push('', `Track your application: ${input.appUrl}/driver-signup`);
   }
 
-  if (input.supportEmail) {
-    lines.push('', `Questions? Reply to this email or write to ${input.supportEmail}.`);
-  }
+  /* The sender is noreply@ with no reply-to, so the email names support instead. */
+  lines.push('', `Questions? Please contact ${supportAddress(input.supportEmail)}.`);
 
   lines.push(
     '',
     'Package Relay',
     '',
-    `You are receiving this because a driver application was submitted with this address (${input.email}). If that was not you, reply and tell us — we will remove it.`,
+    `You are receiving this because a driver application was submitted with this address (${input.email}). If that was not you, please contact ${supportAddress(input.supportEmail)} and we will remove it.`,
   );
 
   return lines.join('\n');
@@ -143,12 +144,9 @@ export function htmlBody(input: ApplicationEmailInput): string {
       </td></tr>`
     : '';
 
-  const support = input.supportEmail
-    ? `Questions? Reply to this email, or write to
-       <a href="mailto:${escapeHtml(input.supportEmail)}" style="color:#0077B6;">${escapeHtml(
-         input.supportEmail,
-       )}</a>.`
-    : 'Questions? Just reply to this email.';
+  const supportEmail = escapeHtml(supportAddress(input.supportEmail));
+  const supportLink = `<a href="mailto:${supportEmail}" style="color:#0077B6;">${supportEmail}</a>`;
+  const support = `Questions? Please contact ${supportLink}.`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -214,7 +212,7 @@ export function htmlBody(input: ApplicationEmailInput): string {
           <p style="margin:0;font-size:13px;line-height:1.6;color:#64748B;">${support}</p>
           <p style="margin:14px 0 0;font-size:12px;line-height:1.6;color:#94A3B8;">
             You are receiving this because a driver application was submitted with
-            ${escapeHtml(input.email)}. If that was not you, reply and tell us — we will remove it.
+            ${escapeHtml(input.email)}. If that was not you, please contact ${supportLink} and we will remove it.
           </p>
         </td></tr>
       </table>

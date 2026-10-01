@@ -359,10 +359,28 @@ check(
   'a token for an uninstalled app is invalid forever and costs a send every time',
 );
 
+/*
+ * ⚠ Repointed at the property, not at the line that used to carry it.
+ *
+ *   This pinned `auth !== \`Bearer ${SERVICE_KEY}\`` — a comparison with the key
+ *   *this deployment* was injected with. The identical check in `notify-events`
+ *   turned a rotated key, and a key stored with a trailing newline, into a 403
+ *   that recorded nothing anywhere while the database believed it had posted.
+ *   All three trigger-called functions now share `isServiceRole`, which asks
+ *   whether the caller *is* the service role rather than whether it holds this
+ *   copy of it — and which still refuses the anon key, which is the thing that
+ *   actually matters here and is unit-tested in `verify-notify-events.ts`.
+ */
 check(
-  'only the trigger can call the notifier',
-  flat(fnCode).includes('auth !== `Bearer ${SERVICE_KEY}`'),
+  'only the service role can call the notifier',
+  flat(fnCode).includes('isServiceRole(auth, SERVICE_KEY)') &&
+    flat(fnCode).includes('if (!caller.ok)'),
   'without it, any caller could pass an offer id and ring somebody else’s phone',
+);
+check(
+  'and it refuses before reading the body',
+  flat(fnCode).indexOf('isServiceRole(auth, SERVICE_KEY)') < flat(fnCode).indexOf('request.json()'),
+  'a body parsed before the caller is checked is work done for a stranger',
 );
 check(
   'the response carries counts, never tokens',

@@ -1,16 +1,17 @@
 /**
  * How to reach Package Relay.
  *
- * ⚠ Every address and number below is a placeholder on a domain nobody has
- *   registered. They are in one file precisely so that replacing them is a
- *   single edit rather than a hunt through screens — but until they are real,
- *   the Support screen is advertising channels that go nowhere.
+ * ⚠ The email addresses are on `pkrelay.com`, the domain the app and its mail
+ *   are sent from. The phone number is still a placeholder. They are in one
+ *   file so that replacing them is a single edit rather than a hunt through
+ *   screens — but until every channel is real, the Support screen is
+ *   advertising at least one that goes nowhere.
  *
  *   `scripts/verify-about.ts` fails if `PLACEHOLDER` is still true while the
  *   addresses are being shown as live, so this cannot quietly ship.
  */
 
-/** Flip to false once the addresses and numbers below actually work. */
+/** Flip to false once the phone number is real and every inbox below is staffed. */
 export const CONTACT_IS_PLACEHOLDER = true;
 
 export type Channel = {
@@ -30,8 +31,8 @@ export const CHANNELS: Channel[] = [
     key: 'email',
     label: 'Email support',
     bestFor: 'Anything about an application, a parcel, or your account.',
-    value: 'support@pkrelay.ng',
-    href: 'mailto:support@pkrelay.ng',
+    value: 'support@pkrelay.com',
+    href: 'mailto:support@pkrelay.com',
     responseTime: 'Within 1 working day',
   },
   {
@@ -46,16 +47,16 @@ export const CHANNELS: Channel[] = [
     key: 'business',
     label: 'Business & partnerships',
     bestFor: 'Bulk delivery, becoming a partner hub, press.',
-    value: 'business@pkrelay.ng',
-    href: 'mailto:business@pkrelay.ng',
+    value: 'business@pkrelay.com',
+    href: 'mailto:business@pkrelay.com',
     responseTime: 'Within 2 working days',
   },
   {
     key: 'privacy',
     label: 'Privacy requests',
     bestFor: 'Getting a copy of your data, or asking us to delete it.',
-    value: 'privacy@pkrelay.ng',
-    href: 'mailto:privacy@pkrelay.ng',
+    value: 'privacy@pkrelay.com',
+    href: 'mailto:privacy@pkrelay.com',
     /*
      * The NDPR expects a data-subject request to be answered within one month.
      * Quoting it here is a commitment — it is also the only honest thing to

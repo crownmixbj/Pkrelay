@@ -157,6 +157,24 @@ check(
   !minimal.text.includes('Vehicle:') && !minimal.text.includes('Operating in:'),
 );
 
+for (const [label, body] of [
+  ['text', mail.text],
+  ['html', mail.html],
+  ['minimal text', minimal.text],
+  ['minimal html', minimal.html],
+] as const) {
+  check(
+    `${label} part never asks for a reply`,
+    !/\breply\b/i.test(body),
+    'the sender is noreply@ with no reply-to, so a reply is never read',
+  );
+}
+check('the configured support address is named', mail.text.includes('support@pkrelay.ng'));
+check(
+  'with none configured, the default support address is named',
+  minimal.text.includes('support@pkrelay.com') && minimal.html.includes('mailto:support@pkrelay.com'),
+);
+
 check('firstName handles extra whitespace', firstName('   Ada   Lovelace ') === 'Ada');
 check('firstName handles an empty string', firstName('   ') === 'there');
 check('escapeHtml covers all five characters', escapeHtml(`<>&"'`) === '&lt;&gt;&amp;&quot;&#39;');

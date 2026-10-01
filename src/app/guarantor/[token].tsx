@@ -1,18 +1,29 @@
 import { useLocalSearchParams } from 'expo-router';
-import { BadgeCheck, Briefcase, FileSignature, ShieldAlert, ShieldCheck, User } from 'lucide-react-native';
+import {
+  BadgeCheck,
+  Briefcase,
+  FileSignature,
+  MapPin,
+  ShieldAlert,
+  ShieldCheck,
+  User,
+} from 'lucide-react-native';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Footer } from '@/components/Footer';
+import { ValidatedPhoneInput } from '@/components/ValidatedPhoneInput';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dropdown } from '@/components/ui/dropdown';
 import { Field } from '@/components/ui/field';
+import { AddressLookup } from '@/components/ui/address-lookup';
 import { GuarantorUploadCard } from '@/components/ui/guarantor-upload-card';
 import { screenPadding } from '@/components/ui/screen';
 import {
   CONSENT_TEXT,
   EMPLOYMENT_STATUSES,
+  GUARANTOR_LINK_DAYS,
   GUARANTOR_PRIVACY_NOTE,
   KNOWN_DURATIONS,
   SURETYSHIP_CLAUSE,
@@ -312,18 +323,28 @@ export default function GuarantorPortal() {
                 hint="First and last name."
               />
 
-              <Field
+              {/*
+                ⚠ `ValidatedPhoneInput`, not a plain `Field`.
+
+                  A plain field accepted `+2348123663667334434343434343` — twenty-four
+                  digits, which is not a phone number anywhere on earth. The submit
+                  check would have caught it, but only after the guarantor had filled
+                  in a NIN, photographed an ID and taken a live photo, and the refusal
+                  named a field they had long scrolled past. The mask is the fix: it
+                  rewrites every keystroke to `+234` plus at most ten national digits,
+                  so a number that is too long cannot be typed in the first place, and
+                  `maxLength` stops the keyboard rather than explaining afterwards.
+
+                ⚠ WhatsApp, said explicitly, because that is where a recovery
+                  conversation will actually happen. A number that is not on it is a
+                  number nobody will reach — so the hint overrides the component's
+                  default rather than inheriting the generic one.
+              */}
+              <ValidatedPhoneInput
                 label="WhatsApp phone number"
-                placeholder="+2348012345678"
                 value={phone}
                 onChangeText={setPhone}
-                keyboardType="phone-pad"
-                /*
-                  ⚠ WhatsApp, said explicitly, because that is where a recovery
-                    conversation will actually happen. A number that is not on it
-                    is a number nobody will reach.
-                */
-                hint="We will only use this if there is ever a dispute about a parcel."
+                hint="Your local number — we add +234. We only use it if there is ever a dispute about a parcel."
               />
 
               <Field
@@ -337,13 +358,36 @@ export default function GuarantorPortal() {
                 hint="Change it if this is not the address you use."
               />
 
-              <Field
+              {/*
+                ⚠ `AddressLookup`, not `AddressField`, and not a plain `Field`.
+
+                  A plain field made the guarantor type an address from memory
+                  into a box with no help at all — on a phone, as a favour, for
+                  somebody else's job application. `AddressField` would be worse
+                  than nothing: it resolves what you type down to one of 37
+                  Package Relay cities because a quote is priced per city, and
+                  reducing "14 Bode Thomas, Surulere" to "Lagos" destroys the
+                  only part of an address that a person standing at the door
+                  needs. `AddressLookup` keeps the address and adds the
+                  suggestions.
+
+                  It works here without an account: `places-lookup` authenticates
+                  with whatever key the client holds and checks no caller, so the
+                  anon key the portal already uses is enough.
+
+                  ⚠ Typing freely still works. Suggestions are an accelerator,
+                    never a gate — Nigerian addresses are routinely absent from
+                    Google, and a guarantor whose street is a new estate or
+                    "behind the second gate" must still be able to submit.
+              */}
+              <AddressLookup
                 label="Residential address"
-                placeholder="Street, area, city, state"
+                icon={(color, size) => <MapPin color={color} size={size} />}
+                placeholder="14 Awolowo Road, Ikoyi, Lagos"
                 value={address}
-                onChangeText={setAddress}
+                onChange={(next) => setAddress(next.address)}
                 multiline
-                autoCapitalize="sentences"
+                hint="Start typing and pick your street, or type it in full."
               />
 
               <Dropdown
@@ -424,7 +468,7 @@ export default function GuarantorPortal() {
               <GuarantorUploadCard
                 token={String(token)}
                 kind="government_id"
-                hint="Your NIN slip, driver's licence, voter's card or international passport. Make sure the name and photo are readable."
+                hint="Your NIN slip or NIN card only — the number on it must match the NIN you entered above. Make sure the name, number and photo are readable."
                 uploaded={idUploaded}
                 onUploaded={() => setIdUploaded(true)}
                 onCleared={() => setIdUploaded(false)}
@@ -603,7 +647,7 @@ function Unusable({ reason }: { reason: 'invalid' | 'expired' | 'completed' | 'u
     },
     expired: {
       title: 'This link has expired',
-      body: 'Links are valid for seven days. Ask the driver to send you a new one from their Package Relay application.',
+      body: `Links are valid for ${GUARANTOR_LINK_DAYS} days. Ask the driver to send you a new one from their Package Relay application.`,
     },
     invalid: {
       title: 'This link is not valid',

@@ -128,6 +128,26 @@ await db.exec(`
     user_id uuid primary key, nin text, slip_path text, reference_path text
   );
   create table public.photo_capture_sessions (id uuid primary key default gen_random_uuid(), owner_id uuid);
+
+  /*
+    ⚠ The pointer 44 added to bookings, with the clause 61 gave it.
+
+      This harness builds its own minimal schema, so the foreign key here is
+      this file's choice rather than the real one — what it proves is that
+      erase_person copes with a parcel that still points at a capture session it
+      is about to delete. Between 44 and 61 it did not: the delete below raised
+      and the entire scrub aborted, so an erasure request for any sender who had
+      posted a parcel silently did nothing.
+
+      That the *real* key carries on-delete-set-null is asserted against the full
+      migration chain in support-tickets-harness.mjs, which applies every
+      migration for real. Both are needed: this one catches a future table that
+      forgets to say what happens to its pointer, that one catches somebody
+      re-adding this constraint without the clause.
+  */
+  alter table public.bookings
+    add column capture_session_id uuid
+      references public.photo_capture_sessions (id) on delete set null;
   create table public.driver_documents (id uuid primary key default gen_random_uuid(), driver_id uuid, path text);
   create table public.push_tokens (token text primary key, user_id uuid);
   create table public.payout_change_requests (
@@ -205,7 +225,15 @@ await run('seed a person with something identifying in every table', async () =>
     "insert into public.sender_identity (user_id, nin, slip_path, reference_path) values ($1, '12345678901', 'u1/slip.jpg', 'u1/face.jpg')",
     [SUBJECT],
   );
-  await q('insert into public.photo_capture_sessions (owner_id) values ($1)', [SUBJECT]);
+  const [session] = await q(
+    'insert into public.photo_capture_sessions (owner_id) values ($1) returning id',
+    [SUBJECT],
+  );
+  /* A parcel that points at it — the row that used to make erasure impossible. */
+  await q('update public.bookings set capture_session_id = $1 where sender_id = $2', [
+    session.id,
+    SUBJECT,
+  ]);
   await q("insert into public.driver_documents (driver_id, path) values ($1, 'u1/license.jpg')", [
     SUBJECT,
   ]);
@@ -315,6 +343,26 @@ await run('5. the tables added after 20250101000009_bans.sql are covered too', a
     'a NIN and the path to a stored face photograph',
   );
   check('capture sessions are gone', (await empty('photo_capture_sessions', 'owner_id')) === 0);
+
+  {
+    /*
+      And the parcel that pointed at one is still here, pointing at nothing.
+
+      `set null` rather than `cascade`: 33 argues that a recipient's delivery
+      history is theirs and must not be destroyed to satisfy somebody else's
+      erasure. Cascading from the capture session would have done precisely
+      that, one table removed.
+    */
+    const rows = await q('select capture_session_id from public.bookings where sender_id = $1', [
+      SUBJECT,
+    ]);
+    check(
+      'the erased sender’s parcel survives',
+      rows.length === 1,
+      'erasure scrubs a parcel, it does not delete it',
+    );
+    check('with its capture session pointer cleared', rows[0]?.capture_session_id === null);
+  }
   check('document records are gone', (await empty('driver_documents', 'driver_id')) === 0);
   check(
     'push tokens are gone',

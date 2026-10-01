@@ -289,7 +289,20 @@ export const COMPLETE_PROFILE_ROUTE = '/complete-profile';
  *   form with no way back to a signed-out state. The auth routes stay open for
  *   the same reason.
  */
-const COMPLETION_EXEMPT = ['/complete-profile', '/sign-in', '/sign-up', '/confirm', '/legal'];
+const COMPLETION_EXEMPT = [
+  '/complete-profile',
+  '/sign-in',
+  '/sign-up',
+  '/confirm',
+  '/legal',
+  /*
+    Somebody mid-password-reset is not being asked for a phone number first.
+    Without this the two gates take turns: recovery sends them to
+    update-password, completion sends them straight back off it, and neither
+    screen ever finishes.
+  */
+  '/update-password',
+];
 
 /**
  * Where to send an account that has no phone number on file, or null.
@@ -306,6 +319,43 @@ const COMPLETION_EXEMPT = ['/complete-profile', '/sign-in', '/sign-up', '/confir
  *
  * ⚠ A pure function so the rule can be tested, and mutated, without a router.
  */
+export const UPDATE_PASSWORD_ROUTE = '/update-password';
+
+/**
+ * The only places somebody mid-password-reset may be.
+ *
+ * Deliberately short. `/sign-in` is *not* here: a recovery session is already
+ * signed in, so offering the form would be nonsense, and leaving by that door
+ * would strand them inside the app on an untrusted session. The way out is
+ * signing out, which clears the flag and makes every route available again.
+ */
+const RECOVERY_EXEMPT = [UPDATE_PASSWORD_ROUTE, '/legal'];
+
+/**
+ * Keeps a recovery session pinned to the screen that ends it.
+ *
+ * ⚠ This one *is* closer to a gate than the rest of this module, and still is
+ *   not a security boundary.
+ *
+ *   A recovery session carries the same privileges as any other, so nothing
+ *   here stops a determined person calling the API directly — RLS is what
+ *   governs that, as everywhere else. What this stops is the ordinary version:
+ *   a forwarded reset email, or a shared inbox, turning into a working login
+ *   for somebody who never knew the password and never sets one. Routing is
+ *   the right tool for that because the honest case — a person who did ask for
+ *   the reset — is one form away from being done.
+ *
+ * Ranked above `completionRedirect` by its caller: an account owes a password
+ * before it owes a phone number.
+ */
+export function recoveryRedirect(pathname: string, recovering: boolean): string | null {
+  if (!recovering) return null;
+  if (RECOVERY_EXEMPT.some((route) => pathname === route || pathname.startsWith(`${route}/`))) {
+    return null;
+  }
+  return UPDATE_PASSWORD_ROUTE;
+}
+
 export function completionRedirect(pathname: string, needsPhone: boolean): string | null {
   if (!needsPhone) return null;
   if (COMPLETION_EXEMPT.some((route) => pathname === route || pathname.startsWith(`${route}/`))) {

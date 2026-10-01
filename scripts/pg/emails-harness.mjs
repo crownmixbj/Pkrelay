@@ -127,6 +127,27 @@ await db.exec(`
   );
 
   /*
+    ⚠ private.app_settings and app_events, which 53 needs and 38 never did.
+
+      38 read its configuration from GUCs alone. 53 reads the settings table
+      first — the one every other notifier in the project uses — and writes to
+      app_events on every path that does not send, which is the half that turned
+      a silent no-op into something somebody can find.
+  */
+  create schema private;
+  create table private.app_settings (key text primary key, value text);
+
+  create table public.app_events (
+    id bigserial primary key,
+    level text not null check (level in ('info', 'warning', 'error')),
+    area text not null,
+    message text not null,
+    context jsonb not null default '{}'::jsonb,
+    actor_id uuid,
+    created_at timestamptz not null default now()
+  );
+
+  /*
     The pg_net stub. Records rather than sends, so "how many times did this
     dispatch" is answerable.
   */
@@ -142,6 +163,24 @@ await db.exec(`
 `);
 
 await db.exec(read('supabase/migrations/20250101000038_transactional_email.sql'));
+
+/*
+ * ⚠ 24's resolver, cut out of the shipped migration rather than retyped.
+ *
+ *   53 calls `private.pg_net_post_fn()` instead of hardcoding `net.http_post`,
+ *   which is the bug 19 had, 24 fixed, and 38 reintroduced. A paraphrase here
+ *   would be a second copy of the thing that keeps drifting.
+ */
+const resolver = read('supabase/migrations/20250101000024_push_delivery.sql').match(
+  /create or replace function private\.pg_net_post_fn\(\)[\s\S]*?\$\$;\n/,
+);
+if (!resolver) {
+  console.error('FAIL — could not find private.pg_net_post_fn in 24');
+  process.exit(1);
+}
+await db.exec(resolver[0]);
+
+await db.exec(read('supabase/migrations/20250101000053_email_dispatch_repair.sql'));
 
 /*
  * The settings the dispatcher reads. Set here so the pg_net path is actually
@@ -591,6 +630,212 @@ await run('an unconfigured project queues without failing the transaction', asyn
   );
 });
 
+/* ============== 5. the dispatch itself, repaired by 53 =================== */
+
+/*
+ * ⚠ This section exists because the dispatcher had two silent exits and nobody
+ *   could tell it apart from a working one.
+ *
+ *   38's `dispatch_email` returned early when unconfigured and swallowed every
+ *   exception, writing nothing anywhere. On production that produced two outbox
+ *   rows from August with `attempts = 0`, `error` null, and no record that a
+ *   delivery had ever been attempted — indistinguishable from an email that was
+ *   sent and read.
+ */
+
+const reset = () =>
+  db.exec(`
+    delete from public.net_calls;
+    delete from public.app_events;
+    delete from private.app_settings;
+    reset app.settings.functions_url;
+    reset app.settings.service_role_key;
+  `);
+
+/** Queues one email directly, bypassing the business triggers. */
+let queued = 0;
+const queue = async (recipient = 'someone@example.test') => {
+  queued += 1;
+  await q(`select public.queue_email('parcel_status_changed', $1, $2, '{}'::jsonb)`, [
+    `dispatch-${queued}`,
+    recipient,
+  ]);
+  const [row] = await q(`select * from public.email_outbox where subject_id = $1`, [
+    `dispatch-${queued}`,
+  ]);
+  return row;
+};
+
+await run('an unconfigured project says so, once', async () => {
+  await reset();
+
+  await queue();
+
+  const posted = await q('select * from public.net_calls');
+  check('nothing is posted', posted.length === 0);
+
+  const logged = await q(`select * from public.app_events where area = 'email'`);
+  check(
+    'and the database says why',
+    logged.length === 1 && /not configured/i.test(logged[0]?.message ?? ''),
+    'the silent return is what made this cost an evening; the row is the whole fix',
+  );
+  check(
+    'naming the fix rather than the symptom',
+    /app_settings/.test(JSON.stringify(logged[0]?.context ?? {})),
+  );
+
+  /*
+   * ⚠ Throttled, because an unconfigured project queues an email on every
+   *   driver decision and every parcel status change. One row per email would
+   *   bury the one worth reading under thousands of copies within a day.
+   */
+  await queue();
+  await queue();
+  const again = await q(`select * from public.app_events where area = 'email'`);
+  check('and does not say it again for an hour', again.length === 1, `${again.length} rows`);
+});
+
+await run('the settings table is enough on its own', async () => {
+  await reset();
+  await db.exec(`
+    insert into private.app_settings (key, value) values
+      ('edge_url', 'https://table.functions'), ('service_key', 'table-key');
+  `);
+
+  const row = await queue();
+
+  const posted = await q('select * from public.net_calls');
+  check('it posts', posted.length === 1, `${posted.length} calls`);
+  check(
+    'to notify-events',
+    posted[0]?.url === 'https://table.functions/notify-events',
+    `posted to ${posted[0]?.url}`,
+  );
+  /*
+   * ⚠ The id and nothing else — 38's rule, kept.
+   *
+   *   A rendered email here would put a recipient address into
+   *   `net._http_response`, and make this an endpoint that mails whatever it is
+   *   handed.
+   */
+  check(
+    'carrying the id and nothing else',
+    posted[0]?.body?.outbox_id === row.id && Object.keys(posted[0]?.body ?? {}).length === 1,
+    JSON.stringify(posted[0]?.body),
+  );
+
+  const [after] = await q('select attempts from public.email_outbox where id = $1', [row.id]);
+  check(
+    'and the attempt is counted',
+    after?.attempts === 1,
+    'the column existed since 38 and nothing ever wrote it',
+  );
+});
+
+/*
+ * ⚠ 38's own mechanism still works, and that is deliberate.
+ *
+ *   A database where somebody followed 38's comment and ran the two `alter
+ *   database` statements is a configured database. 53 must not un-configure it
+ *   on the way past.
+ */
+await run('and 38ʼs GUCs still work where somebody set them', async () => {
+  await reset();
+  await db.exec(`
+    set app.settings.functions_url = 'https://guc.functions';
+    set app.settings.service_role_key = 'guc-key';
+  `);
+
+  await queue();
+
+  const posted = await q('select * from public.net_calls');
+  check('it posts', posted.length === 1, `${posted.length} calls`);
+  check('to the GUC url', posted[0]?.url === 'https://guc.functions/notify-events');
+});
+
+await run('the settings table wins when both are set', async () => {
+  await reset();
+  await db.exec(`
+    insert into private.app_settings (key, value) values
+      ('edge_url', 'https://table.functions'), ('service_key', 'table-key');
+    set app.settings.functions_url = 'https://guc.functions';
+    set app.settings.service_role_key = 'guc-key';
+  `);
+
+  await queue();
+
+  const posted = await q('select * from public.net_calls');
+  check(
+    'the table is the source of truth',
+    posted[0]?.url === 'https://table.functions/notify-events',
+    'every other notifier in the project reads the table; email must not disagree',
+  );
+});
+
+/* ------------------------------------------------------------- the sweep -- */
+
+await run('an email that missed its trigger is retried', async () => {
+  await reset();
+  await db.exec(`
+    insert into private.app_settings (key, value) values
+      ('edge_url', 'https://table.functions'), ('service_key', 'table-key');
+  `);
+
+  const row = await queue();
+  await db.exec(`delete from public.net_calls;`);
+
+  /*
+   * A minute of grace in the sweep, so it never races the trigger's own
+   * request — which means the row has to be backdated to be swept at all.
+   */
+  const backdate = (id) =>
+    q(`update public.email_outbox set created_at = now() - interval '10 minutes' where id = $1`, [
+      id,
+    ]);
+  await backdate(row.id);
+
+  const [{ sweep_unsent_emails: first }] = await q('select public.sweep_unsent_emails()');
+  check('it retries the unsent row', first === 1, `retried ${first}`);
+
+  const posted = await q('select * from public.net_calls');
+  check('posting it again', posted.length === 1 && posted[0]?.body?.outbox_id === row.id);
+
+  /*
+   * ⚠ Three attempts and it stops.
+   *
+   *   A row failing for a fourth time is failing for a reason a fourth request
+   *   will not fix. It stays in the table as the evidence rather than as a job
+   *   that runs for ever.
+   */
+  await q(`update public.email_outbox set attempts = 3 where id = $1`, [row.id]);
+  const [{ sweep_unsent_emails: capped }] = await q('select public.sweep_unsent_emails()');
+  check('and gives up after three', capped === 0, `retried ${capped}`);
+});
+
+await run('a sent email is never swept', async () => {
+  await reset();
+  await db.exec(`
+    insert into private.app_settings (key, value) values
+      ('edge_url', 'https://table.functions'), ('service_key', 'table-key');
+  `);
+
+  const row = await queue();
+  await q(
+    `update public.email_outbox
+        set sent_at = now(), attempts = 1, created_at = now() - interval '10 minutes'
+      where id = $1`,
+    [row.id],
+  );
+  await db.exec(`delete from public.net_calls;`);
+
+  const [{ sweep_unsent_emails: retried }] = await q('select public.sweep_unsent_emails()');
+  check('nothing to do', retried === 0, `retried ${retried}`);
+
+  const posted = await q('select * from public.net_calls');
+  check('and nobody is emailed twice', posted.length === 0);
+});
+
 await db.close();
 
 if (failures > 0) {
@@ -602,5 +847,8 @@ console.log(
   'PASS — every trigger queues exactly one email and only on a real transition, a repeated\n' +
     '       approval or delivery sends nothing more, a flagged identity sends nothing at all,\n' +
     '       a cancelled parcel reaches both sides, no payload carries a full account number or\n' +
-    '       a storage path, and an unconfigured project queues without losing the delivery.',
+    '       a storage path, and an unconfigured project queues without losing the delivery —\n' +
+    '       and the dispatcher now posts to notify-events from either configuration, counts\n' +
+    '       the attempt, retries what missed, stops after three, never sends twice, and says\n' +
+    '       in app_events exactly why when it cannot send at all.',
 );

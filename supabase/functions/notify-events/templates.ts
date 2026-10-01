@@ -21,11 +21,13 @@
  */
 import {
   ROW,
+  absoluteUrl,
   escapeHtml,
   firstName,
   headerSafe,
   layout,
   naira,
+  supportAddress,
   whenReadable,
 } from '../_shared/email.ts';
 
@@ -41,7 +43,8 @@ export type EmailKind =
   | 'parcel_status_changed'
   | 'driver_offer'
   | 'driver_job_cancelled'
-  | 'payout_paid';
+  | 'payout_paid'
+  | 'parcel_payment_received';
 
 export type Rendered = { subject: string; html: string; text: string };
 
@@ -64,13 +67,20 @@ export type Context = {
   supportEmail: string | null;
 };
 
+/* No email can be replied to — the sender is noreply@ — so each names support. */
 const support = (context: Context) =>
-  context.supportEmail
-    ? `Questions? Reply to this email or write to ${context.supportEmail}.`
-    : 'Questions? Reply to this email.';
+  `Questions? Please contact ${supportAddress(context.supportEmail)}.`;
 
+/*
+ * ⚠ Through `absoluteUrl`, never by interpolation.
+ *
+ *   `${context.appUrl}${path}` produces `app.pkrelay.com/profile` when the
+ *   secret was set without a scheme, and `https://host//profile` when it was set
+ *   with a trailing slash. The first is a relative URL that no mail client can
+ *   resolve — the button renders and does nothing.
+ */
 const link = (context: Context, path: string): string | null =>
-  context.appUrl ? `${context.appUrl}${path}` : null;
+  absoluteUrl(context.appUrl, path);
 
 /* ------------------------------------------------------ 1. the lifecycle -- */
 
@@ -137,7 +147,7 @@ function applicationRejected(payload: Payload, context: Context): Rendered {
     '',
     reason
       ? `Reason given: ${reason}`
-      : 'No specific reason was recorded against your application. If you would like more detail, reply to this email quoting the reference above and we will look into it.',
+      : `No specific reason was recorded against your application. If you would like more detail, please contact ${supportAddress(context.supportEmail)} quoting the reference above and we will look into it.`,
     '',
     'You are welcome to apply again if your circumstances change — a new vehicle, updated documents, or a different operating city.',
     '',
@@ -154,7 +164,7 @@ function applicationRejected(payload: Payload, context: Context): Rendered {
       intro: `Hi ${name}, we have reviewed your application and we are not able to approve it this time.`,
       bodyHtml: [
         ROW('Reference', reference),
-        ROW('Reason', reason || 'Not recorded — reply and we will look into it'),
+        ROW('Reason', reason || `Not recorded — please contact ${supportAddress(context.supportEmail)}`),
       ].join(''),
       cta: null,
       footerNote: `You can apply again if your circumstances change. ${support(context)}`,
@@ -194,7 +204,7 @@ function guarantorInvitation(payload: Payload, context: Context): Rendered {
   const token = str(payload, 'token');
   const expires = whenReadable(str(payload, 'expires_at'));
 
-  const url = token && context.appUrl ? `${context.appUrl}/guarantor/${token}` : null;
+  const url = token ? absoluteUrl(context.appUrl, `/guarantor/${token}`) : null;
 
   const text = [
     `Hello ${guarantor},`,
@@ -349,7 +359,7 @@ function senderRejected(payload: Payload, context: Context): Rendered {
     '',
     reason
       ? `What we found: ${reason}`
-      : 'No specific reason was recorded. Reply to this email and we will look into it.',
+      : `No specific reason was recorded. Please contact ${supportAddress(context.supportEmail)} and we will look into it.`,
     '',
     'You can submit again from your profile — most of the time it only takes a clearer photo.',
     url ? `Submit again: ${url}` : '',
@@ -370,7 +380,7 @@ function senderRejected(payload: Payload, context: Context): Rendered {
       heading: 'We could not accept that ID',
       intro:
         'We looked at the ID you submitted and we are not able to accept it as it is. You can submit again — most of the time it only takes a clearer photo.',
-      bodyHtml: ROW('What we found', reason || 'Not recorded — reply and we will look into it'),
+      bodyHtml: ROW('What we found', reason || `Not recorded — please contact ${supportAddress(context.supportEmail)}`),
       cta: url ? { label: 'Submit again', url } : null,
       footerNote: `Until you do, you will not be able to post a parcel. ${support(context)}`,
     }),
@@ -643,7 +653,7 @@ function payoutPaid(payload: Payload, context: Context): Rendered {
     at ? `Processed: ${at}` : '',
     hint ? `Account ending: ${hint}` : '',
     '',
-    'Bank transfers usually land the same day. If it has not arrived within one working day, reply to this email.',
+    `Bank transfers usually land the same day. If it has not arrived within one working day, please contact ${supportAddress(context.supportEmail)}.`,
     '',
     url ? `See your wallet: ${url}` : '',
     '',
@@ -666,7 +676,110 @@ function payoutPaid(payload: Payload, context: Context): Rendered {
       ].join(''),
       cta: url ? { label: 'See your wallet', url } : null,
       footerNote:
-        'Bank transfers usually land the same day. If it has not arrived within one working day, reply to this email.',
+        `Bank transfers usually land the same day. If it has not arrived within one working day, please contact ${supportAddress(context.supportEmail)}.`,
+    }),
+  };
+}
+
+/**
+ * The fare, confirmed by us rather than only by the gateway.
+ *
+ * ⚠ What this email exists to say, and what it deliberately does not.
+ *
+ *   Paystack already emails the sender. That message is about a charge: an
+ *   amount, a card, a merchant name. It cannot name the parcel, the route or
+ *   the tracking id, because Paystack does not know what any of that means —
+ *   so a sender who paid for two shipments in a morning has two identical
+ *   bank-ish emails and no way to tell which is which. This one answers "what
+ *   did I just pay for, and what happens now".
+ *
+ * ⚠ Called a confirmation, never a receipt, for 38's reason.
+ *
+ *   `delivery_completed` carries the same warning: a document headed "Receipt"
+ *   is one somebody may hand to an accountant. Paystack issues that document.
+ *   Claiming to would be claiming a standing this email does not have.
+ *
+ * ⚠ The reference is shown in full and the card is not shown at all.
+ *
+ *   The reference is what support needs to find a charge and is useless to
+ *   anybody else. `channel` is the *method* — "card", "bank transfer", "ussd" —
+ *   and never a card number or a last four, which this system does not receive
+ *   and would not put in an email if it did.
+ */
+function parcelPaymentReceived(payload: Payload, context: Context): Rendered {
+  const tracking = str(payload, 'tracking_id');
+  const amount = naira(num(payload, 'amount'));
+  const reference = str(payload, 'reference');
+  const at = whenReadable(str(payload, 'paid_at'));
+  const item = str(payload, 'item_description');
+  const recipient = str(payload, 'recipient_name');
+
+  /*
+   * ⚠ The route reads by delivery type, because the useful half differs.
+   *
+   *   "Ibadan to Ibadan" is what a local delivery looks like when the city is
+   *   the whole answer, and it tells the sender nothing they did not already
+   *   know. Within one city the neighbourhoods are the route; between two, the
+   *   cities are. Both halves are in the payload so this is a presentation
+   *   decision rather than a trigger one.
+   */
+  const local = str(payload, 'delivery_type') === 'local';
+  const from = local ? str(payload, 'pickup_area') : str(payload, 'origin_city');
+  const to = local ? str(payload, 'dropoff_area') : str(payload, 'destination_city');
+  const route = from && to ? `${from} to ${to}` : '';
+
+  /* "card", "bank transfer" — capitalised for a sentence, absent when unknown. */
+  const method = str(payload, 'channel').replace(/_/g, ' ').trim();
+
+  const url = link(context, '/my-packages?section=active');
+
+  const text = [
+    'Hi there,',
+    '',
+    `We have received your payment of ${amount} for parcel ${tracking}.`,
+    '',
+    `Parcel: ${tracking}`,
+    item ? `Item: ${item}` : '',
+    route ? `Route: ${route}` : '',
+    recipient ? `Recipient: ${recipient}` : '',
+    '',
+    `Amount paid: ${amount}`,
+    method ? `Paid by: ${method}` : '',
+    at ? `Paid: ${at}` : '',
+    reference ? `Payment reference: ${reference}` : '',
+    '',
+    'Your parcel is now live. Drivers already making that journey can claim it, and',
+    'you will hear from us again as soon as one does.',
+    '',
+    url ? `Track it here: ${url}` : '',
+    '',
+    'This is a confirmation from Package Relay. Your payment provider issues the receipt.',
+    '',
+    support(context),
+    '',
+    'Package Relay',
+  ]
+    .filter((line) => line !== '')
+    .join('\n');
+
+  return {
+    subject: headerSafe(`Payment received — ${tracking}`),
+    text,
+    html: layout({
+      heading: 'Payment received',
+      intro: `We have received ${amount} for parcel ${tracking}. It is now live, and drivers heading that way can claim it.`,
+      bodyHtml: [
+        ROW('Parcel', tracking),
+        item ? ROW('Item', item) : '',
+        route ? ROW('Route', route) : '',
+        recipient ? ROW('Recipient', recipient) : '',
+        ROW('Amount paid', amount),
+        method ? ROW('Paid by', method) : '',
+        at ? ROW('Paid', at) : '',
+        reference ? ROW('Reference', reference) : '',
+      ].join(''),
+      cta: url ? { label: 'Track your parcel', url } : null,
+      footerNote: `A confirmation from Package Relay — your payment provider issues the receipt. ${support(context)}`,
     }),
   };
 }
@@ -684,6 +797,7 @@ const TEMPLATES: Record<EmailKind, (payload: Payload, context: Context) => Rende
   driver_offer: driverOffer,
   driver_job_cancelled: driverJobCancelled,
   payout_paid: payoutPaid,
+  parcel_payment_received: parcelPaymentReceived,
 };
 
 export function isEmailKind(value: string): value is EmailKind {

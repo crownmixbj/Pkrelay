@@ -2,7 +2,12 @@ import { useGlobalSearchParams, usePathname, useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
 
 import { useExperience } from '@/hooks/use-experience';
-import { completionRedirect, redirectFor, signedInRedirect } from '@/lib/experience';
+import {
+  completionRedirect,
+  recoveryRedirect,
+  redirectFor,
+  signedInRedirect,
+} from '@/lib/experience';
 import { useSession } from '@/store/session';
 
 /**
@@ -20,7 +25,7 @@ export function ExperienceRouter() {
   const router = useRouter();
   const pathname = usePathname();
   const experience = useExperience();
-  const { isAuthenticated, needsPhone } = useSession();
+  const { isAuthenticated, needsPhone, recovering } = useSession();
   /**
    * Where the auth gate wanted this person to end up.
    *
@@ -62,13 +67,22 @@ export function ExperienceRouter() {
      *   press back through.
      */
     /*
-     * Three rules, in the order they outrank each other.
+     * Four rules, in the order they outrank each other.
      *
+     *   recoveryRedirect    a session that arrived on a reset link owes a
+     *                       password before it is allowed to be anywhere
      *   completionRedirect  an account with no phone number goes nowhere else
      *   signedInRedirect    somebody already signed in has no use for the door
      *   redirectFor         and then: is this route in their interface at all
+     *
+     * ⚠ Recovery is first, and the order is the rule.
+     *
+     *   Every rule below it assumes the session it is routing is one the person
+     *   earned. Running any of them first would hand a half-reset session a
+     *   home screen — briefly, but a redirect only needs to be brief.
      */
     const target =
+      recoveryRedirect(pathname, recovering) ??
       completionRedirect(pathname, needsPhone) ??
       signedInRedirect({ pathname, isAuthenticated, needsPhone, experience, next }) ??
       redirectFor(pathname, experience);
@@ -90,7 +104,7 @@ export function ExperienceRouter() {
      * a screen that immediately redirects again.
      */
     router.replace(target as '/');
-  }, [experience, isAuthenticated, needsPhone, next, pathname, router]);
+  }, [experience, isAuthenticated, needsPhone, next, pathname, recovering, router]);
 
   return null;
 }

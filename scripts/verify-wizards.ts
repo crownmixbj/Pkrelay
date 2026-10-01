@@ -492,9 +492,20 @@ for (const [screen, source] of [
   ['the driver application', driver],
   ['the booking form', book],
 ] as const) {
+  /*
+   * ⚠ The rule is "merged onto the current shape", not one spelling of it.
+   *
+   *   This required `setForm(mergeDraft(` character for character, and went red
+   *   the day the booking form narrowed one restored field on its way in —
+   *   `setForm({ ...mergeDraft(…), category: asCategory(…) })`, which obeys the
+   *   rule and failed the regex. What matters is that the merge happens and
+   *   that nothing assigns the stored object straight through; the check below
+   *   is the half that catches the real mistake.
+   */
   check(
     `${screen} merges its draft rather than assigning it`,
-    /setForm\(mergeDraft\(/.test(source),
+    /mergeDraft\(INITIAL_FORM|mergeDraft\(INITIAL_APPLICATION/.test(source) &&
+      /setForm\((mergeDraft\(|\{\s*\.\.\.)/.test(source),
     'setForm(draft) replaces the shape with whatever an older build wrote',
   );
   check(

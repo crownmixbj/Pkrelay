@@ -37,7 +37,8 @@ driver's dashboard
 
 **The guarantor never signs in, and the token is the whole credential.** 64 hex
 characters from two v4 UUIDs, stored as a SHA-256 digest, single use, expiring in
-seven days, with an attempt ceiling. 39 argues all of that at length.
+thirty days (seven until migration 54 — see the trade-off recorded there), with
+an attempt ceiling. 39 argues all of that at length.
 
 **`anon` may call one function, and it is a read.** Before migration 51,
 `complete_guarantor_verification` was granted to `anon` and the obvious way to

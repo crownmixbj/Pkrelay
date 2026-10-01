@@ -242,12 +242,54 @@ check(
   confirm.includes('title="Email Verified Successfully"'),
   'specified exactly; a near-miss like "Email verified successfully" is a different string',
 );
+/*
+ * ⚠ Repointed. This required a "Continue to Package Relay" button, and the
+ *   screen deliberately no longer has one.
+ *
+ *   The button was the original answer to a real risk: a success screen replaced
+ *   on a timer can flicker past unread, and somebody who never sees it goes back
+ *   to the email and clicks a link that is now spent — landing on "that link has
+ *   expired" with a perfectly good account. The screen now confirms and moves on
+ *   by itself, which is the better experience for the ninety-nine people who did
+ *   read it and a worse one for nobody, *provided* three things hold.
+ *
+ *   So the risk is defended directly rather than through the control that used
+ *   to mitigate it. Restoring the button is still a one-line change if the
+ *   auto-redirect proves wrong in use; deleting these assertions is not.
+ */
+const confirmFlat = confirm.replace(/\s+/g, ' ');
+
 check(
-  'and the screen stays put rather than redirecting past itself',
-  /label="Continue to Package Relay" onPress=\{\(\) => router\.replace\('\/'\)\}/.test(
-    confirm.replace(/\s+/g, ' '),
-  ),
-  'a success screen replaced on a timer flickers past, which is how people end up clicking the link twice',
+  'the success screen is on screen long enough to be read',
+  (() => {
+    const ms = /const SUCCESS_REDIRECT_MS = ([\d_]+)/.exec(confirm)?.[1];
+    return ms !== undefined && Number(ms.replace(/_/g, '')) >= 1500;
+  })(),
+  'below about a second and a half it flickers past, which is how people end up clicking the link twice',
+);
+check(
+  'and it leaves on a timer rather than on the render',
+  /setTimeout\(\(\) => router\.replace\('\/'\), SUCCESS_REDIRECT_MS\)/.test(confirmFlat),
+  'navigating during the render means the confirmation is never painted at all',
+);
+/*
+ * ⚠ `replace`, not `push`, and this is the half that makes the redirect safe.
+ *
+ *   The URL this screen was opened with still carries the confirmation code.
+ *   Pushing would leave it one back gesture away, and returning to it re-resolves
+ *   a token that is now spent — which is the same "that link has expired" the
+ *   button was protecting against, reached by a different route.
+ */
+check(
+  'and it replaces the spent link rather than pushing past it',
+  !/router\.push\('\/'\)/.test(confirmFlat),
+  'a back gesture onto a used confirmation code lands on "expired" with nothing wrong',
+);
+check(
+  'the timer starts only once there is a session, and is cleared on the way out',
+  /if \(!verified\) return; const timer = setTimeout/.test(confirmFlat) &&
+    /return \(\) => clearTimeout\(timer\)/.test(confirmFlat),
+  'a timer that survives the screen navigates somebody away from wherever they went next',
 );
 
 /*

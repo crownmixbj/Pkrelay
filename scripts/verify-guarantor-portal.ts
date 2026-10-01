@@ -22,11 +22,12 @@
  *
  * Run with `npm run verify:guarantor`.
  */
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
   CONSENT_TEXT,
+  GUARANTOR_LINK_DAYS,
   GUARANTOR_SURETYSHIP_REVIEW_REQUIRED,
   KNOWN_DURATIONS,
   EMPLOYMENT_STATUSES,
@@ -46,6 +47,10 @@ function check(name: string, condition: boolean, detail?: string) {
 
 const ROOT = process.cwd();
 const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');
+
+/** Comments in this repo quote the copy they removed, so they are stripped. */
+const code = (source: string) =>
+  source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 
 const portal = read('src/app/guarantor/[token].tsx');
 const store = read('src/store/guarantor.ts');
@@ -265,6 +270,195 @@ check('the migration reads some payload keys', readKeys.length > 5);
 for (const key of [...new Set(readKeys)]) {
   check(`the client sends ${key}`, new RegExp(`\\b${key}:`).test(store), 'a missing key is a null column');
 }
+
+// ------------------------------------------------ what the ID slot accepts --
+
+/*
+ * ⚠ The NIN, and nothing else.
+ *
+ *   The slot offered "NIN slip, driver's licence, voter's card or international
+ *   passport". Only the NIN can be checked against a government record, and it
+ *   is the number this same form asks the guarantor to type in — so a passport
+ *   there produced a document nobody could verify and a reviewer approving on a
+ *   glance. `driver-signup.tsx` narrowed the driver's ID slot for exactly this
+ *   reason and the change never reached the guarantor.
+ */
+const guarantorConstants = read('src/constants/guarantor.ts');
+
+for (const document of ["driver's licence", "voter's card", 'international passport', 'passport']) {
+  check(
+    `the ID slot no longer offers a ${document}`,
+    !code(portal).toLowerCase().includes(document.toLowerCase()),
+    'a document nobody can check is a document a reviewer approves on a glance',
+  );
+}
+check(
+  'and it asks for the NIN slip by name',
+  /NIN slip/.test(code(portal)) && /NIN slip/.test(code(guarantorConstants)),
+);
+check(
+  'the storage key is still government_id',
+  guarantorConstants.includes("government_id:") && migration.includes("'government_id'"),
+  'the key is a path in a bucket and a value in a check constraint — renaming it orphans every file already uploaded',
+);
+
+// ------------------------------------------------- the camera has a way out --
+
+/*
+ * ⚠ Nothing on this page may point at a QR code, because there is not one.
+ *
+ *   `useWebcam` used to end every failure with "Use the QR code instead." That
+ *   sentence was written for the sender photo sheet, which renders one. The
+ *   guarantor portal cannot have a QR handoff at all — it hands the camera to a
+ *   phone through a capture session, and a capture session is bound to an
+ *   account that a guarantor does not have. So a guarantor who blocked their
+ *   camera was told to use a control that was not on the page.
+ */
+const webcam = read('src/components/ui/webcam-capture.tsx');
+
+check(
+  'the hook names no control of its own',
+  !/QR code/i.test(code(webcam)),
+  'the remedy depends on which page is asking, so the page supplies it',
+);
+check(
+  'the guarantor card supplies a remedy that exists',
+  /useWebcam\(\{\s*fallback:/.test(uploadCard) && !/QR/i.test(code(uploadCard)),
+  'a guarantor has the link in an inbox they can open on a phone; that is the only handoff available to them',
+);
+check(
+  'and the sender sheet keeps its QR code, which it does render',
+  /fallback: 'Use the QR code instead\.'/.test(read('src/components/ui/sender-photo-sheet.tsx')),
+);
+
+// --------------------------------------------------------- the phone field --
+
+/*
+ * ⚠ The number has an upper bound, and the bound is enforced while typing.
+ *
+ *   A plain `Field` accepted `+2348123663667334434343434343` — twenty-four digits.
+ *   The submit check caught it, but only after the guarantor had entered a NIN,
+ *   photographed an ID and taken a live photo, and the refusal named a field they
+ *   had scrolled far past. `ValidatedPhoneInput` masks every keystroke through
+ *   `formatNigerianPhoneInput` and caps the box at `NG_PHONE_LENGTH`, so the
+ *   over-long value cannot be produced at all.
+ *
+ *   Asserted against the stripped source: the comment above the field quotes the
+ *   bad number, and a comment must never satisfy this check.
+ */
+const portalCode = code(portal);
+
+check(
+  'the guarantor phone box is the masked one',
+  /<ValidatedPhoneInput/.test(portalCode),
+  'a plain Field let a guarantor type twenty-four digits into a phone number',
+);
+check(
+  'and it is wired to the phone state',
+  /<ValidatedPhoneInput[\s\S]*?onChangeText=\{setPhone\}[\s\S]*?\/>/.test(portalCode),
+  'the mask is only a mask if its output is what gets submitted',
+);
+check(
+  'the mask caps the length rather than explaining afterwards',
+  /maxLength=\{NG_PHONE_LENGTH\}/.test(code(read('src/components/ValidatedPhoneInput.tsx'))),
+  'without maxLength the keyboard keeps accepting digits the number cannot hold',
+);
+/*
+ * ⚠ Every screen, not only this one.
+ *
+ *   The same defect existed in the profile editor. Any screen that raises a phone
+ *   keypad is claiming to collect a phone number, so it must also carry the mask
+ *   and the cap — either by using `ValidatedPhoneInput` (which brings both) or by
+ *   applying `formatNigerianPhoneInput` and `NG_PHONE_LENGTH` itself.
+ */
+/** Every `.tsx` under `src/app`, as a path relative to it. */
+const screensUnder = (dir: string, prefix = ''): string[] =>
+  readdirSync(join(ROOT, dir), { withFileTypes: true }).flatMap((entry) =>
+    entry.isDirectory()
+      ? screensUnder(join(dir, entry.name), join(prefix, entry.name))
+      : entry.name.endsWith('.tsx')
+        ? [join(prefix, entry.name)]
+        : [],
+  );
+
+const unmaskedPhoneScreens = screensUnder('src/app')
+  .filter((name) => {
+    const source = code(readFileSync(join(ROOT, 'src/app', name), 'utf8'));
+    if (!source.includes(`keyboardType="phone-pad"`)) return false;
+    return !(
+      source.includes('formatNigerianPhoneInput') && source.includes('NG_PHONE_LENGTH')
+    );
+  });
+
+check(
+  'every phone box in the app is masked and capped, not only the guarantor portal',
+  unmaskedPhoneScreens.length === 0,
+  `a phone keypad without the mask accepts a number of any length: ${unmaskedPhoneScreens.join(', ')}`,
+);
+
+// ------------------------------------------------------- the address field --
+
+/*
+ * ⚠ `AddressLookup`, not `AddressField`.
+ *
+ *   `AddressField` resolves what you type down to one of 37 Package Relay cities
+ *   because a quote is priced per city band. For a guarantor's home address that
+ *   is destructive: "14 Bode Thomas, Surulere" becomes "Lagos", and the only
+ *   part a person standing at the door needs is gone.
+ */
+check(
+  'the address box offers suggestions',
+  portal.includes('<AddressLookup'),
+  'a guarantor was typing an address from memory into a box with no help at all',
+);
+check(
+  'and it is not the city-resolving one',
+  !portal.includes('<AddressField'),
+  'reducing a street to a city destroys the part of an address that matters',
+);
+check(
+  'typing freely still works',
+  /onChange=\{\(next\) => setAddress\(next\.address\)\}/.test(portal),
+  'suggestions are an accelerator, never a gate — half of Nigeria is not in Google',
+);
+
+// ------------------------------------------------------------- the window --
+
+/*
+ * ⚠ The number the copy states and the number the database enforces are the
+ *   same number, read out of the migration.
+ *
+ *   Two sentences in the app tell a person how long their link lasts, and
+ *   `guarantor_invitation_window()` decides it. Written as prose in each place,
+ *   "seven days" outlived the seven days: the interval can move in SQL and the
+ *   UI goes on promising the old one, which is a promise made to the one person
+ *   in this flow who has no other way to check.
+ */
+const windowSql = readdirSync(join(ROOT, 'supabase/migrations'))
+  .filter((name) => /^\d+_.*\.sql$/.test(name))
+  .sort()
+  .map((name) => read(`supabase/migrations/${name}`))
+  .join('\n');
+
+/* The last definition wins, the way it does when the migrations are applied. */
+const windowDays = [
+  ...windowSql.matchAll(
+    /function public\.guarantor_invitation_window\(\)[\s\S]*?interval '(\d+) days'/g,
+  ),
+].map((match) => Number(match[1]));
+
+check('the window is defined in SQL', windowDays.length > 0, 'no guarantor_invitation_window found');
+check(
+  `the app says ${GUARANTOR_LINK_DAYS} days and the database enforces the same`,
+  windowDays.at(-1) === GUARANTOR_LINK_DAYS,
+  `SQL says ${windowDays.at(-1)} days, the app says ${GUARANTOR_LINK_DAYS}`,
+);
+check(
+  'and neither the portal nor the card hardcodes a number of days',
+  !/valid for (a|one|two|three|four|five|six|seven|eight|nine|ten|\d+) days/i.test(portal) &&
+    !/valid for (a|one|two|three|four|five|six|seven|eight|nine|ten|\d+) days/i.test(trackingCard),
+  'prose that repeats the interval is prose that outlives it',
+);
 
 // ------------------------------------------------- the vocabularies agree ---
 

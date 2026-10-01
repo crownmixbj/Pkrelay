@@ -5,7 +5,13 @@ import { useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
-import { useWebcam } from '@/components/ui/webcam-capture';
+import {
+  PREVIEW_ASPECT,
+  PREVIEW_MAX_HEIGHT,
+  PREVIEW_MAX_WIDTH,
+  WebcamPreview,
+  useWebcam,
+} from '@/components/ui/webcam-capture';
 import { DOCUMENT_LABELS, type DocumentKind } from '@/constants/guarantor';
 import { Radius, Spacing, Typography, font } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -60,7 +66,19 @@ export function GuarantorUploadCard({
   const isWeb = Platform.OS === 'web';
   const live = kind === 'live_photo';
 
-  const { videoRef, error: webcamError, streaming, start, stop, capture } = useWebcam();
+  /*
+   * ⚠ No QR code here, so nothing may mention one.
+   *
+   *   The sender's sheet hands the camera to a phone through a capture session,
+   *   and a capture session is bound to an account. A guarantor has no account
+   *   and never will, so that handoff cannot exist on this page. What a guarantor
+   *   does have is the link itself, in an inbox they can open on a phone — which
+   *   is a real remedy and the only one this page can offer.
+   */
+  const webcam = useWebcam({
+    fallback: 'You can also open this link on your phone, where the camera is easier.',
+  });
+  const { error: webcamError, streaming, start, stop, capture } = webcam;
 
   const [preview, setPreview] = useState('');
   const [busy, setBusy] = useState(false);
@@ -190,31 +208,14 @@ export function GuarantorUploadCard({
       {preview.length > 0 ? (
         <Image
           source={{ uri: preview }}
-          style={styles.preview}
+          style={live ? styles.previewPortrait : styles.preview}
           contentFit="cover"
           accessibilityIgnoresInvertColors
           accessibilityLabel={DOCUMENT_LABELS[kind]}
         />
       ) : webcamOpen && isWeb ? (
-        /*
-          A raw <video> element, only reachable on web — react-native-web renders
-          unknown intrinsics straight through. Same arrangement as the sender
-          photo sheet, which is the only other place this appears.
-        */
-        <video
-          ref={videoRef}
-          playsInline
-          muted
-          style={{
-            width: '100%',
-            maxHeight: 260,
-            borderRadius: 12,
-            objectFit: 'cover',
-            /* Mirrored preview only — `capture()` un-flips before saving. */
-            transform: 'scaleX(-1)',
-            background: '#E2E8F0',
-          }}
-        />
+        /* The same framed preview the sender photo sheet mounts. */
+        <WebcamPreview webcam={webcam} />
       ) : null}
 
       {(error.length > 0 || (webcamOpen && webcamError)) && (
@@ -351,9 +352,23 @@ const styles = StyleSheet.create({
     ...Typography.caption,
     lineHeight: 18,
   },
+  /** An ID card is a landscape document; a full-width strip is the right shape. */
   preview: {
     width: '100%',
     height: 180,
+    borderRadius: Radius.md,
+  },
+  /**
+   * The live photo is a face, so it takes the same portrait box the camera
+   * preview uses — nothing moves when the photo is taken, and the shape is the
+   * one the face check is given.
+   */
+  previewPortrait: {
+    width: '100%',
+    maxWidth: PREVIEW_MAX_WIDTH,
+    alignSelf: 'center',
+    aspectRatio: PREVIEW_ASPECT,
+    maxHeight: PREVIEW_MAX_HEIGHT,
     borderRadius: Radius.md,
   },
   error: {
