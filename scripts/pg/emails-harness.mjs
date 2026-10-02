@@ -836,6 +836,82 @@ await run('a sent email is never swept', async () => {
   check('and nobody is emailed twice', posted.length === 0);
 });
 
+// --------------------------------------------- 62. the welcome email --
+
+/*
+ * ⚠ The trigger lives on auth.users, so the property that matters most is the
+ *   last one below: a failure to queue must never fail the confirmation.
+ */
+await db.exec(`
+  alter table auth.users add column email_confirmed_at timestamptz;
+  alter table auth.users add column raw_user_meta_data jsonb not null default '{}'::jsonb;
+`);
+await db.exec(read('supabase/migrations/20250101000062_welcome_email.sql'));
+
+const welcomes = async (id) =>
+  q(`select recipient, payload from public.email_outbox where kind = 'welcome' and subject_id = $1`, [id]);
+
+const NEWBIE = '66666666-6666-6666-6666-666666666666';
+const GOOGLER = '77777777-7777-7777-7777-777777777777';
+const UNLUCKY = '88888888-8888-8888-8888-888888888888';
+
+await run('signing up does not welcome anybody yet', async () => {
+  await q(
+    `insert into auth.users (id, email, raw_user_meta_data) values ($1, 'newbie@example.test', '{"name":"Tolu Ade"}')`,
+    [NEWBIE],
+  );
+  check('no welcome before the address is confirmed', (await welcomes(NEWBIE)).length === 0);
+});
+
+await run('confirming the address queues exactly one welcome', async () => {
+  await q('update auth.users set email_confirmed_at = now() where id = $1', [NEWBIE]);
+  const rows = await welcomes(NEWBIE);
+  check('one row', rows.length === 1, `${rows.length}`);
+  check('to the account address', rows[0]?.recipient === 'newbie@example.test');
+  check('carrying the sign-up name', rows[0]?.payload?.full_name === 'Tolu Ade');
+
+  await q(`update auth.users set email_confirmed_at = now() + interval '1 minute' where id = $1`, [NEWBIE]);
+  await q(`update auth.users set email = 'tolu@example.test' where id = $1`, [NEWBIE]);
+  check('a later change to a confirmed account sends nothing more', (await welcomes(NEWBIE)).length === 1);
+});
+
+await run('a Google sign-in, confirmed on arrival, is welcomed too', async () => {
+  await q(
+    `insert into auth.users (id, email, email_confirmed_at, raw_user_meta_data)
+     values ($1, 'googler@example.test', now(), '{"full_name":"Ngozi Eze"}')`,
+    [GOOGLER],
+  );
+  const rows = await welcomes(GOOGLER);
+  check('one row', rows.length === 1, `${rows.length}`);
+  check('using the name Google sent', rows[0]?.payload?.full_name === 'Ngozi Eze');
+});
+
+await run('a failure to queue never fails the confirmation', async () => {
+  /* Take 'welcome' out of the allowed kinds, so the insert inside raises. */
+  await db.exec(`
+    alter table public.email_outbox drop constraint email_outbox_kind_check;
+    alter table public.email_outbox add constraint email_outbox_kind_check check (kind <> 'welcome') not valid;
+  `);
+  await q(`insert into auth.users (id, email) values ($1, 'unlucky@example.test')`, [UNLUCKY]);
+
+  let threw = null;
+  try {
+    await q('update auth.users set email_confirmed_at = now() where id = $1', [UNLUCKY]);
+  } catch (error) {
+    threw = error;
+  }
+  check('the confirmation went through', threw === null, String(threw));
+  const [user] = await q('select email_confirmed_at from auth.users where id = $1', [UNLUCKY]);
+  check('and was saved', user?.email_confirmed_at != null);
+  const events = await q(
+    `select 1 from public.app_events where message = 'welcome email could not be queued' and context->>'user' = $1`,
+    [UNLUCKY],
+  );
+  check('and the failure was recorded where somebody can find it', events.length === 1);
+
+  await db.exec(read('supabase/migrations/20250101000062_welcome_email.sql'));
+});
+
 await db.close();
 
 if (failures > 0) {

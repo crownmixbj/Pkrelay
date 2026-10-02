@@ -69,6 +69,7 @@ const SUPABASE_SHIM = `
   create table auth.users (
     id uuid primary key, email text, phone text,
     raw_user_meta_data jsonb default '{}'::jsonb,
+    email_confirmed_at timestamptz,
     created_at timestamptz default now()
   );
   create function auth.jwt() returns jsonb language sql stable as $fn$ select '{}'::jsonb $fn$;

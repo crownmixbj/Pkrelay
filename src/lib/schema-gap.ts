@@ -303,6 +303,15 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
     fn: 'capture_session_fk_repaired',
     migration: '20250101000061_capture_session_fk_repair.sql',
   },
+  /*
+   * Without 62 nothing breaks on screen — new accounts are simply never sent
+   * the welcome email — which is exactly why it needs a line here.
+   */
+  {
+    label: 'Welcome email on sign-up confirmation',
+    fn: 'welcome_email_installed',
+    migration: '20250101000062_welcome_email.sql',
+  },
 ];
 
 /**
