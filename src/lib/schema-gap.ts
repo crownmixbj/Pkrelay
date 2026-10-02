@@ -312,6 +312,12 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
     fn: 'welcome_email_installed',
     migration: '20250101000062_welcome_email.sql',
   },
+  /* Without 63 a changed password goes unannounced — invisible until it matters. */
+  {
+    label: 'Password-changed security email',
+    fn: 'password_changed_email_installed',
+    migration: '20250101000063_password_changed_email.sql',
+  },
 ];
 
 /**

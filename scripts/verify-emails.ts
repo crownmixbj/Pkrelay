@@ -209,6 +209,31 @@ check(
   check('a nameless account is greeted "Hi there,"', render('welcome', {}, CONTEXT)!.text.startsWith('Hi there,'));
 }
 
+// ------------------------------------------------ password changed ----
+
+{
+  const mail = render('password_changed', { full_name: 'Kemi Bello', changed_at: '2026-10-02T12:00:00Z' }, CONTEXT)!;
+  check('the password email has its subject', mail.subject === 'Your Package Relay password was changed', mail.subject);
+  check('it greets by first name and says when', mail.text.startsWith('Hi Kemi, the password for your Package Relay account was changed on '));
+  check(
+    'it tells someone who did not do it what to do',
+    mail.text.includes("If you didn't make this change:") &&
+      mail.text.includes('1. Reset your password straight away using the link below.') &&
+      mail.text.includes('2. Contact support@pkrelay.test so we can help secure your account.'),
+  );
+  check(
+    'and the button starts a fresh reset',
+    mail.html.includes('href="https://app.pkrelay.test/forgot-password"') && mail.html.includes('Reset my password'),
+  );
+  check('it never asks for the password', /never ask for your password/.test(mail.text));
+
+  const bare = render('password_changed', {}, { appUrl: null, supportEmail: null })!;
+  check(
+    'without an app URL it does not point at a link that is not there',
+    !/link below|button below/.test(bare.text + bare.html) && bare.text.includes('was just changed'),
+  );
+}
+
 // --------------------------------------------- what must never be in one ----
 
 /*

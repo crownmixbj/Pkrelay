@@ -912,6 +912,76 @@ await run('a failure to queue never fails the confirmation', async () => {
   await db.exec(read('supabase/migrations/20250101000062_welcome_email.sql'));
 });
 
+// ------------------------------------- 63. the password-changed email --
+
+await db.exec(`alter table auth.users add column encrypted_password text;`);
+await db.exec(read('supabase/migrations/20250101000063_password_changed_email.sql'));
+
+const pwEmails = async (id) =>
+  q(
+    `select recipient, payload from public.email_outbox
+      where kind = 'password_changed' and subject_id like $1 || ':%' order by created_at`,
+    [id],
+  );
+
+const RESETTER = '99999999-9999-9999-9999-999999999999';
+
+await run('creating an account with a password sends no password email', async () => {
+  await q(
+    `insert into auth.users (id, email, encrypted_password, raw_user_meta_data)
+     values ($1, 'resetter@example.test', 'hash-1', '{"name":"Kemi Bello"}')`,
+    [RESETTER],
+  );
+  check('none on sign-up', (await pwEmails(RESETTER)).length === 0);
+});
+
+await run('changing the password queues one email per change', async () => {
+  await q(`update auth.users set encrypted_password = 'hash-2' where id = $1`, [RESETTER]);
+  let rows = await pwEmails(RESETTER);
+  check('one email after the first change', rows.length === 1, `${rows.length}`);
+  check('to the account address', rows[0]?.recipient === 'resetter@example.test');
+  check('with the name and the time', rows[0]?.payload?.full_name === 'Kemi Bello' && Boolean(rows[0]?.payload?.changed_at));
+  check(
+    'and nothing that should not be in an outbox',
+    !JSON.stringify(rows[0]?.payload ?? {}).includes('hash'),
+  );
+
+  await q(`update auth.users set encrypted_password = 'hash-3' where id = $1`, [RESETTER]);
+  rows = await pwEmails(RESETTER);
+  check('a second change is a second email', rows.length === 2, `${rows.length}`);
+});
+
+await run('updates that do not change the password send nothing', async () => {
+  await q(`update auth.users set encrypted_password = 'hash-3' where id = $1`, [RESETTER]);
+  await q(`update auth.users set email = 'kemi@example.test' where id = $1`, [RESETTER]);
+  await q(`update auth.users set email_confirmed_at = now() where id = $1`, [RESETTER]);
+  check('still two', (await pwEmails(RESETTER)).length === 2);
+});
+
+await run('a failure to queue never fails the password change', async () => {
+  await db.exec(`
+    alter table public.email_outbox drop constraint email_outbox_kind_check;
+    alter table public.email_outbox add constraint email_outbox_kind_check
+      check (kind <> 'password_changed') not valid;
+  `);
+  let threw = null;
+  try {
+    await q(`update auth.users set encrypted_password = 'hash-4' where id = $1`, [RESETTER]);
+  } catch (error) {
+    threw = error;
+  }
+  check('the change went through', threw === null, String(threw));
+  const [user] = await q('select encrypted_password from auth.users where id = $1', [RESETTER]);
+  check('and was saved', user?.encrypted_password === 'hash-4');
+  const events = await q(
+    `select 1 from public.app_events where message = 'password-changed email could not be queued' and context->>'user' = $1`,
+    [RESETTER],
+  );
+  check('and the failure was recorded', events.length === 1);
+
+  await db.exec(read('supabase/migrations/20250101000063_password_changed_email.sql'));
+});
+
 await db.close();
 
 if (failures > 0) {

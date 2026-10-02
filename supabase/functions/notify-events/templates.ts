@@ -45,7 +45,8 @@ export type EmailKind =
   | 'driver_job_cancelled'
   | 'payout_paid'
   | 'parcel_payment_received'
-  | 'welcome';
+  | 'welcome'
+  | 'password_changed';
 
 export type Rendered = { subject: string; html: string; text: string };
 
@@ -885,6 +886,81 @@ function welcome(payload: Payload, context: Context): Rendered {
   };
 }
 
+/* ---------------------------------------------- 7. account security -- */
+
+/*
+ * Sent every time an account's password changes — queued by
+ * `on_password_changed` in 20250101000063_password_changed_email.sql.
+ *
+ * ⚠ Written for the reader who did NOT make the change. The one who did needs
+ *   a sentence; the one who didn't needs to know exactly what to do next, and
+ *   the button takes them straight to a fresh reset.
+ *
+ * ⚠ No IP, device or location: the trigger does not have them, and guessing
+ *   would be worse than saying nothing.
+ */
+function passwordChanged(payload: Payload, context: Context): Rendered {
+  const name = firstName(str(payload, 'full_name'));
+  const when = whenReadable(str(payload, 'changed_at'));
+  const reset = link(context, '/forgot-password');
+  const contact = supportAddress(context.supportEmail);
+
+  const intro = when
+    ? `Hi ${name}, the password for your Package Relay account was changed on ${when}.`
+    : `Hi ${name}, the password for your Package Relay account was just changed.`;
+  const wasYou = 'If you made this change, you are all set — there is nothing else to do.';
+  const steps = [
+    'Reset your password straight away using the button below.',
+    `Contact ${contact} so we can help secure your account.`,
+    'If you use the same password anywhere else, change it there too.',
+  ];
+  const note =
+    'For your security, we email you whenever your password changes. Package Relay will never ask for your password by email or phone.';
+
+  const text = [
+    intro,
+    '',
+    wasYou,
+    '',
+    "If you didn't make this change:",
+    ...steps.map(
+      (step, i) =>
+        `${i + 1}. ${step.replace(' using the button below', reset ? ' using the link below' : '')}`,
+    ),
+    '',
+    reset ? `Reset your password: ${reset}` : '',
+    '',
+    note,
+    '',
+    'The Package Relay Team',
+  ]
+    .filter((line, i, all) => !(line === '' && all[i - 1] === ''))
+    .join('\n');
+
+  const para = (html: string, margin = '0 0 14px') =>
+    `<tr><td style="padding:0;"><p style="margin:${margin};color:#334155;font-size:15px;line-height:22px;">${html}</p></td></tr>`;
+
+  const body = [
+    para(escapeHtml(wasYou)),
+    para(`<strong style="color:#0F172A;">${escapeHtml("If you didn't make this change:")}</strong>`, '0 0 6px'),
+    `<tr><td style="padding:0;"><ol style="margin:0;padding-left:20px;color:#334155;font-size:15px;line-height:22px;">${steps
+      .map((step) => `<li>${escapeHtml(reset ? step : step.replace(' using the button below', ''))}</li>`)
+      .join('')}</ol></td></tr>`,
+  ].join('');
+
+  return {
+    subject: headerSafe('Your Package Relay password was changed'),
+    text,
+    html: layout({
+      heading: 'Your password was changed',
+      intro,
+      bodyHtml: body,
+      cta: reset ? { label: 'Reset my password', url: reset } : null,
+      footerNote: `${note} ${support(context)}`,
+    }),
+  };
+}
+
 const TEMPLATES: Record<EmailKind, (payload: Payload, context: Context) => Rendered> = {
   guarantor_invitation: guarantorInvitation,
   sender_verification_submitted: verificationSubmitted,
@@ -900,6 +976,7 @@ const TEMPLATES: Record<EmailKind, (payload: Payload, context: Context) => Rende
   payout_paid: payoutPaid,
   parcel_payment_received: parcelPaymentReceived,
   welcome,
+  password_changed: passwordChanged,
 };
 
 export function isEmailKind(value: string): value is EmailKind {
