@@ -836,6 +836,200 @@ await run('a sent email is never swept', async () => {
   check('and nobody is emailed twice', posted.length === 0);
 });
 
+// --------------------------------------------- 62. the welcome email --
+
+/*
+ * ⚠ The trigger lives on auth.users, so the property that matters most is the
+ *   last one below: a failure to queue must never fail the confirmation.
+ */
+await db.exec(`
+  alter table auth.users add column email_confirmed_at timestamptz;
+  alter table auth.users add column raw_user_meta_data jsonb not null default '{}'::jsonb;
+`);
+await db.exec(read('supabase/migrations/20250101000062_welcome_email.sql'));
+
+const welcomes = async (id) =>
+  q(`select recipient, payload from public.email_outbox where kind = 'welcome' and subject_id = $1`, [id]);
+
+const NEWBIE = '66666666-6666-6666-6666-666666666666';
+const GOOGLER = '77777777-7777-7777-7777-777777777777';
+const UNLUCKY = '88888888-8888-8888-8888-888888888888';
+
+await run('signing up does not welcome anybody yet', async () => {
+  await q(
+    `insert into auth.users (id, email, raw_user_meta_data) values ($1, 'newbie@example.test', '{"name":"Tolu Ade"}')`,
+    [NEWBIE],
+  );
+  check('no welcome before the address is confirmed', (await welcomes(NEWBIE)).length === 0);
+});
+
+await run('confirming the address queues exactly one welcome', async () => {
+  await q('update auth.users set email_confirmed_at = now() where id = $1', [NEWBIE]);
+  const rows = await welcomes(NEWBIE);
+  check('one row', rows.length === 1, `${rows.length}`);
+  check('to the account address', rows[0]?.recipient === 'newbie@example.test');
+  check('carrying the sign-up name', rows[0]?.payload?.full_name === 'Tolu Ade');
+
+  await q(`update auth.users set email_confirmed_at = now() + interval '1 minute' where id = $1`, [NEWBIE]);
+  await q(`update auth.users set email = 'tolu@example.test' where id = $1`, [NEWBIE]);
+  check('a later change to a confirmed account sends nothing more', (await welcomes(NEWBIE)).length === 1);
+});
+
+await run('a Google sign-in, confirmed on arrival, is welcomed too', async () => {
+  await q(
+    `insert into auth.users (id, email, email_confirmed_at, raw_user_meta_data)
+     values ($1, 'googler@example.test', now(), '{"full_name":"Ngozi Eze"}')`,
+    [GOOGLER],
+  );
+  const rows = await welcomes(GOOGLER);
+  check('one row', rows.length === 1, `${rows.length}`);
+  check('using the name Google sent', rows[0]?.payload?.full_name === 'Ngozi Eze');
+});
+
+await run('a failure to queue never fails the confirmation', async () => {
+  /* Take 'welcome' out of the allowed kinds, so the insert inside raises. */
+  await db.exec(`
+    alter table public.email_outbox drop constraint email_outbox_kind_check;
+    alter table public.email_outbox add constraint email_outbox_kind_check check (kind <> 'welcome') not valid;
+  `);
+  await q(`insert into auth.users (id, email) values ($1, 'unlucky@example.test')`, [UNLUCKY]);
+
+  let threw = null;
+  try {
+    await q('update auth.users set email_confirmed_at = now() where id = $1', [UNLUCKY]);
+  } catch (error) {
+    threw = error;
+  }
+  check('the confirmation went through', threw === null, String(threw));
+  const [user] = await q('select email_confirmed_at from auth.users where id = $1', [UNLUCKY]);
+  check('and was saved', user?.email_confirmed_at != null);
+  const events = await q(
+    `select 1 from public.app_events where message = 'welcome email could not be queued' and context->>'user' = $1`,
+    [UNLUCKY],
+  );
+  check('and the failure was recorded where somebody can find it', events.length === 1);
+
+  await db.exec(read('supabase/migrations/20250101000062_welcome_email.sql'));
+});
+
+// ------------------------------------- 63. the password-changed email --
+
+await db.exec(`alter table auth.users add column encrypted_password text;`);
+await db.exec(read('supabase/migrations/20250101000063_password_changed_email.sql'));
+
+const pwEmails = async (id) =>
+  q(
+    `select recipient, payload from public.email_outbox
+      where kind = 'password_changed' and subject_id like $1 || ':%' order by created_at`,
+    [id],
+  );
+
+const RESETTER = '99999999-9999-9999-9999-999999999999';
+
+await run('creating an account with a password sends no password email', async () => {
+  await q(
+    `insert into auth.users (id, email, encrypted_password, raw_user_meta_data)
+     values ($1, 'resetter@example.test', 'hash-1', '{"name":"Kemi Bello"}')`,
+    [RESETTER],
+  );
+  check('none on sign-up', (await pwEmails(RESETTER)).length === 0);
+});
+
+await run('changing the password queues one email per change', async () => {
+  await q(`update auth.users set encrypted_password = 'hash-2' where id = $1`, [RESETTER]);
+  let rows = await pwEmails(RESETTER);
+  check('one email after the first change', rows.length === 1, `${rows.length}`);
+  check('to the account address', rows[0]?.recipient === 'resetter@example.test');
+  check('with the name and the time', rows[0]?.payload?.full_name === 'Kemi Bello' && Boolean(rows[0]?.payload?.changed_at));
+  check(
+    'and nothing that should not be in an outbox',
+    !JSON.stringify(rows[0]?.payload ?? {}).includes('hash'),
+  );
+
+  await q(`update auth.users set encrypted_password = 'hash-3' where id = $1`, [RESETTER]);
+  rows = await pwEmails(RESETTER);
+  check('a second change is a second email', rows.length === 2, `${rows.length}`);
+});
+
+await run('updates that do not change the password send nothing', async () => {
+  await q(`update auth.users set encrypted_password = 'hash-3' where id = $1`, [RESETTER]);
+  await q(`update auth.users set email = 'kemi@example.test' where id = $1`, [RESETTER]);
+  await q(`update auth.users set email_confirmed_at = now() where id = $1`, [RESETTER]);
+  check('still two', (await pwEmails(RESETTER)).length === 2);
+});
+
+await run('a failure to queue never fails the password change', async () => {
+  await db.exec(`
+    alter table public.email_outbox drop constraint email_outbox_kind_check;
+    alter table public.email_outbox add constraint email_outbox_kind_check
+      check (kind <> 'password_changed') not valid;
+  `);
+  let threw = null;
+  try {
+    await q(`update auth.users set encrypted_password = 'hash-4' where id = $1`, [RESETTER]);
+  } catch (error) {
+    threw = error;
+  }
+  check('the change went through', threw === null, String(threw));
+  const [user] = await q('select encrypted_password from auth.users where id = $1', [RESETTER]);
+  check('and was saved', user?.encrypted_password === 'hash-4');
+  const events = await q(
+    `select 1 from public.app_events where message = 'password-changed email could not be queued' and context->>'user' = $1`,
+    [RESETTER],
+  );
+  check('and the failure was recorded', events.length === 1);
+
+  await db.exec(read('supabase/migrations/20250101000063_password_changed_email.sql'));
+});
+
+// ------------------------------- 64. driver first name in status emails --
+
+await db.exec(read('supabase/migrations/20250101000064_status_email_driver_name.sql'));
+
+await run('an accepted parcel tells the sender the driver’s first name', async () => {
+  const [{ id }] = await q(
+    `insert into public.bookings (tracking_id, sender_id, status) values ('PKG-64', $1, 'Booked') returning id`,
+    [ALICE],
+  );
+  await q(
+    `update public.bookings set status = 'Assigned', driver = '  Tunde   Bakare ', driver_id = $2 where id = $1`,
+    [id, DELE],
+  );
+  const [assigned] = await q(
+    `select payload from public.email_outbox where kind = 'parcel_status_changed' and subject_id = $1`,
+    [`${id}:Assigned`],
+  );
+  check('the email was queued', Boolean(assigned));
+  check('with the first name only', assigned?.payload?.driver_first_name === 'Tunde', JSON.stringify(assigned?.payload));
+  check('and none of the rest of it', !JSON.stringify(assigned?.payload ?? {}).includes('Bakare'));
+  check('the existing fields are unchanged', assigned?.payload?.tracking_id === 'PKG-64' && assigned?.payload?.status === 'Assigned');
+
+  const [{ id: lonely }] = await q(
+    `insert into public.bookings (tracking_id, sender_id, status) values ('PKG-65', $1, 'Booked') returning id`,
+    [ALICE],
+  );
+  await q(`update public.bookings set status = 'Awaiting Driver' where id = $1`, [lonely]);
+  const [unassigned] = await q(
+    `select payload from public.email_outbox where kind = 'parcel_status_changed' and subject_id = $1`,
+    [`${lonely}:Awaiting Driver`],
+  );
+  check('no driver yet means no name, not an empty string', unassigned && unassigned.payload.driver_first_name === null);
+
+  const [{ id: done }] = await q(
+    `insert into public.bookings (tracking_id, sender_id, driver, driver_id, status)
+     values ('PKG-66', $1, 'Tunde Bakare', $2, 'Out for Delivery') returning id`,
+    [ALICE, DELE],
+  );
+  await q(`update public.bookings set status = 'Delivered' where id = $1`, [done]);
+  const delivered = await q(
+    `select 1 from public.email_outbox where kind = 'delivery_completed' and subject_id = $1`,
+    [done],
+  );
+  check('the delivered branch still works after the replace', delivered.length === 1);
+  const [probe] = await q('select public.status_email_has_driver_name() as ok');
+  check('the deployment panel probe sees it', probe?.ok === true);
+});
+
 await db.close();
 
 if (failures > 0) {

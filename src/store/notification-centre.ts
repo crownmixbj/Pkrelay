@@ -1,3 +1,4 @@
+import { formatDay } from '@/lib/when';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 import { supabase } from '@/lib/supabase';
@@ -346,13 +347,12 @@ export function relativeTime(iso: string, now: Date = new Date()): string {
   if (days === 1) return 'Yesterday';
   if (days < 7) return `${days} days ago`;
 
-  const date = new Date(then);
-  const sameYear = date.getFullYear() === now.getFullYear();
-  return date.toLocaleDateString('en-NG', {
-    day: 'numeric',
-    month: 'short',
-    ...(sameYear ? {} : { year: 'numeric' }),
-  });
+  /*
+   * Past a week the relative wording stops helping ("38 days ago" is not a
+   * date), so it becomes a date — in Lagos time like every other date in the
+   * app, rather than in whatever zone the reader's device is set to.
+   */
+  return formatDay(iso);
 }
 
 /** What the badge shows. Caps rather than lying about a number it cannot see. */

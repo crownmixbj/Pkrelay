@@ -1,3 +1,4 @@
+import { formatStamp } from '@/lib/when';
 import { isCarrier, isFinished, type Booking } from '@/store/bookings';
 
 /**
@@ -135,14 +136,5 @@ export function earningsSummary(bookings: Booking[], viewerId: string | null): E
 export function deliveredLabel(iso: string | null): string {
   if (!iso) return 'Date not recorded';
 
-  const when = new Date(iso);
-  if (Number.isNaN(when.getTime())) return 'Date not recorded';
-
-  return when.toLocaleString(undefined, {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatStamp(iso) || 'Date not recorded';
 }

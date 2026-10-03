@@ -28,6 +28,7 @@ import { ToggleRow } from '@/components/ui/dropdown';
 import { Field } from '@/components/ui/field';
 import { SectionLabel } from '@/components/ui/screen';
 import { FontSize, MaxContentWidth, Radius, Spacing, Typography, font } from '@/constants/theme';
+import { useGoBack } from '@/hooks/use-go-back';
 import { useTheme } from '@/hooks/use-theme';
 import {
   DELIVERY_TYPES,
@@ -47,6 +48,7 @@ const DELIVERY_TYPE_TITLES: Record<DeliveryType, string> = {
 export default function RateCalculatorScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const goBack = useGoBack();
 
   const [deliveryType, setDeliveryType] = useState<DeliveryType>('local');
   const [weight, setWeight] = useState('');
@@ -83,7 +85,7 @@ export default function RateCalculatorScreen() {
               </Text>
             </View>
             <Pressable
-              onPress={() => router.back()}
+              onPress={goBack}
               hitSlop={10}
               accessibilityLabel="Close"
               style={[styles.close, { backgroundColor: theme.surfaceMuted }]}>
@@ -171,10 +173,16 @@ export default function RateCalculatorScreen() {
           <Button
             label="Send a Parcel"
             icon={(color, size) => <PackagePlus color={color} size={size} />}
-            onPress={() => {
-              router.back();
-              router.navigate('/book');
-            }}
+            /*
+             * ⚠ One navigation, not a back followed by a navigate.
+             *
+             *   This read `router.back(); router.navigate('/book')` — pop the
+             *   calculator, then open the form — which is what `replace` does in
+             *   a single action. The two-step version also raised an unhandled
+             *   GO_BACK on a direct load of this page, where there is nothing to
+             *   pop, before navigating anyway.
+             */
+            onPress={() => router.replace('/book')}
           />
         </View>
         <Footer />

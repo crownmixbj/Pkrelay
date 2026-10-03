@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useMemo } from 'react';
 import {
   Ban,
@@ -34,15 +34,17 @@ import { FontSize, MaxContentWidth, Radius, Spacing, Typography, font } from '@/
 import { findParcel } from '@/lib/parcel-link';
 import { SignedOutState } from '@/components/ui/signed-out-state';
 import { useSession } from '@/store/session';
+import { formatStamp } from '@/lib/when';
+import { useGoBack } from '@/hooks/use-go-back';
 import { useTheme } from '@/hooks/use-theme';
 import {
   BOOKING_STAGES,
   estimateFee,
-  formatBookingDate,
   formatNaira,
   handoverFeeLabel,
   routeLabel,
   stageIndex,
+  stageTimestamp,
   statusLabel,
   statusTone,
   useBookings,
@@ -63,7 +65,12 @@ const STAGE_ICONS: Record<BookingStage, typeof Truck> = {
 
 export default function ParcelDetailScreen() {
   const theme = useTheme();
-  const router = useRouter();
+  /*
+   * A parcel is the most linkable screen in the app — every delivery email
+   * and every push notification points at one — so the stack is routinely
+   * empty here. The sender's own list is where closing a parcel belongs.
+   */
+  const goBack = useGoBack('/(tabs)/my-packages');
   const { id } = useLocalSearchParams<{ id: string }>();
   const { bookings, loading } = useBookings();
   const { isAuthenticated } = useSession();
@@ -156,7 +163,7 @@ export default function ParcelDetailScreen() {
               title="Parcel not found"
               message="This parcel may have been removed. Go back and pick another from the list."
             />
-            <Button label="Go back" variant="secondary" onPress={() => router.back()} />
+            <Button label="Go back" variant="secondary" onPress={goBack} />
           </View>
           <Footer />
         </ScrollView>
@@ -179,11 +186,11 @@ export default function ParcelDetailScreen() {
               <Badge label={statusLabel(booking)} tone={statusTone(booking)} />
               <Text style={[styles.title, { color: theme.text }]}>{booking.itemDescription}</Text>
               <Text style={[styles.trackingId, { color: theme.textMuted }]}>
-                #{booking.trackingId} · {formatBookingDate(booking.createdAt)}
+                #{booking.trackingId} · Posted {formatStamp(booking.createdAt)}
               </Text>
             </View>
             <Pressable
-              onPress={() => router.back()}
+              onPress={goBack}
               hitSlop={10}
               accessibilityLabel="Close"
               style={[styles.close, { backgroundColor: theme.surfaceMuted }]}>
@@ -218,23 +225,36 @@ export default function ParcelDetailScreen() {
                 const Icon = isDone ? CircleCheckBig : STAGE_ICONS[stage];
                 const color = isDone ? theme.success : isActive ? theme.primary : theme.textMuted;
 
+                /*
+                  Only the stages the parcel actually carries a time for. A
+                  stage with no stamp shows none rather than a dash: "Delivered
+                  —" on a parcel still in transit reads as a delivery that went
+                  wrong, which is the opposite of what it means.
+                */
+                const at = formatStamp(stageTimestamp(booking, stage));
+
                 return (
                   <View key={stage} style={styles.timelineItem}>
                     <Icon color={color} size={18} />
-                    <Text
-                      style={[
-                        styles.timelineText,
-                        {
-                          color: isActive
-                            ? theme.text
-                            : isDone
-                              ? theme.textSecondary
-                              : theme.textMuted,
-                        },
-                        isActive && styles.timelineTextActive,
-                      ]}>
-                      {stage}
-                    </Text>
+                    <View style={styles.timelineBody}>
+                      <Text
+                        style={[
+                          styles.timelineText,
+                          {
+                            color: isActive
+                              ? theme.text
+                              : isDone
+                                ? theme.textSecondary
+                                : theme.textMuted,
+                          },
+                          isActive && styles.timelineTextActive,
+                        ]}>
+                        {stage}
+                      </Text>
+                      {!!at && (
+                        <Text style={[styles.timelineWhen, { color: theme.textMuted }]}>{at}</Text>
+                      )}
+                    </View>
                   </View>
                 );
               })}
@@ -363,7 +383,7 @@ export default function ParcelDetailScreen() {
           */}
           <CancelAction booking={booking} />
 
-          <Button label="Close" variant="secondary" onPress={() => router.back()} />
+          <Button label="Close" variant="secondary" onPress={goBack} />
         </View>
         <Footer />
       </ScrollView>
@@ -453,6 +473,13 @@ const styles = StyleSheet.create({
   },
   timeline: {
     gap: Spacing.two + 2,
+  },
+  timelineBody: {
+    flex: 1,
+    gap: 1,
+  },
+  timelineWhen: {
+    ...Typography.caption,
   },
   timelineItem: {
     flexDirection: 'row',

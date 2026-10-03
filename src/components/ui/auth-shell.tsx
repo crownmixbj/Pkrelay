@@ -1,4 +1,3 @@
-import { useRouter } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
 import {
   KeyboardAvoidingView,
@@ -14,6 +13,7 @@ import {
 import { Footer } from '@/components/Footer';
 import { StickyHeaderScreen } from '@/components/ui/sticky-header';
 import { Elevation, PageCanvas, Radius, Spacing, Typography, font } from '@/constants/theme';
+import { useGoBack } from '@/hooks/use-go-back';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
@@ -40,13 +40,13 @@ export type AuthShellProps = {
   children: React.ReactNode;
   /** Rendered under the card, outside its border — "New to Package Relay?" and similar. */
   footer?: React.ReactNode;
-  /** Where the back arrow goes. Defaults to `router.back()`. */
+  /** Where the back arrow goes. Defaults to the previous screen, or home. */
   onBack?: () => void;
 };
 
 export function AuthShell({ title, subtitle, children, footer, onBack }: AuthShellProps) {
   const theme = useTheme();
-  const router = useRouter();
+  const goBack = useGoBack();
   const { width } = useWindowDimensions();
 
   /*
@@ -71,7 +71,7 @@ export function AuthShell({ title, subtitle, children, footer, onBack }: AuthShe
           keyboardShouldPersistTaps="handled">
           <View style={styles.column}>
             <Pressable
-              onPress={onBack ?? (() => router.back())}
+              onPress={onBack ?? goBack}
               accessibilityRole="button"
               accessibilityLabel="Go back"
               hitSlop={10}

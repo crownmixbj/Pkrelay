@@ -14,6 +14,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { formatClock } from '@/lib/when';
 import { errorMessage } from '@/lib/errors';
 import { Badge } from '@/components/ui/badge';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
@@ -570,9 +571,9 @@ export function DriverHub() {
               onChange={changeMode}
               status={
                 flashShift
-                  ? `Online in ${flashShift.originCity} until ${new Date(
+                  ? `Online in ${flashShift.originCity} until ${formatClock(
                       flashShift.departsBefore,
-                    ).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                    )}`
                   : undefined
               }
             />

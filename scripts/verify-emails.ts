@@ -172,6 +172,68 @@ check(
   'an email that cannot be replied to must still say how to reach a person',
 );
 
+// ------------------------------------------------------- the welcome ----
+
+/*
+ * ⚠ Approved copy, pinned verbatim. A wording change here is a product
+ *   decision, so it fails loudly rather than drifting.
+ */
+{
+  const mail = render('welcome', { full_name: 'Tolu Ade' }, CONTEXT)!;
+  check(
+    'the welcome subject is the approved one',
+    mail.subject === "You're all set! Complete your quick ID verification to start sending",
+    mail.subject,
+  );
+  for (const line of [
+    'Hi Tolu,',
+    "Welcome to Package Relay! We're thrilled to have you on board. Whether you're sending items across town or managing your deliveries, we're here to make peer-to-peer parcel shipping fast, secure, and reliable.",
+    'Important: Complete Your ID Verification',
+    "To keep our community safe and ensure secure handoffs, all senders must complete a quick, one-time ID verification before posting their first parcel. Once verified, you'll be fully unlocked to start sending.",
+    'Verify My Identity Now: https://app.pkrelay.test/profile',
+    'Here’s what you can do next:',
+    '- Complete your profile and upload your ID verification details.',
+    '- Check out our rate calculator to estimate delivery fares instantly.',
+    '- Post your first package and connect with trusted drivers.',
+    'If you have any questions or need a hand, our support team is always here to help.',
+    'Happy shipping!',
+    'The Package Relay Team',
+    'https://app.pkrelay.test',
+  ]) {
+    check(`the welcome text part has: ${line.slice(0, 50)}`, mail.text.split('\n').includes(line));
+  }
+  check(
+    'the button opens the verification page',
+    mail.html.includes('href="https://app.pkrelay.test/profile"') && mail.html.includes('Verify My Identity Now'),
+  );
+  check('a nameless account is greeted "Hi there,"', render('welcome', {}, CONTEXT)!.text.startsWith('Hi there,'));
+}
+
+// ------------------------------------------------ password changed ----
+
+{
+  const mail = render('password_changed', { full_name: 'Kemi Bello', changed_at: '2026-10-02T12:00:00Z' }, CONTEXT)!;
+  check('the password email has its subject', mail.subject === 'Your Package Relay password was changed', mail.subject);
+  check('it greets by first name and says when', mail.text.startsWith('Hi Kemi, the password for your Package Relay account was changed on '));
+  check(
+    'it tells someone who did not do it what to do',
+    mail.text.includes("If you didn't make this change:") &&
+      mail.text.includes('1. Reset your password straight away using the link below.') &&
+      mail.text.includes('2. Contact support@pkrelay.test so we can help secure your account.'),
+  );
+  check(
+    'and the button starts a fresh reset',
+    mail.html.includes('href="https://app.pkrelay.test/forgot-password"') && mail.html.includes('Reset my password'),
+  );
+  check('it never asks for the password', /never ask for your password/.test(mail.text));
+
+  const bare = render('password_changed', {}, { appUrl: null, supportEmail: null })!;
+  check(
+    'without an app URL it does not point at a link that is not there',
+    !/link below|button below/.test(bare.text + bare.html) && bare.text.includes('was just changed'),
+  );
+}
+
 // --------------------------------------------- what must never be in one ----
 
 /*

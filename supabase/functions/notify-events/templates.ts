@@ -44,7 +44,9 @@ export type EmailKind =
   | 'driver_offer'
   | 'driver_job_cancelled'
   | 'payout_paid'
-  | 'parcel_payment_received';
+  | 'parcel_payment_received'
+  | 'welcome'
+  | 'password_changed';
 
 export type Rendered = { subject: string; html: string; text: string };
 
@@ -784,6 +786,181 @@ function parcelPaymentReceived(payload: Payload, context: Context): Rendered {
   };
 }
 
+/* ------------------------------------------------------- 6. the welcome -- */
+
+/*
+ * Sent once, when an account's email address is first confirmed — queued by
+ * `on_signup_confirmed` in 20250101000062_welcome_email.sql.
+ *
+ * ⚠ The copy is the approved wording, verbatim. Change it with whoever owns it.
+ *
+ * ⚠ The button goes to /profile, where ID verification lives — the same page
+ *   the ID-rejection email's "Submit again" opens.
+ */
+const WELCOME = {
+  subject: "You're all set! Complete your quick ID verification to start sending",
+  intro:
+    "Welcome to Package Relay! We're thrilled to have you on board. Whether you're sending items across town or managing your deliveries, we're here to make peer-to-peer parcel shipping fast, secure, and reliable.",
+  importantTitle: 'Important: Complete Your ID Verification',
+  important:
+    "To keep our community safe and ensure secure handoffs, all senders must complete a quick, one-time ID verification before posting their first parcel. Once verified, you'll be fully unlocked to start sending.",
+  cta: 'Verify My Identity Now',
+  nextTitle: 'Here’s what you can do next:',
+  next: [
+    'Complete your profile and upload your ID verification details.',
+    'Check out our rate calculator to estimate delivery fares instantly.',
+    'Post your first package and connect with trusted drivers.',
+  ],
+  help: 'If you have any questions or need a hand, our support team is always here to help.',
+  signOff: ['Happy shipping!', 'The Package Relay Team'],
+};
+
+const P = (html: string, margin = '0 0 14px') =>
+  `<tr><td style="padding:0;"><p style="margin:${margin};color:#334155;font-size:15px;line-height:22px;">${html}</p></td></tr>`;
+
+function welcome(payload: Payload, context: Context): Rendered {
+  const name = firstName(str(payload, 'full_name'));
+  const verify = link(context, '/profile');
+  const site = absoluteUrl(context.appUrl);
+
+  const text = [
+    `Hi ${name},`,
+    '',
+    WELCOME.intro,
+    '',
+    WELCOME.importantTitle,
+    WELCOME.important,
+    '',
+    verify ? `${WELCOME.cta}: ${verify}` : '',
+    '',
+    WELCOME.nextTitle,
+    ...WELCOME.next.map((item) => `- ${item}`),
+    '',
+    WELCOME.help,
+    '',
+    ...WELCOME.signOff,
+    site ?? '',
+    '',
+    support(context),
+  ]
+    .filter((line, i, all) => !(line === '' && all[i - 1] === ''))
+    .join('\n');
+
+  const before = [
+    P(escapeHtml(WELCOME.intro)),
+    P(
+      `<strong style="color:#0F172A;">${escapeHtml(WELCOME.importantTitle)}</strong><br />${escapeHtml(
+        WELCOME.important,
+      )}`,
+      '0',
+    ),
+  ].join('');
+
+  const after = [
+    P(escapeHtml(WELCOME.nextTitle), '0 0 6px'),
+    `<tr><td style="padding:0;"><ul style="margin:0 0 14px;padding-left:20px;color:#334155;font-size:15px;line-height:22px;">${WELCOME.next
+      .map((item) => `<li>${escapeHtml(item)}</li>`)
+      .join('')}</ul></td></tr>`,
+    P(escapeHtml(WELCOME.help)),
+    P(
+      `${WELCOME.signOff.map(escapeHtml).join('<br />')}${
+        site
+          ? `<br /><a href="${escapeHtml(site)}" target="_blank" rel="noopener noreferrer" style="color:#0B5FFF;">${escapeHtml(site)}</a>`
+          : ''
+      }`,
+      '0',
+    ),
+  ].join('');
+
+  return {
+    subject: headerSafe(WELCOME.subject),
+    text,
+    html: layout({
+      heading: '',
+      intro: `Hi ${name},`,
+      bodyHtml: before,
+      cta: verify ? { label: WELCOME.cta, url: verify } : null,
+      afterCtaHtml: after,
+      footerNote: support(context),
+    }),
+  };
+}
+
+/* ---------------------------------------------- 7. account security -- */
+
+/*
+ * Sent every time an account's password changes — queued by
+ * `on_password_changed` in 20250101000063_password_changed_email.sql.
+ *
+ * ⚠ Written for the reader who did NOT make the change. The one who did needs
+ *   a sentence; the one who didn't needs to know exactly what to do next, and
+ *   the button takes them straight to a fresh reset.
+ *
+ * ⚠ No IP, device or location: the trigger does not have them, and guessing
+ *   would be worse than saying nothing.
+ */
+function passwordChanged(payload: Payload, context: Context): Rendered {
+  const name = firstName(str(payload, 'full_name'));
+  const when = whenReadable(str(payload, 'changed_at'));
+  const reset = link(context, '/forgot-password');
+  const contact = supportAddress(context.supportEmail);
+
+  const intro = when
+    ? `Hi ${name}, the password for your Package Relay account was changed on ${when}.`
+    : `Hi ${name}, the password for your Package Relay account was just changed.`;
+  const wasYou = 'If you made this change, you are all set — there is nothing else to do.';
+  const steps = [
+    'Reset your password straight away using the button below.',
+    `Contact ${contact} so we can help secure your account.`,
+    'If you use the same password anywhere else, change it there too.',
+  ];
+  const note =
+    'For your security, we email you whenever your password changes. Package Relay will never ask for your password by email or phone.';
+
+  const text = [
+    intro,
+    '',
+    wasYou,
+    '',
+    "If you didn't make this change:",
+    ...steps.map(
+      (step, i) =>
+        `${i + 1}. ${step.replace(' using the button below', reset ? ' using the link below' : '')}`,
+    ),
+    '',
+    reset ? `Reset your password: ${reset}` : '',
+    '',
+    note,
+    '',
+    'The Package Relay Team',
+  ]
+    .filter((line, i, all) => !(line === '' && all[i - 1] === ''))
+    .join('\n');
+
+  const para = (html: string, margin = '0 0 14px') =>
+    `<tr><td style="padding:0;"><p style="margin:${margin};color:#334155;font-size:15px;line-height:22px;">${html}</p></td></tr>`;
+
+  const body = [
+    para(escapeHtml(wasYou)),
+    para(`<strong style="color:#0F172A;">${escapeHtml("If you didn't make this change:")}</strong>`, '0 0 6px'),
+    `<tr><td style="padding:0;"><ol style="margin:0;padding-left:20px;color:#334155;font-size:15px;line-height:22px;">${steps
+      .map((step) => `<li>${escapeHtml(reset ? step : step.replace(' using the button below', ''))}</li>`)
+      .join('')}</ol></td></tr>`,
+  ].join('');
+
+  return {
+    subject: headerSafe('Your Package Relay password was changed'),
+    text,
+    html: layout({
+      heading: 'Your password was changed',
+      intro,
+      bodyHtml: body,
+      cta: reset ? { label: 'Reset my password', url: reset } : null,
+      footerNote: `${note} ${support(context)}`,
+    }),
+  };
+}
+
 const TEMPLATES: Record<EmailKind, (payload: Payload, context: Context) => Rendered> = {
   guarantor_invitation: guarantorInvitation,
   sender_verification_submitted: verificationSubmitted,
@@ -798,6 +975,8 @@ const TEMPLATES: Record<EmailKind, (payload: Payload, context: Context) => Rende
   driver_job_cancelled: driverJobCancelled,
   payout_paid: payoutPaid,
   parcel_payment_received: parcelPaymentReceived,
+  welcome,
+  password_changed: passwordChanged,
 };
 
 export function isEmailKind(value: string): value is EmailKind {

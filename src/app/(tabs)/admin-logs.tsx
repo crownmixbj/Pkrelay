@@ -2,6 +2,7 @@ import { CircleAlert, CircleCheck, FileWarning, TriangleAlert } from 'lucide-rea
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { formatStamp } from '@/lib/when';
 import { errorMessage } from '@/lib/errors';
 import { AdminError, AdminShell } from '@/components/ui/admin-shell';
 import { Button } from '@/components/ui/button';
@@ -150,7 +151,7 @@ function EventRow({ event, first }: { event: AppEvent; first: boolean }) {
         )}
         <Text style={[styles.area, { color: theme.text }]}>{event.area}</Text>
         <Text style={[styles.when, { color: theme.textMuted }]}>
-          {new Date(event.createdAt).toLocaleString()}
+          {formatStamp(event.createdAt)}
         </Text>
       </View>
 

@@ -323,9 +323,17 @@ check(
   '"unassigned" on a parcel dispatch is working reads very differently from one nobody has been offered',
 );
 
+/*
+ * ⚠ The rule, not the spelling. This pinned one line — `if (!iso) return '—';`
+ *   — and went red when the drawer moved onto the shared Lagos-time formatter,
+ *   which returns an empty string for anything unusable and leaves the dash to
+ *   the caller. What matters is that an absent timestamp shows a dash and that
+ *   nothing substitutes a plausible date for one.
+ */
 check(
   'a missing timestamp renders as a dash, never an invented date',
-  flat(drawer).includes("if (!iso) return '—';"),
+  /(if \(!iso\) return '—';|\|\| '—')/.test(flat(drawer)) &&
+    !/new Date\(\)/.test(flat(drawer)),
 );
 
 check(

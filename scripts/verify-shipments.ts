@@ -180,9 +180,17 @@ check(
  * `createdAt` would put invented delivery times in front of someone trying to
  * establish when a parcel actually moved.
  */
+/*
+ * ⚠ `stageTimestamp` moved from this screen into `store/bookings`, and the
+ *   assertion followed it rather than being dropped. The parcel detail needed
+ *   the same stage → column mapping, and a second copy is a second chance to
+ *   stamp "Picked Up" with the acceptance time.
+ */
 check(
   'only recorded timestamps are shown',
-  tracking.includes('stageTimestamp') && tracking.includes('return null'),
+  tracking.includes('stageTimestamp') &&
+    read('src/store/bookings.tsx').includes('export function stageTimestamp') &&
+    bookingsStore.includes('return null'),
 );
 check(
   'and the blank column is explained',

@@ -3,6 +3,7 @@ import { Ban, History, ShieldCheck, ShieldOff, Trash2, UserRound } from 'lucide-
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { formatDay, formatStamp } from '@/lib/when';
 import { errorMessage } from '@/lib/errors';
 import { AdminError, AdminShell } from '@/components/ui/admin-shell';
 import { Badge } from '@/components/ui/badge';
@@ -388,7 +389,7 @@ export default function AdminUsersScreen() {
                   </View>
                   <Text style={[styles.meta, { color: theme.textMuted }]}>
                     {item.phone || 'No phone'} · joined{' '}
-                    {new Date(item.createdAt).toLocaleDateString()}
+                    {formatDay(item.createdAt)}
                   </Text>
                   {/*
                     The application line, or its absence. Printing "Sender"
@@ -397,14 +398,14 @@ export default function AdminUsersScreen() {
                   */}
                   {!!item.drivingBannedAt && !item.deletedAt && (
                     <Text style={[styles.banReason, { color: theme.dangerOnSoft }]}>
-                      Banned {new Date(item.drivingBannedAt).toLocaleDateString()}
+                      Banned {formatDay(item.drivingBannedAt)}
                       {item.banReason ? ` — ${item.banReason}` : ''}
                     </Text>
                   )}
                   {application ? (
                     <Text style={[styles.meta, { color: theme.textMuted }]}>
                       {STATUS_LABELS[application.status]} · {application.reference} · applied{' '}
-                      {new Date(application.submittedAt).toLocaleDateString()}
+                      {formatDay(application.submittedAt)}
                     </Text>
                   ) : (
                     <Text style={[styles.meta, { color: theme.textMuted }]}>
@@ -589,7 +590,7 @@ export default function AdminUsersScreen() {
                     {nameFor(grant.actorId)}
                   </Text>
                   <Text style={[styles.meta, { color: theme.textMuted }]}>
-                    {new Date(grant.createdAt).toLocaleString()}
+                    {formatStamp(grant.createdAt)}
                     {grant.reason ? ` · ${grant.reason}` : ''}
                   </Text>
                 </View>

@@ -49,6 +49,7 @@ import { RiderIllustration } from '@/components/ui/rider-illustration';
 import { EmptyState } from '@/components/ui/screen';
 import { SignedOutState } from '@/components/ui/signed-out-state';
 import { ServiceCategoryCard } from '@/components/ui/service-category-card';
+import { formatStamp } from '@/lib/when';
 import { serviceArtwork } from '@/constants/service-artwork';
 import { servicePrefillParams } from '@/constants/services';
 import { HERO_BACKGROUND } from '@/constants/hero-background';
@@ -662,7 +663,10 @@ function TrackingCard({ booking, onPress }: { booking: Booking; onPress: () => v
 
           <View style={styles.cardMetaRow}>
             <Text style={[styles.trackingId, { color: theme.textSecondary }]}>
-              #{booking.trackingId}
+              {/* Posted when, in Lagos time — the card otherwise said only what
+                  and where, never when, so two parcels of the same thing were
+                  indistinguishable. */}
+              #{booking.trackingId} · {formatStamp(booking.createdAt)}
             </Text>
             {booking.fragile && (
               <ShieldAlert color={theme.warning} size={14} accessibilityLabel="Fragile" />

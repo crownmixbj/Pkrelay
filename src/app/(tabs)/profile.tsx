@@ -27,6 +27,7 @@ import { SignedOutState } from '@/components/ui/signed-out-state';
 import { VerifyIdentityCard } from '@/components/ui/verify-identity-card';
 import { showToast } from '@/components/ui/toast';
 import { MaxContentWidth, Radius, Spacing, Typography, font } from '@/constants/theme';
+import { useGoBack } from '@/hooks/use-go-back';
 import { useTheme } from '@/hooks/use-theme';
 import { formatNaira, isFinished, parcelsForUser, useBookings } from '@/store/bookings';
 import { useHubs } from '@/store/hubs';
@@ -72,6 +73,7 @@ import {
 export default function ProfileScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const goBack = useGoBack();
   const { user, isAuthenticated, role, setRole, isApprovedDriver, application, signOut } =
     useSession();
   const { bookings } = useBookings();
@@ -162,13 +164,14 @@ export default function ProfileScreen() {
       keyboardShouldPersistTaps="handled">
       <View style={styles.content}>
         {/*
-          ⚠ `canGoBack` first, because this screen has two ways in.
+          ⚠ The guarded back, because this screen has two ways in.
 
             Opened from the account menu there is a history entry to return to.
             Opened from a link, a bookmark or a fresh reload there is not, and
-            `router.back()` on an empty stack does nothing at all — a back
-            arrow that silently refuses is worse than no arrow. Falling back to
-            the home screen gives it something honest to do.
+            an unguarded `router.back()` there raises an unhandled GO_BACK — a
+            back arrow that refuses is worse than no arrow. `useGoBack` falls
+            back to the home screen, and now holds that rule for every screen
+            rather than only this one.
 
           ⚠ No action on the right.
 
@@ -180,7 +183,7 @@ export default function ProfileScreen() {
         */}
         <ScreenHeader
           title="My Profile"
-          onBack={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+          onBack={goBack}
         />
 
         <Card style={styles.card}>

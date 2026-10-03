@@ -148,16 +148,18 @@ const IDENTITY_FIELDS: FieldSpec[] = [
     placeholder: '+234 800 000 0000',
     keyboardType: 'phone-pad',
   },
-  { key: 'guarantor_relationship', label: 'Guarantor relationship', placeholder: 'Uncle' },
-  { key: 'guarantor_address', label: 'Guarantor address', placeholder: 'Street, city' },
-  {
-    key: 'guarantor_nin',
-    label: 'Guarantor NIN',
-    placeholder: '11 digits',
-    keyboardType: 'numeric',
-    maxLength: NIN_LENGTH,
-    mask: maskNinInput,
-  },
+  /*
+    ⚠ Relationship, address and the guarantor's NIN are deliberately absent.
+
+      They were here because the applicant used to supply them at signup. Since
+      migration 39 the guarantor supplies all three themselves, through the
+      portal, into `guarantor_verifications` — and that is the copy the review
+      screen reads. Leaving the boxes here asked a driver to type a third
+      party's national identifier from memory, wrote it to columns nothing reads
+      any more, and, because these are identity fields, paused their approval to
+      do it. Name and phone stay: they are how the invitation is addressed and
+      chased.
+  */
 ];
 
 /**
@@ -264,9 +266,6 @@ function toRow(application: DriverApplication): Record<string, string> {
     license_id: application.licenseId ?? '',
     guarantor_name: application.guarantorName ?? '',
     guarantor_phone: application.guarantorPhone ?? '',
-    guarantor_relationship: application.guarantorRelationship ?? '',
-    guarantor_address: application.guarantorAddress ?? '',
-    guarantor_nin: application.guarantorNin ?? '',
   };
 }
 

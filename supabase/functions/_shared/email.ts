@@ -90,10 +90,14 @@ export const ROW = (label: string, value: string) => `
  *   flexbox is unusable in both. This is the layout that survives them.
  */
 export function layout(options: {
+  /** Empty string omits the headline; the intro then opens the email. */
   heading: string;
   intro: string;
+  /** Table rows, rendered before the button. */
   bodyHtml: string;
   cta?: { label: string; url: string } | null;
+  /** Table rows, rendered after the button. */
+  afterCtaHtml?: string;
   footerNote: string;
 }): string {
   /*
@@ -197,8 +201,12 @@ export function layout(options: {
         <div style="color:#0B5FFF;font-size:20px;font-weight:800;letter-spacing:1.6px;">PKRELAY</div>
       </td></tr>
       <tr><td style="padding:20px 28px 0;">
-        <h1 style="margin:0;color:#0F172A;font-size:20px;font-weight:700;">${escapeHtml(options.heading)}</h1>
-        <p style="margin:12px 0 0;color:#334155;font-size:15px;line-height:22px;">${escapeHtml(options.intro)}</p>
+        ${
+          options.heading
+            ? `<h1 style="margin:0 0 12px;color:#0F172A;font-size:20px;font-weight:700;">${escapeHtml(options.heading)}</h1>`
+            : ''
+        }
+        <p style="margin:0;color:#334155;font-size:15px;line-height:22px;">${escapeHtml(options.intro)}</p>
       </td></tr>
       <tr><td style="padding:20px 28px 0;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
@@ -208,6 +216,11 @@ export function layout(options: {
       ${
         cta
           ? `<tr><td style="padding:0 28px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${cta}</table></td></tr>`
+          : ''
+      }
+      ${
+        options.afterCtaHtml
+          ? `<tr><td style="padding:20px 28px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${options.afterCtaHtml}</table></td></tr>`
           : ''
       }
       <tr><td style="padding:24px 28px 28px;">

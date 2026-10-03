@@ -376,16 +376,24 @@ check(
 );
 
 /*
- * The other two NIN boxes, on the driver profile editor. Same defect, same fix
- * — asserted here so all three stay together rather than drifting apart the
- * next time one of them is touched.
+ * The NIN box on the driver profile editor. Same defect, same fix — asserted
+ * here so all of them stay together rather than drifting apart the next time one
+ * is touched.
+ *
+ * ⚠ One, not two. There used to be a second box on this sheet for the
+ *   *guarantor's* NIN, and it was removed rather than fixed: the guarantor
+ *   supplies their own NIN through the portal now, so asking the driver to type
+ *   a third party's national identifier from memory wrote to a column nothing
+ *   reads and paused their approval for it. Counting is what keeps a third box
+ *   from appearing unmasked, so the count moved with the removal instead of the
+ *   assertion being loosened to "at least one".
  */
 const editSheet = read('src/components/ui/profile-edit-sheet.tsx');
 check(
-  'the profile editor masks its NIN and guarantor NIN too',
-  (editSheet.match(/mask: maskNinInput/g) ?? []).length === 2 &&
-    (editSheet.match(/maxLength: NIN_LENGTH/g) ?? []).length === 2,
-  'both are eleven-digit fields and neither was bounded',
+  'the profile editor masks its one NIN box',
+  (editSheet.match(/mask: maskNinInput/g) ?? []).length === 1 &&
+    (editSheet.match(/maxLength: NIN_LENGTH/g) ?? []).length === 1,
+  'it is an eleven-digit field and it was not bounded',
 );
 /*
  * Counted, not merely present.

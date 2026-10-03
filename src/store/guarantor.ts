@@ -378,3 +378,134 @@ export async function reinviteGuarantor(email?: string): Promise<{ ok: boolean; 
 
   return { ok: false, message: reasons[String(row?.reason)] ?? 'Could not send that just now.' };
 }
+
+/* -------------------------------------------------------- the admin's side -- */
+
+/**
+ * Where the guarantor's ID photograph and live photo live.
+ *
+ * ⚠ A different bucket from `driver-documents`, and deliberately so.
+ *
+ *   `driver-documents` is readable by the driver who owns the row. A guarantor's
+ *   ID in that bucket would be readable by the applicant they are vouching for,
+ *   which is the disclosure the whole feature exists to prevent. This bucket has
+ *   exactly one policy — select, for admins — so `createSignedUrl` works for a
+ *   reviewer and for nobody else.
+ */
+export const GUARANTOR_BUCKET = 'guarantor-identity';
+
+/**
+ * What a reviewer sees: the form the guarantor actually filled in.
+ *
+ * ⚠ This is not what the driver typed, and that distinction is the point.
+ *
+ *   `driver_applications.guarantor_nin` / `_address` / `_relationship` were
+ *   filled in by the *applicant* at signup until migration 39 stopped collecting
+ *   them — they are now empty on every new row, which is why the review screen
+ *   showed three blank lines under a name. The real answers are in
+ *   `guarantor_verifications`, written by the guarantor through the portal, and
+ *   `admin_guarantor_summary` is the only way to read them.
+ */
+export type GuarantorReview = {
+  fullName: string;
+  whatsappPhone: string;
+  /** What the guarantor gave as their own address for correspondence. */
+  email: string;
+  /** What the driver typed at signup, and where the link was actually sent. */
+  invitedEmail: string;
+  /**
+   * ⚠ Computed in SQL, not here.
+   *
+   *   A guarantor answering from a different address than the driver named is
+   *   the single most useful signal on this screen — it is what a driver using
+   *   a friend's inbox looks like. Leaving the comparison to the reviewer's eye
+   *   means it is missed on the day the queue is long.
+   */
+  emailMatchesInvite: boolean;
+  residentialAddress: string;
+  relationship: string;
+  knownDuration: string;
+  employmentStatus: string;
+  companyName: string;
+  jobTitle: string;
+  /**
+   * ⚠ Four digits, never eleven.
+   *
+   *   `admin_guarantor_summary` returns `right(nin, 4)` and the harness asserts
+   *   the full number never appears in its output. A review queue is a screen
+   *   somebody leaves open on a shared desk; it should not be a list of national
+   *   identifiers. Four digits is enough to check the typed number against the
+   *   slip in the photograph, which is the check being made.
+   */
+  ninLast4: string;
+  consentedAt: string | null;
+  declarationText: string;
+  signatureName: string;
+  signedAt: string | null;
+  submittedIp: string;
+  governmentIdPath: string | null;
+  livePhotoPath: string | null;
+};
+
+const text = (value: unknown) => String(value ?? '').trim();
+
+/**
+ * The guarantor's submission for one application, or null if there isn't one.
+ *
+ * ⚠ Null is an ordinary answer, not a failure.
+ *
+ *   Two cases produce it: the guarantor has not filled the form in yet, and the
+ *   application predates the form existing at all. Both are real rows an admin
+ *   will meet in the queue, and neither is worth an error. The caller decides
+ *   what to say.
+ */
+export async function fetchGuarantorReview(
+  applicationId: string,
+): Promise<GuarantorReview | null> {
+  const { data, error } = await supabase.rpc('admin_guarantor_summary', {
+    p_application: applicationId,
+  });
+
+  if (error) return null;
+
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return null;
+
+  return {
+    fullName: text(row.full_name),
+    whatsappPhone: text(row.whatsapp_phone),
+    email: text(row.email),
+    invitedEmail: text(row.invited_email),
+    emailMatchesInvite: row.email_matches_invite !== false,
+    residentialAddress: text(row.residential_address),
+    relationship: text(row.relationship),
+    knownDuration: text(row.known_duration),
+    employmentStatus: text(row.employment_status),
+    companyName: text(row.company_name),
+    jobTitle: text(row.job_title),
+    ninLast4: text(row.nin_last4),
+    consentedAt: row.consented_at ?? null,
+    declarationText: text(row.declaration_text),
+    signatureName: text(row.signature_name),
+    signedAt: row.signed_at ?? null,
+    submittedIp: text(row.submitted_ip),
+    governmentIdPath: row.government_id_path ? String(row.government_id_path) : null,
+    livePhotoPath: row.live_photo_path ? String(row.live_photo_path) : null,
+  };
+}
+
+/**
+ * A short-lived link to one of the guarantor's two files.
+ *
+ * ⚠ Signed, not public. The bucket is private and the URL expires, so a link
+ *   pasted into a chat stops working rather than becoming a permanent copy of
+ *   somebody's ID.
+ */
+export async function signedGuarantorDocumentUrl(path: string, expiresInSeconds = 3600) {
+  const { data, error } = await supabase.storage
+    .from(GUARANTOR_BUCKET)
+    .createSignedUrl(path, expiresInSeconds);
+
+  if (error) throw error;
+  return data.signedUrl;
+}

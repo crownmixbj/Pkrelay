@@ -22,6 +22,7 @@ import {
 import { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { formatDay } from '@/lib/when';
 import { Footer } from '@/components/Footer';
 import { Badge, RoutePill } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -388,7 +389,7 @@ function DriverIdentity({ application }: { application: DriverApplication }) {
           {application.baseCity ?? application.state}
         </Field>
         <Field icon={<CalendarDays color={theme.textMuted} size={14} />} label="Applied">
-          {new Date(application.submittedAt).toLocaleDateString()}
+          {formatDay(application.submittedAt)}
         </Field>
       </View>
 

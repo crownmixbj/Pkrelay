@@ -11,6 +11,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { formatDay, formatStamp } from '@/lib/when';
 import { csvFilename, downloadCsv, toCsv, type CsvColumn } from '@/lib/csv';
 import { errorMessage } from '@/lib/errors';
 import { AdminError, AdminShell, Metric, adminStyles } from '@/components/ui/admin-shell';
@@ -512,7 +513,7 @@ function PaymentCard({ row, onSynced }: { row: PaymentRow; onSynced: () => void 
 
       <View style={styles.factRow}>
         <Fact label="Method" value={row.channel ? row.channel.replace(/_/g, ' ') : '—'} />
-        <Fact label="Paid" value={row.paidAt ? new Date(row.paidAt).toLocaleString() : '—'} />
+        <Fact label="Paid" value={row.paidAt ? formatStamp(row.paidAt) : '—'} />
         <Fact label="Parcel" value={row.parcelStatus} />
         <Fact label="Fare status" value={row.parcelPaymentStatus} />
       </View>
@@ -814,7 +815,7 @@ function DriverCard({
         <Fact label="On hold" value={formatNaira(row.onHold)} />
         <Fact
           label="Last paid"
-          value={row.lastPaidAt ? new Date(row.lastPaidAt).toLocaleDateString() : '—'}
+          value={row.lastPaidAt ? formatDay(row.lastPaidAt) : '—'}
         />
       </View>
 
@@ -861,7 +862,7 @@ function OpenRequest({ row, onSettle }: { row: DriverPayoutRow; onSettle: () => 
     <View style={[styles.request, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}>
       <Text style={[styles.requestTitle, { color: theme.text }]}>
         Requested {formatNaira(row.openRequestAmount ?? 0)}
-        {row.openRequestedAt ? ` on ${new Date(row.openRequestedAt).toLocaleDateString()}` : ''}
+        {row.openRequestedAt ? ` on ${formatDay(row.openRequestedAt)}` : ''}
       </Text>
 
       <Text style={[styles.meta, { color: theme.textSecondary }]}>
@@ -935,7 +936,7 @@ function DriverHistory({ driverId }: { driverId: string }) {
               {entry.label}
             </Text>
             <Text style={[styles.meta, { color: theme.textMuted }]}>
-              {entry.happenedAt ? new Date(entry.happenedAt).toLocaleString() : '—'}
+              {entry.happenedAt ? formatStamp(entry.happenedAt) : '—'}
               {entry.reference ? ` · ${entry.reference}` : ''}
             </Text>
           </View>
@@ -1003,7 +1004,7 @@ function TransactionsTable({
                   {row.trackingId ? ` · ${row.trackingId}` : ''}
                 </Text>
                 <Text style={[styles.meta, { color: theme.textMuted }]} numberOfLines={1}>
-                  {row.happenedAt ? new Date(row.happenedAt).toLocaleString() : '—'} ·{' '}
+                  {row.happenedAt ? formatStamp(row.happenedAt) : '—'} ·{' '}
                   {row.kind === 'payout' ? `payout (${row.status})` : 'earning'}
                   {row.reference ? ` · ${row.reference}` : ''}
                 </Text>

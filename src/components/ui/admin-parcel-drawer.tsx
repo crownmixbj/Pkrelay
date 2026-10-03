@@ -2,6 +2,7 @@ import { Eye, EyeOff, PackageOpen, Radio, ShieldAlert } from 'lucide-react-nativ
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { formatStamp } from '@/lib/when';
 import { ParcelPhotos } from '@/components/ui/parcel-photos';
 import { Badge } from '@/components/ui/badge';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
@@ -424,11 +425,9 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** A timestamp, or an em dash — never an invented date. */
+/** A timestamp in Lagos time, or an em dash — never an invented date. */
 function when(iso: string | null): string {
-  if (!iso) return '—';
-  const parsed = new Date(iso);
-  return Number.isNaN(parsed.getTime()) ? '—' : parsed.toLocaleString();
+  return formatStamp(iso) || '—';
 }
 
 const styles = StyleSheet.create({

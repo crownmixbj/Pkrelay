@@ -2,6 +2,7 @@ import { IdCard, Image as ImageIcon, ShieldCheck } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Image, Linking, StyleSheet, Text, View } from 'react-native';
 
+import { formatDay } from '@/lib/when';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -447,7 +448,7 @@ function IdentityCard({
           <Text style={[styles.meta, { color: theme.textMuted }]}>
             {IDENTITY_STATUS_LABELS[review.status]}
             {review.reviewedAt
-              ? ` on ${new Date(review.reviewedAt).toLocaleDateString()}`
+              ? ` on ${formatDay(review.reviewedAt)}`
               : ' by the automated check'}
           </Text>
           {(review.reviewNote ?? '').length > 0 && (

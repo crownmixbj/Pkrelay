@@ -12,6 +12,7 @@ import {
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { formatStamp } from '@/lib/when';
 import { Footer } from '@/components/Footer';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -463,16 +464,13 @@ function payoutStatusLabel(status: string): string {
   return status;
 }
 
-/** "14 Aug, 09:12" — a date somebody can match against a bank statement. */
-function when(iso: string): string {
-  const date = new Date(iso);
-  return (
-    date.toLocaleDateString(undefined, {
-      day: 'numeric',
-      month: 'short',
-    }) + `, ${date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`
-  );
-}
+/**
+ * "14 Aug 2026, 09:12 WAT" — a payout time somebody can match against a bank
+ * statement, in the same clock as every other time in the app. It used to drop
+ * the year and the zone and render in the reader's own timezone, so a payout a
+ * driver saw at 09:12 read 08:12 to anyone checking from outside Nigeria.
+ */
+const when = formatStamp;
 
 /** "2 hours ago" — how long a driver has been waiting, which is the question. */
 function relative(iso: string): string {

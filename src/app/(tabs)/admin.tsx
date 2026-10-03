@@ -1,11 +1,14 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Banknote,
+  Briefcase,
   CircleCheckBig,
   Clock,
+  FileSignature,
   FileText,
   IdCard,
   Landmark,
+  Mail,
   MailWarning,
   MapPin,
   PhoneCall,
@@ -25,6 +28,7 @@ import {
   View,
 } from 'react-native';
 
+import { formatDay } from '@/lib/when';
 import { errorMessage } from '@/lib/errors';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -58,6 +62,11 @@ import {
 import { useSession } from '@/store/session';
 import { AdminOverview as OverviewPanel } from '@/components/ui/admin-overview';
 import { signedDocumentUrl } from '@/store/driver-documents';
+import {
+  fetchGuarantorReview,
+  signedGuarantorDocumentUrl,
+  type GuarantorReview,
+} from '@/store/guarantor';
 
 /**
  * The driver console: the overview, dispatch, and the driver review queue.
@@ -608,19 +617,19 @@ function ApplicationCard({
             {application.address}
           </Row>
 
-          <SectionLabel>Guarantor</SectionLabel>
-          <Row icon={<UserRound color={theme.textMuted} size={15} />} label="Name">
-            {application.guarantorName} ({application.guarantorRelationship})
-          </Row>
-          <Row icon={<PhoneCall color={theme.textMuted} size={15} />} label="Phone">
-            {application.guarantorPhone}
-          </Row>
-          <Row icon={<IdCard color={theme.textMuted} size={15} />} label="NIN">
-            {application.guarantorNin}
-          </Row>
-          <Row icon={<MapPin color={theme.textMuted} size={15} />} label="Address">
-            {application.guarantorAddress}
-          </Row>
+          {/*
+            ⚠ Read from the guarantor's own submission, not from the application row.
+
+              These four lines used to read `application.guarantorNin`,
+              `guarantorAddress` and `guarantorRelationship` — columns the
+              *applicant* filled in at signup until migration 39 stopped
+              collecting them, and which 52 made nullable. On every application
+              submitted since, they are empty, so the review screen showed a name
+              and a phone number over three blank rows while the guarantor's real
+              answers sat unread in `guarantor_verifications`. The reviewer was
+              being asked to attest to a check against data they could not see.
+          */}
+          <GuarantorDetails application={application} />
 
           <SectionLabel>Payout</SectionLabel>
           <Row icon={<Landmark color={theme.textMuted} size={15} />} label="Bank">
@@ -649,7 +658,7 @@ function ApplicationCard({
           <Text style={[styles.decided, { color: theme.textMuted }]}>
             {STATUS_LABELS[application.status]}
             {application.reviewedAt
-              ? ` on ${new Date(application.reviewedAt).toLocaleDateString()}`
+              ? ` on ${formatDay(application.reviewedAt)}`
               : ''}
           </Text>
           {/* The reason, kept where the decision is, so it can be quoted back. */}
@@ -791,14 +800,221 @@ function ApplicationCard({
  * uses, and each is a working key to somebody's identity papers for its
  * lifetime.
  */
-function DocumentRow({ label, path }: { label: string; path: string }) {
+/**
+ * The Guarantor block on a review card.
+ *
+ * ⚠ Loaded per card, lazily, and never from the application row.
+ *
+ *   `admin_guarantor_summary` is a `security definer` function gated on
+ *   `is_admin()`, so this returns nothing at all to anybody else — the screen
+ *   cannot leak it even if it is rendered somewhere it should not be. It is
+ *   fetched when the card mounts rather than with the queue, because the queue
+ *   loads every application and most of them are never opened.
+ *
+ * ⚠ Null has two meanings and they are not the same to a reviewer.
+ *
+ *   An application still waiting on its guarantor has nothing to show and nothing
+ *   is wrong. An application sitting in Pending review with nothing here is
+ *   either old enough to predate the form or evidence that something went wrong,
+ *   and saying so is the difference between a reviewer waiting and a reviewer
+ *   escalating.
+ */
+function GuarantorDetails({ application }: { application: DriverApplication }) {
+  const theme = useTheme();
+  const [review, setReview] = useState<GuarantorReview | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setLoading(true);
+    setReview(null);
+
+    void fetchGuarantorReview(application.id).then((next) => {
+      if (cancelled) return;
+      setReview(next);
+      setLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [application.id]);
+
+  const waiting = isWaitingOnGuarantor(application.status);
+
+  /*
+   * ⚠ The name the driver typed, kept only when it disagrees.
+   *
+   *   The driver names a guarantor; a person then answers the email and gives
+   *   their own name. Those being different is worth a reviewer's eye and their
+   *   being the same is noise, so the row appears only in the first case — and
+   *   as a row rather than a warning, because a middle name is a likelier
+   *   explanation than a fraud and a banner that cries wolf stops being read.
+   */
+  const listedName = application.guarantorName.trim();
+  const answeredName = review?.fullName ?? '';
+  const nameDiffers =
+    !!review &&
+    listedName.length > 0 &&
+    listedName.replace(/\s+/g, ' ').toLowerCase() !==
+      answeredName.replace(/\s+/g, ' ').toLowerCase();
+
+  const employment = review
+    ? [review.employmentStatus, review.companyName, review.jobTitle].filter(Boolean).join(' · ')
+    : '';
+
+  return (
+    <>
+      <SectionLabel>Guarantor</SectionLabel>
+
+      {loading && (
+        <View style={styles.row}>
+          <View style={styles.rowIcon}>
+            <ActivityIndicator color={theme.primary} size="small" />
+          </View>
+          <Text style={[styles.value, { color: theme.textMuted }]}>Loading their answers…</Text>
+        </View>
+      )}
+
+      {!loading && !review && (
+        <>
+          <Text style={[styles.value, { color: theme.textMuted }]}>
+            {waiting
+              ? 'Nothing submitted yet — the guarantor has not opened their form.'
+              : 'No guarantor submission on file. This application predates the guarantor form, or the invitation was never completed.'}
+          </Text>
+          {/*
+            What the driver typed is all there is in this case. It is labelled as
+            theirs so nobody mistakes it for something the guarantor confirmed.
+          */}
+          <Row icon={<UserRound color={theme.textMuted} size={15} />} label="Listed as">
+            {application.guarantorName || '—'}
+          </Row>
+          <Row icon={<PhoneCall color={theme.textMuted} size={15} />} label="Phone">
+            {application.guarantorPhone || '—'}
+          </Row>
+        </>
+      )}
+
+      {!!review && (
+        <>
+          <Row icon={<UserRound color={theme.textMuted} size={15} />} label="Name">
+            {review.fullName}
+            {review.relationship ? ` (${review.relationship})` : ''}
+            {review.knownDuration ? ` · known ${review.knownDuration}` : ''}
+          </Row>
+
+          {nameDiffers && (
+            <Row icon={<UserRound color={theme.textMuted} size={15} />} label="Listed as">
+              {listedName} — the name the applicant gave
+            </Row>
+          )}
+
+          <Row icon={<PhoneCall color={theme.textMuted} size={15} />} label="Phone">
+            {review.whatsappPhone || '—'}
+          </Row>
+
+          <Row icon={<Mail color={theme.textMuted} size={15} />} label="Email">
+            {review.email || '—'}
+          </Row>
+
+          {/*
+            ⚠ Computed in SQL, surfaced here.
+
+              A guarantor replying from a different address than the one the
+              driver gave is what a driver using a friend's inbox looks like. It
+              is not proof of anything, which is why it is a warning and not a
+              block.
+          */}
+          {!review.emailMatchesInvite && (
+            <View style={[styles.emailWarning, { backgroundColor: theme.dangerSoft }]}>
+              <MailWarning color={theme.dangerOnSoft} size={15} />
+              <Text style={[styles.emailWarningText, { color: theme.dangerOnSoft }]}>
+                The invitation went to {review.invitedEmail || 'another address'} — they answered
+                from a different one.
+              </Text>
+            </View>
+          )}
+
+          <Row icon={<MapPin color={theme.textMuted} size={15} />} label="Address">
+            {review.residentialAddress || '—'}
+          </Row>
+
+          {/*
+            ⚠ Four digits, deliberately. `admin_guarantor_summary` returns
+              `right(nin, 4)` and never the rest, so this queue is not a list of
+              national identifiers left open on a desk. Four is enough to check
+              against the slip in the photograph below.
+          */}
+          <Row icon={<IdCard color={theme.textMuted} size={15} />} label="NIN">
+            {review.ninLast4 ? `•••• •••• ${review.ninLast4}` : '—'}
+          </Row>
+
+          {!!employment && (
+            <Row icon={<Briefcase color={theme.textMuted} size={15} />} label="Work">
+              {employment}
+            </Row>
+          )}
+
+          <Row icon={<FileSignature color={theme.textMuted} size={15} />} label="Signed">
+            {review.signatureName || '—'}
+            {review.signedAt ? ` on ${formatDay(review.signedAt)}` : ''}
+          </Row>
+
+          {review.governmentIdPath ? (
+            <DocumentRow
+              label="NIN slip"
+              path={review.governmentIdPath}
+              sign={signedGuarantorDocumentUrl}
+            />
+          ) : (
+            <Row icon={<FileText color={theme.textMuted} size={15} />} label="NIN slip">
+              Not attached
+            </Row>
+          )}
+
+          {review.livePhotoPath ? (
+            <DocumentRow
+              label="Live photo"
+              path={review.livePhotoPath}
+              sign={signedGuarantorDocumentUrl}
+            />
+          ) : (
+            <Row icon={<FileText color={theme.textMuted} size={15} />} label="Live photo">
+              Not attached
+            </Row>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+/**
+ * ⚠ The signer is a parameter because there are two private buckets, not one.
+ *
+ *   A driver's own paperwork is in `driver-documents`; a guarantor's ID and live
+ *   photo are in `guarantor-identity`, which no driver can read. Passing the path
+ *   to the wrong signer produces a signed URL that 404s, so the bucket travels
+ *   with the row rather than being assumed.
+ */
+function DocumentRow({
+  label,
+  path,
+  sign = signedDocumentUrl,
+}: {
+  label: string;
+  path: string;
+  sign?: (path: string) => Promise<string>;
+}) {
   const theme = useTheme();
   const [busy, setBusy] = useState(false);
 
   const open = async () => {
     setBusy(true);
     try {
-      const url = await signedDocumentUrl(path);
+      const url = await sign(path);
       await Linking.openURL(url);
     } catch (thrown) {
       showDialog(

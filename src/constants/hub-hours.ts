@@ -1,3 +1,5 @@
+import { lagosNow } from '@/lib/when';
+
 import type { Hub } from '@/constants/hubs';
 
 /**
@@ -121,22 +123,17 @@ export function parseHours(text: string): OpeningHours | null {
  * to the hub, so the clock has to as well.
  */
 export function nigeriaNow(date: Date = new Date()): { day: number; minutes: Minutes } {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Africa/Lagos',
-    weekday: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).formatToParts(date);
+  /*
+   * ⚠ This used `Intl.DateTimeFormat(..., { timeZone: 'Africa/Lagos' })`, and
+   *   the conclusion was right while the mechanism was a hazard: an unsupported
+   *   zone throws `RangeError` on a Hermes build without full ICU, and this
+   *   function decides whether a hub renders as open. `lib/when.ts` does the
+   *   same shift arithmetically — WAT is UTC+1 all year — so the answer is
+   *   identical on every engine and the open/closed badge cannot crash a screen.
+   */
+  const { weekday, hour, minute } = lagosNow(date);
 
-  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? '';
-
-  const day = DAY_INDEX[get('weekday').slice(0, 3).toLowerCase()] ?? date.getDay();
-  // 24-hour formatting renders midnight as "24" in some ICU versions.
-  const hour = Number(get('hour')) % 24;
-  const minute = Number(get('minute'));
-
-  return { day, minutes: hour * 60 + minute };
+  return { day: weekday, minutes: hour * 60 + minute };
 }
 
 export type OpenState =

@@ -303,6 +303,26 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
     fn: 'capture_session_fk_repaired',
     migration: '20250101000061_capture_session_fk_repair.sql',
   },
+  /*
+   * Without 62 nothing breaks on screen — new accounts are simply never sent
+   * the welcome email — which is exactly why it needs a line here.
+   */
+  {
+    label: 'Welcome email on sign-up confirmation',
+    fn: 'welcome_email_installed',
+    migration: '20250101000062_welcome_email.sql',
+  },
+  /* Without 63 a changed password goes unannounced — invisible until it matters. */
+  {
+    label: 'Password-changed security email',
+    fn: 'password_changed_email_installed',
+    migration: '20250101000063_password_changed_email.sql',
+  },
+  {
+    label: "Driver's first name in parcel status emails",
+    fn: 'status_email_has_driver_name',
+    migration: '20250101000064_status_email_driver_name.sql',
+  },
 ];
 
 /**
