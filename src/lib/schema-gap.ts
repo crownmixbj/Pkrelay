@@ -318,6 +318,11 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
     fn: 'password_changed_email_installed',
     migration: '20250101000063_password_changed_email.sql',
   },
+  {
+    label: "Driver's first name in parcel status emails",
+    fn: 'status_email_has_driver_name',
+    migration: '20250101000064_status_email_driver_name.sql',
+  },
 ];
 
 /**

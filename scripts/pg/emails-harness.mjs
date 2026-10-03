@@ -982,6 +982,54 @@ await run('a failure to queue never fails the password change', async () => {
   await db.exec(read('supabase/migrations/20250101000063_password_changed_email.sql'));
 });
 
+// ------------------------------- 64. driver first name in status emails --
+
+await db.exec(read('supabase/migrations/20250101000064_status_email_driver_name.sql'));
+
+await run('an accepted parcel tells the sender the driver’s first name', async () => {
+  const [{ id }] = await q(
+    `insert into public.bookings (tracking_id, sender_id, status) values ('PKG-64', $1, 'Booked') returning id`,
+    [ALICE],
+  );
+  await q(
+    `update public.bookings set status = 'Assigned', driver = '  Tunde   Bakare ', driver_id = $2 where id = $1`,
+    [id, DELE],
+  );
+  const [assigned] = await q(
+    `select payload from public.email_outbox where kind = 'parcel_status_changed' and subject_id = $1`,
+    [`${id}:Assigned`],
+  );
+  check('the email was queued', Boolean(assigned));
+  check('with the first name only', assigned?.payload?.driver_first_name === 'Tunde', JSON.stringify(assigned?.payload));
+  check('and none of the rest of it', !JSON.stringify(assigned?.payload ?? {}).includes('Bakare'));
+  check('the existing fields are unchanged', assigned?.payload?.tracking_id === 'PKG-64' && assigned?.payload?.status === 'Assigned');
+
+  const [{ id: lonely }] = await q(
+    `insert into public.bookings (tracking_id, sender_id, status) values ('PKG-65', $1, 'Booked') returning id`,
+    [ALICE],
+  );
+  await q(`update public.bookings set status = 'Awaiting Driver' where id = $1`, [lonely]);
+  const [unassigned] = await q(
+    `select payload from public.email_outbox where kind = 'parcel_status_changed' and subject_id = $1`,
+    [`${lonely}:Awaiting Driver`],
+  );
+  check('no driver yet means no name, not an empty string', unassigned && unassigned.payload.driver_first_name === null);
+
+  const [{ id: done }] = await q(
+    `insert into public.bookings (tracking_id, sender_id, driver, driver_id, status)
+     values ('PKG-66', $1, 'Tunde Bakare', $2, 'Out for Delivery') returning id`,
+    [ALICE, DELE],
+  );
+  await q(`update public.bookings set status = 'Delivered' where id = $1`, [done]);
+  const delivered = await q(
+    `select 1 from public.email_outbox where kind = 'delivery_completed' and subject_id = $1`,
+    [done],
+  );
+  check('the delivered branch still works after the replace', delivered.length === 1);
+  const [probe] = await q('select public.status_email_has_driver_name() as ok');
+  check('the deployment panel probe sees it', probe?.ok === true);
+});
+
 await db.close();
 
 if (failures > 0) {
