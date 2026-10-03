@@ -48,7 +48,7 @@ insert into private.app_settings (key, value) values
    * — neither ref is a secret; both are already in CLAUDE.md. The key below is.
    */
   ('edge_url',    'https://ymfdnzeonkhvzncqcezo.supabase.co/functions/v1'),
-  ('service_key', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InltZmRuemVvbmtodnpuY3FjZXpvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NjE0MjM4MCwiZXhwIjoyMTAxNzE4MzgwfQ.r7fBXCHCAT3w4QMZl7AwpAk-6Ao8qpO1Pd4WQzpJl0Y')
+  ('service_key', '')
 on conflict (key) do update set value = excluded.value;
 
 -- -------------------------------------------------------------- 2. the flush --
