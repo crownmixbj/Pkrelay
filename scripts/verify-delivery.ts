@@ -921,10 +921,17 @@ check(
 
 // -------------------------------------------------- the sender’s side of it --
 
+/*
+ * ⚠ The mapping lives in `store/bookings` now, read by the tracking screen and
+ *   the parcel detail. These assertions moved with it; what they guard — that a
+ *   stage with no column gets no invented time — is unchanged.
+ */
+const bookingsSource = read('src/store/bookings.tsx');
+
 check(
-  'the tracking timeline stamps Picked Up and Delivered from real columns',
-  flat(tracking).includes("if (stage === 'Picked Up') return booking.pickedUpAt;") &&
-    flat(tracking).includes("if (stage === 'Delivered') return booking.deliveredAt;"),
+  'the stage timeline stamps Picked Up and Delivered from real columns',
+  flat(bookingsSource).includes("if (stage === 'Picked Up') return booking.pickedUpAt;") &&
+    flat(bookingsSource).includes("if (stage === 'Delivered') return booking.deliveredAt;"),
 );
 /*
  * In Transit and Out for Delivery have no timestamp column, and must not
@@ -932,11 +939,13 @@ check(
  * `?? booking.createdAt` fallback, which would put an invented time in front of
  * someone trying to work out when their parcel actually moved.
  */
-const trackingCode = code(tracking);
+const bookingsCode = code(bookingsSource);
 const stampFn = flat(
-  trackingCode.slice(
-    trackingCode.indexOf('function stageTimestamp'),
-    trackingCode.indexOf('function StageRow'),
+  bookingsCode.slice(
+    bookingsCode.indexOf('export function stageTimestamp'),
+    /* A code token, not a comment: `code()` strips comments, so a doc-comment
+       marker here resolves to -1 and the slice swallows the rest of the file. */
+    bookingsCode.indexOf('export function routeEndpoints'),
   ),
 );
 

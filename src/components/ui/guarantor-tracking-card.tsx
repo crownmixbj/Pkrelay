@@ -2,6 +2,7 @@ import { BadgeCheck, Clock, Mail, RefreshCw, Send, ShieldAlert } from 'lucide-re
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
+import { formatStamp } from '@/lib/when';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -309,7 +310,7 @@ function Stamp({
     <View style={styles.stamp}>
       <Text style={[styles.stampLabel, { color: theme.textMuted }]}>{label}</Text>
       <Text style={[styles.stampValue, { color: when ? theme.text : theme.textMuted }]}>
-        {when ? new Date(when).toLocaleString() : fallback}
+        {when ? formatStamp(when) : fallback}
       </Text>
     </View>
   );

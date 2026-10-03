@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/card';
 import { EmptyState, screenPadding } from '@/components/ui/screen';
 import { findStep, PROCESS_STEPS } from '@/constants/how-it-works-steps';
 import { PageCanvas, Spacing, Typography, font } from '@/constants/theme';
+import { useGoBack } from '@/hooks/use-go-back';
 import { useTheme } from '@/hooks/use-theme';
 
 const Detail = {
@@ -27,6 +28,8 @@ const Detail = {
 export default function StepDetailScreen() {
   const theme = useTheme();
   const router = useRouter();
+  /* There is no /how-it-works index — the section lives on the home page. */
+  const goBack = useGoBack();
   const { step: slug } = useLocalSearchParams<{ step: string }>();
 
   const step = findStep(slug);
@@ -54,7 +57,7 @@ export default function StepDetailScreen() {
   return (
     <ScrollView contentContainerStyle={[screenPadding, styles.canvas]}>
       <Pressable
-        onPress={() => router.back()}
+        onPress={goBack}
         accessibilityRole="button"
         accessibilityLabel="Go back"
         hitSlop={8}

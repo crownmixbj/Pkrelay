@@ -11,6 +11,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { formatStamp } from '@/lib/when';
 import { Footer } from '@/components/Footer';
 import { ValidatedPhoneInput } from '@/components/ValidatedPhoneInput';
 import { Button } from '@/components/ui/button';
@@ -538,7 +539,7 @@ export default function GuarantorPortal() {
                   recorded" rather than presenting itself as the record.
               */}
               <Text style={[styles.stamp, { color: theme.textMuted }]}>
-                Signed {new Date().toLocaleString()} — the exact time is recorded with your
+                Signed {formatStamp(new Date().toISOString())} — the exact time is recorded with your
                 submission.
               </Text>
 

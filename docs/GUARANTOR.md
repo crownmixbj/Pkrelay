@@ -75,6 +75,37 @@ driver, including with a corrected address — a typo is the commonest cause of
 silence, and re-inviting retires the live link so a stranger is not left holding
 one.
 
+## What the reviewer sees
+
+`admin_guarantor_summary(application_id)` is the only read of the guarantor's
+submission. It is `security definer`, gated on `is_admin()` inside the query, and
+granted to `authenticated` only — so it answers nothing at all to a driver, a
+sender or `anon`. The Guarantor block on the admin review card calls it through
+`fetchGuarantorReview` when the card is expanded, not with the queue, because the
+queue loads every application and most are never opened.
+
+It returns the guarantor's own name, relationship, how long they have known the
+applicant, phone, email, residential address, employment, the declaration text
+they signed and when, **four digits of the NIN**, and the storage paths of both
+photographs. The full NIN is never returned: `right(nin, 4)` is enough to check
+the typed number against the slip in the photograph, and a review queue left open
+on a shared desk should not be a list of national identifiers. `guarantor-harness`
+asserts the eleven digits never appear in the function's output.
+
+⚠ **It is not `driver_applications.guarantor_*`.** Those columns were filled in by
+the *applicant* at signup; 39 stopped collecting three of them and 52 made them
+nullable, so on every application since they are empty. The review card rendered
+them until this was fixed — a name and a phone number over three blank rows —
+while the guarantor's real answers sat unread. If a guarantor row is missing
+entirely the card says which of the two reasons applies: still waiting, or
+predates the form.
+
+The two photographs live in `guarantor-identity`, a second private bucket with
+exactly one policy (select, for admins). They are opened through
+`signedGuarantorDocumentUrl`, not `signedDocumentUrl` — signing a guarantor path
+against `driver-documents` produces a link that 404s, and the separation is why no
+driver can ever read their own guarantor's ID.
+
 ## ⚠ The suretyship has not been reviewed by a lawyer
 
 `SURETYSHIP_CLAUSE` in `src/constants/guarantor.ts` asks a person with no
@@ -137,10 +168,6 @@ the admin summary shows four digits of the NIN and both document paths.
 - **Retention.** Nothing expires these records. Same open question as
   `sender-identity`, and `RETENTION_UNDECIDED` in `src/constants/legal.ts` is
   still true.
-- **Admin review UI.** `admin_guarantor_summary` returns everything a reviewer
-  needs, including both document paths and the flag for "gave a different
-  address from the one the driver typed". Nothing renders it yet — the admin
-  screens still show what 39 gave them.
 - **Dojah on the guarantor's NIN.** The NIN is stored for manual review and
   compared by a person against the uploaded ID and the live photo. The columns
   and the edge function are shaped so a Dojah lookup can be dropped in without a

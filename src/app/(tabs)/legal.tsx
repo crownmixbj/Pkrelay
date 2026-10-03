@@ -10,6 +10,7 @@ import {
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { formatDay } from '@/lib/when';
 import { Footer } from '@/components/Footer';
 import { Card } from '@/components/ui/card';
 import { ChipGroup } from '@/components/ui/chip';
@@ -68,7 +69,7 @@ export default function LegalScreen() {
         <ScreenHeader
           brand={false}
           title={LEGAL_SECTION_LABELS[section]}
-          subtitle={`Last updated ${new Date(LEGAL_LAST_UPDATED).toLocaleDateString()}.`}
+          subtitle={`Last updated ${formatDay(LEGAL_LAST_UPDATED)}.`}
         />
 
         <View style={styles.tabs}>

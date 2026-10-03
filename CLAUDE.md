@@ -75,6 +75,29 @@ turn the suite red. Run `npm run verify` before declaring anything done.
 
 ## Conventions worth keeping
 
+- Times and dates go through `src/lib/when.ts` — `formatStamp` ("2 Oct 2026,
+  14:35 WAT"), `formatDay`, `formatClock`. Everything is rendered in **Lagos
+  time with the zone written on it**, because the service runs in one country
+  and `toLocaleString()` renders in the *reader's* zone: a support console in
+  Dublin would otherwise show a pickup an hour off what the driver saw, with
+  nothing on screen to say which was which. The helper does the offset itself
+  rather than via `Intl` time zones, which throw on Hermes builds without full
+  ICU. Every screen is converted; `verify:timestamps` sweeps `src/` and fails on
+  a new `toLocale*` call, so a file that genuinely wants the device clock has to
+  be listed there with a reason. Three are: the departure picker (a driver's own
+  calendar), document expiry (a date, formatted against UTC on purpose) and
+  member-since (a month and a year).
+- Back and close controls go through `useGoBack(fallback?)` in
+  `src/hooks/use-go-back.ts` — never `router.back()` directly. Every route here
+  is directly addressable, so the history stack is routinely empty (a parcel
+  link in an email, a bookmarked `/sign-up`, a push notification opening
+  `/parcel/<id>` from cold), and an unguarded `back()` there dispatches a
+  GO_BACK no navigator handles: a toast in development, a dead control in
+  production. The hook checks `canGoBack()` and otherwise **replaces** with the
+  fallback, which defaults to `/`; replace rather than push, or the browser's
+  back button reopens the screen that was just closed. `verify:layout` sweeps
+  every `.tsx` under `src/` and fails on a bare `router.back()` or a second
+  inline copy of the guard.
 - Brand strings are centralised in `src/constants/` on purpose — change them
   there, not in screens. That includes what the *web* says about itself:
   `src/constants/site.ts` holds the tab title, the meta description and the

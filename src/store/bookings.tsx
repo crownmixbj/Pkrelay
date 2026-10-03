@@ -19,6 +19,7 @@ import {
   subscribeToBookings,
 } from '@/store/bookings-remote';
 import { findParcel } from '@/lib/parcel-link';
+import { formatDay } from '@/lib/when';
 import { SESSION_USER, useSession } from '@/store/session';
 
 /**
@@ -805,10 +806,39 @@ export function routeLabel(booking: Booking): string {
 }
 
 /** Formats a booking's creation date for card metadata, e.g. "3 Aug 2026". */
+/**
+ * ⚠ Kept as a name, not as an implementation.
+ *
+ *   This rendered in the reader's own zone, which is the thing `lib/when.ts`
+ *   exists to stop. Nothing calls it today — the parcel detail that did now
+ *   shows a full stamp — but leaving a second date formatter in the store is
+ *   leaving the next screen something wrong to reach for.
+ */
 export function formatBookingDate(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  return formatDay(iso);
+}
+
+/**
+ * The timestamp for a stage, where one genuinely exists.
+ *
+ * Returns null everywhere else. The alternative — deriving a plausible time
+ * from `createdAt` — would put invented delivery times in front of someone
+ * trying to work out when their parcel actually moved.
+ */
+export function stageTimestamp(booking: Booking, stage: BookingStage): string | null {
+  if (stage === 'Booked') return booking.createdAt;
+  if (stage === 'Assigned') return booking.acceptedAt;
+  if (stage === 'Picked Up') return booking.pickedUpAt;
+  if (stage === 'Delivered') return booking.deliveredAt;
+
+  /*
+   * In Transit and Out for Delivery still have no timestamp of their own.
+   *
+   * `advance_booking` stamps only the two that matter for a dispute. Adding two
+   * more columns is cheap; inventing the times from `createdAt` to fill the gap
+   * would not be, which is why these stay null and the row simply shows no time.
+   */
+  return null;
 }
 
 /** Short route line without the type prefix, for dense list rows. */

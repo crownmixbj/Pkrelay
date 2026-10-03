@@ -892,6 +892,76 @@ check(
     '       checkout sheet opening behind a screen nobody asked for',
 );
 
+// --------------------------------- every back control has somewhere to go ---
+
+/*
+ * ⚠ `router.back()` on an empty stack raises; it does not quietly do nothing.
+ *
+ *   React Navigation dispatches GO_BACK up the navigator tree, and when
+ *   nothing handles it a development build prints "The action 'GO_BACK' was
+ *   not handled by any navigator" over the screen. Production suppresses the
+ *   toast and keeps the dead control, which is the worse half: a back arrow
+ *   that refuses with no explanation.
+ *
+ *   The stack is empty far more often than it looks. Every route here is
+ *   directly addressable and most are reached that way by somebody — a parcel
+ *   link in a delivery email, a bookmarked /sign-up, a shared /corporate URL,
+ *   a hard reload, a push notification opening /parcel/<id> from cold. Six
+ *   screens had the unguarded call; profile.tsx was the only one that had
+ *   worked this out, inline, for itself.
+ *
+ *   Swept rather than enumerated, because the failure is invisible in review:
+ *   `onPress={() => router.back()}` is exactly what a back arrow is supposed
+ *   to look like, and it behaves correctly for anyone who arrived by tapping.
+ */
+const useGoBackHook = read('src/hooks/use-go-back.ts');
+
+check(
+  'there is one back helper',
+  useGoBackHook.includes('export function useGoBack'),
+  'six screens solving this separately is how five of them got it wrong',
+);
+check(
+  'it asks before it goes',
+  code(useGoBackHook).includes('router.canGoBack()'),
+  'GO_BACK is dispatched rather than thrown, so a try/catch around back() catches nothing',
+);
+check(
+  'and falls back by replacing, not pushing',
+  /router\.replace\(fallback\)/.test(code(useGoBackHook)) &&
+    !/router\.(push|navigate)\(fallback\)/.test(code(useGoBackHook)),
+  'pushing home over the dismissed screen leaves the browser back button reopening it',
+);
+check(
+  'with a default, so a caller cannot forget one',
+  /useGoBack\(fallback: Href = '\/'\)/.test(useGoBackHook),
+  'an undefined fallback would replace the route with nothing',
+);
+
+const bareBack = screenFiles.filter((file) => {
+  const source = code(read(file));
+  /* `.goBack()` covers the React Navigation spelling as well as the router's. */
+  return /router\.back\(\)/.test(source) || /\.goBack\(\)/.test(source);
+});
+
+check(
+  'no screen reaches for the router back itself',
+  bareBack.length === 0,
+  `${bareBack.join(', ') || 'none'}\n` +
+    '       use useGoBack(fallback) — on a directly-opened route there is no history to pop',
+);
+
+/*
+ * And no screen reimplements the hook inline, which is what the one working
+ * call site looked like before this existed.
+ */
+check(
+  'nor rebuilds the guard for itself',
+  screenFiles.every((file) => !code(read(file)).includes('canGoBack')),
+  'the rule has one home; a second copy is a second thing to keep correct',
+);
+
+
 if (failures > 0) {
   console.error(`\n${failures} assertion(s) failed.`);
   process.exit(1);
@@ -905,5 +975,6 @@ console.log(
     '       its content across a desktop viewport, the top header stays a plain block in\n' +
     '       normal flow — no scroll listener, no animated layout, nothing to stutter — and the\n' +
     '       app download is one band under the hero rather than two badges beside the ticker,\n' +
-    '       and no button is nested inside another.',
+    '       no button is nested inside another, and every back control has somewhere to go when\n' +
+    '       the route was opened directly.',
 );

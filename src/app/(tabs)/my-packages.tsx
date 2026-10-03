@@ -11,6 +11,7 @@ import { ChipGroup } from '@/components/ui/chip';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { EmptyState, screenPadding, ScreenHeader } from '@/components/ui/screen';
 import { MaxContentWidth, Radius, Spacing, Typography, font } from '@/constants/theme';
+import { formatStamp } from '@/lib/when';
 import { useTheme } from '@/hooks/use-theme';
 import {
   formatNaira,
@@ -390,6 +391,11 @@ function ParcelRow({
             <Text style={[styles.trackingId, { color: theme.textMuted }]}>
               #{booking.trackingId} · {carrying ? 'You are driving' : 'You sent this'}
             </Text>
+            {/* The row sorts by this value, so showing it is also showing why
+                the list is in the order it is in. */}
+            <Text style={[styles.postedAt, { color: theme.textMuted }]}>
+              Posted {formatStamp(booking.createdAt)}
+            </Text>
           </View>
           <Text style={[styles.fee, { color: theme.text }]}>
             {formatNaira(booking.estimatedFee)}
@@ -471,6 +477,9 @@ const styles = StyleSheet.create({
   },
   itemName: {
     ...Typography.cardTitle,
+  },
+  postedAt: {
+    ...Typography.caption,
   },
   trackingId: {
     ...Typography.caption,

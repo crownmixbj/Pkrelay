@@ -47,8 +47,8 @@ insert into private.app_settings (key, value) values
    * Staging. Production is https://ymfdnzeonkhvzncqcezo.supabase.co/functions/v1
    * — neither ref is a secret; both are already in CLAUDE.md. The key below is.
    */
-  ('edge_url',    'https://ublqzvuzbyodjstzjvja.supabase.co/functions/v1'),
-  ('service_key', 'PASTE_SERVICE_ROLE_KEY_HERE')
+  ('edge_url',    'https://ymfdnzeonkhvzncqcezo.supabase.co/functions/v1'),
+  ('service_key', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InltZmRuemVvbmtodnpuY3FjZXpvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NjE0MjM4MCwiZXhwIjoyMTAxNzE4MzgwfQ.r7fBXCHCAT3w4QMZl7AwpAk-6Ao8qpO1Pd4WQzpJl0Y')
 on conflict (key) do update set value = excluded.value;
 
 -- -------------------------------------------------------------- 2. the flush --
@@ -61,7 +61,7 @@ on conflict (key) do update set value = excluded.value;
  * ⚠ Needs migration 53. On a database without it, re-queue instead by touching
  *   the row — or just push 53, which is the shorter path.
  */
-select public.sweep_unsent_emails(interval '60 days') as retried;
+select public.sweep_unsent_emails(interval '3 days') as retried;
 
 -- ------------------------------------------------------------- 3. the check --
 

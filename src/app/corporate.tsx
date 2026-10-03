@@ -1,4 +1,3 @@
-import { useRouter } from 'expo-router';
 import {
   Building2,
   CalendarClock,
@@ -15,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { FontSize, MaxContentWidth, Radius, Spacing, Typography, font } from '@/constants/theme';
+import { useGoBack } from '@/hooks/use-go-back';
 import { useTheme } from '@/hooks/use-theme';
 import { formatNaira, PRICING } from '@/store/bookings';
 
@@ -47,7 +47,7 @@ const FEATURES = [
 
 export default function CorporateScreen() {
   const theme = useTheme();
-  const router = useRouter();
+  const goBack = useGoBack();
 
   return (
     <ScrollView
@@ -63,7 +63,7 @@ export default function CorporateScreen() {
             </Text>
           </View>
           <Pressable
-            onPress={() => router.back()}
+            onPress={goBack}
             hitSlop={10}
             accessibilityLabel="Close"
             style={[styles.close, { backgroundColor: theme.surfaceMuted }]}>
@@ -98,7 +98,7 @@ export default function CorporateScreen() {
             icon={(color, size) => <Mail color={color} size={size} />}
             onPress={() => Linking.openURL('mailto:business@pkrelay.com?subject=Corporate%20Delivery')}
           />
-          <Button label="Close" variant="secondary" onPress={() => router.back()} />
+          <Button label="Close" variant="secondary" onPress={goBack} />
         </Card>
       </View>
       <Footer />

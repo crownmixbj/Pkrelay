@@ -1,3 +1,4 @@
+import { formatClock, formatDay } from '@/lib/when';
 import {
   isAwaitingReview,
   isWaitingOnGuarantor,
@@ -29,13 +30,8 @@ export type TimelineEntry = {
 };
 
 function formatWhen(iso: string | null): string {
-  if (!iso) return '';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '';
-  return `${date.toLocaleDateString()} at ${date.toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-  })}`;
+  const day = formatDay(iso);
+  return day ? `${day} at ${formatClock(iso)}` : '';
 }
 
 /**

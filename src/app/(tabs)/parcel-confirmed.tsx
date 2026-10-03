@@ -41,6 +41,7 @@ import {
   Typography,
   font,
 } from '@/constants/theme';
+import { formatStamp } from '@/lib/when';
 import { useTheme } from '@/hooks/use-theme';
 import {
   BOOKING_STAGES,
@@ -135,6 +136,12 @@ export default function ParcelConfirmedScreen() {
           <Text style={[styles.heroBody, { color: theme.textSecondary }]}>
             Your parcel is live on the jobs feed. Drivers travelling {routeLabel(booking)} can
             accept it now.
+          </Text>
+
+          {/* The posting time, stated once where somebody is most likely to
+              screenshot it. Everything after this is measured from here. */}
+          <Text style={[styles.postedAt, { color: theme.textMuted }]}>
+            Posted {formatStamp(booking.createdAt)}
           </Text>
 
           {/* The one thing worth writing down, so it gets its own affordance. */}
@@ -453,6 +460,10 @@ const styles = StyleSheet.create({
   },
   heroTitle: {
     ...Typography.screenTitle,
+    textAlign: 'center',
+  },
+  postedAt: {
+    ...Typography.caption,
     textAlign: 'center',
   },
   heroBody: {

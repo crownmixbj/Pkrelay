@@ -22,12 +22,14 @@ import { Card } from '@/components/ui/card';
 import { MapView, type MapMarker } from '@/components/ui/map-view';
 import { EmptyState, screenPadding, ScreenHeader, SectionLabel } from '@/components/ui/screen';
 import { MaxContentWidth, Radius, Spacing, Typography, font } from '@/constants/theme';
+import { formatStamp } from '@/lib/when';
 import { useTheme } from '@/hooks/use-theme';
 import {
   BOOKING_STAGES,
   formatNaira,
   routeLabel,
   stageIndex,
+  stageTimestamp,
   statusLabel,
   statusTone,
   useBookings,
@@ -297,29 +299,6 @@ function TrackedParcel({ booking, onOpen }: { booking: Booking; onOpen: () => vo
   );
 }
 
-/**
- * The timestamp for a stage, where one genuinely exists.
- *
- * Returns null everywhere else. The alternative — deriving a plausible time
- * from `createdAt` — would put invented delivery times in front of someone
- * trying to work out when their parcel actually moved.
- */
-function stageTimestamp(booking: Booking, stage: BookingStage): string | null {
-  if (stage === 'Booked') return booking.createdAt;
-  if (stage === 'Assigned') return booking.acceptedAt;
-  if (stage === 'Picked Up') return booking.pickedUpAt;
-  if (stage === 'Delivered') return booking.deliveredAt;
-
-  /*
-   * In Transit and Out for Delivery still have no timestamp of their own.
-   *
-   * `advance_booking` stamps only the two that matter for a dispute. Adding two
-   * more columns is cheap; inventing the times from `createdAt` to fill the gap
-   * would not be, which is why these stay null and the row simply shows no time.
-   */
-  return null;
-}
-
 function StageRow({
   stage,
   state,
@@ -359,7 +338,7 @@ function StageRow({
         </Text>
         {!!at && (
           <Text style={[styles.stageWhen, { color: theme.textMuted }]}>
-            {new Date(at).toLocaleString()}
+            {formatStamp(at)}
           </Text>
         )}
       </View>
@@ -453,10 +432,10 @@ function ProofOfDelivery({ booking }: { booking: Booking }) {
       <View style={styles.podFacts}>
         {!!booking.receivedBy && <PodFact label="Received by" value={booking.receivedBy} />}
         {!!booking.deliveredAt && (
-          <PodFact label="Delivered at" value={new Date(booking.deliveredAt).toLocaleString()} />
+          <PodFact label="Delivered at" value={formatStamp(booking.deliveredAt)} />
         )}
         {!!booking.pickedUpAt && (
-          <PodFact label="Collected at" value={new Date(booking.pickedUpAt).toLocaleString()} />
+          <PodFact label="Collected at" value={formatStamp(booking.pickedUpAt)} />
         )}
       </View>
 

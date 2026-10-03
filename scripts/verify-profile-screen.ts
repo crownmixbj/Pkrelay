@@ -389,14 +389,33 @@ check('the screen is titled My Profile', code.includes('title="My Profile"'), ''
 /*
  * ⚠ The back arrow needs somewhere to go when there is no history.
  *
- *   Opened from a link, a bookmark or a reload, the stack is empty and
- *   `router.back()` does nothing at all — an arrow that silently refuses is
- *   worse than no arrow.
+ *   Opened from a link, a bookmark or a reload, the stack is empty and an
+ *   unguarded `router.back()` raises an unhandled GO_BACK — an arrow that
+ *   refuses is worse than no arrow.
+ *
+ * ⚠ This assertion used to pin the spelling, and the spelling has moved.
+ *
+ *   It required the literal `router.canGoBack() ? router.back() : router.replace(`
+ *   on this screen, which was the only screen that had worked the problem out.
+ *   Five others had the bare call. The guard is now `useGoBack`, swept across
+ *   the whole tree by `verify-layout.ts`, and pinning the old inline shape here
+ *   would mean this screen alone had to keep a second copy of the rule — the
+ *   exact duplication the hook exists to remove.
+ *
+ *   What is checked instead is the property that matters: this screen's arrow
+ *   is wired to the shared helper rather than to the router directly.
  */
 check(
   'the back arrow handles an empty history',
-  /router\.canGoBack\(\) \? router\.back\(\) : router\.replace\(/.test(code),
-  'router.back() on an empty stack is a control that does nothing',
+  code.includes("from '@/hooks/use-go-back'") &&
+    /const goBack = useGoBack\(/.test(code) &&
+    /onBack=\{goBack\}/.test(code),
+  'the arrow must go through useGoBack, which falls back to home on an empty stack',
+);
+check(
+  'and does not reach past it to the router',
+  !/router\.back\(\)/.test(code),
+  'a second copy of the guard is a second thing to keep correct',
 );
 check(
   'the header renders the arrow beside the title',
@@ -416,9 +435,27 @@ check(
  *   third control for the same job would also be the vaguest of the three —
  *   it would not say what it edits.
  */
+/*
+ * ⚠ Asserted on the element, not on a character budget after its name.
+ *
+ *   This read `<ScreenHeader[\s\S]{0,300}[Ee]dit` — "no Edit within 300
+ *   characters of the tag". It passed because the `onBack` prop used to be a
+ *   long inline ternary that filled the window; shortening that prop to
+ *   `onBack={goBack}` slid the window past the end of the element and onto
+ *   `<ProfileHeader onEdit={...}>`, which is the avatar pencil this check
+ *   exists to protect. A guard that depends on how verbose its neighbour is
+ *   will fire on an unrelated edit, which is how a rule gets switched off.
+ *
+ *   The element's own text is what the rule is about, so that is what is read.
+ */
+const screenHeaderAt = code.indexOf('<ScreenHeader');
+const screenHeaderTag =
+  screenHeaderAt === -1 ? '' : code.slice(screenHeaderAt, code.indexOf('/>', screenHeaderAt) + 2);
+
+check('the screen has a ScreenHeader to check', screenHeaderTag.length > 0, '');
 check(
   'the header carries no third edit control',
-  !/<ScreenHeader[\s\S]{0,300}[Ee]dit/.test(code),
+  !/[Ee]dit/.test(screenHeaderTag),
   'the avatar pencil and the row chevrons already edit; a header Edit would not say what it edits',
 );
 check(

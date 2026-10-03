@@ -331,6 +331,116 @@ check(
   /fallback: 'Use the QR code instead\.'/.test(read('src/components/ui/sender-photo-sheet.tsx')),
 );
 
+// ------------------------------------------------------- the review screen --
+
+/*
+ * ⚠ The reviewer must be shown what the guarantor submitted, not what the
+ *   applicant typed about them.
+ *
+ *   `driver_applications.guarantor_nin`, `guarantor_address` and
+ *   `guarantor_relationship` were collected from the *applicant* at signup. 39
+ *   stopped collecting them and 52 made them nullable, so on every application
+ *   since they are empty strings. The admin card went on rendering them — a
+ *   name, a phone number, and three blank rows — while the guarantor's real
+ *   answers sat unread in `guarantor_verifications`, which meant the reviewer
+ *   was ticking "I have verified this driver's details and their guarantor
+ *   confirmation" against data the screen never showed them.
+ *
+ *   `admin_guarantor_summary` has returned all of it since 51. These assertions
+ *   are about the screen reading it.
+ */
+const adminScreen = read('src/app/(tabs)/admin.tsx');
+const adminCode = code(adminScreen);
+
+check(
+  'the review screen reads the guarantor submission',
+  /fetchGuarantorReview\(/.test(adminCode),
+  'the Guarantor block rendered application columns that nothing writes any more',
+);
+check(
+  'and no longer reads the columns nothing fills in',
+  !/application\.guarantorNin/.test(adminCode) &&
+    !/application\.guarantorAddress/.test(adminCode) &&
+    !/application\.guarantorRelationship/.test(adminCode),
+  'those three are empty on every application submitted since migration 39',
+);
+check(
+  'it reads it through the admin-only function',
+  /\.rpc\('admin_guarantor_summary'/.test(code(store)),
+  'any other path would be readable by somebody who is not reviewing anything',
+);
+check(
+  'and that function is gated on is_admin and granted to nobody else',
+  /where v\.application_id = p_application[\s\S]*?public\.is_admin\(\)/.test(migration) &&
+    /revoke all on function public\.admin_guarantor_summary\(uuid\) from public, anon;/.test(
+      migration,
+    ),
+  'a security definer function with an open grant is a leak with extra steps',
+);
+
+/*
+ * ⚠ Both photographs, and from the right bucket.
+ *
+ *   A guarantor's ID lives in `guarantor-identity`, which no driver can read —
+ *   that separation is the whole reason 51 made a second bucket. Signing a
+ *   guarantor path against `driver-documents` would 404, and signing a driver
+ *   path against `guarantor-identity` would be worse.
+ */
+check(
+  'both of the guarantor\'s photographs are reachable from the review screen',
+  /review\.governmentIdPath/.test(adminCode) && /review\.livePhotoPath/.test(adminCode),
+  'the NIN slip and the live photo are the only evidence behind the attestation',
+);
+check(
+  'and they are signed against the guarantor bucket',
+  /sign=\{signedGuarantorDocumentUrl\}/.test(adminCode) &&
+    /\.from\(GUARANTOR_BUCKET\)/.test(code(store)) &&
+    /GUARANTOR_BUCKET = 'guarantor-identity'/.test(store),
+  'a guarantor path signed against driver-documents produces a link that 404s',
+);
+
+/*
+ * ⚠ Four digits on the screen, eleven nowhere.
+ *
+ *   The harness asserts the SQL never returns the whole number. This asserts the
+ *   client never asks for one — a field called `nin` on the review type would be
+ *   a standing invitation to widen the function later.
+ */
+check(
+  'the review screen is not a list of national identifiers',
+  /ninLast4/.test(code(store)) && !/^\s*nin:/m.test(code(store).split('GuarantorReview')[1] ?? ''),
+  'a queue left open on a shared desk should not carry eleven digits per row',
+);
+check(
+  'and the mismatch the SQL computed is actually shown',
+  /emailMatchesInvite/.test(adminCode),
+  'a driver using a friend\'s inbox is exactly what that flag catches',
+);
+
+/*
+ * ⚠ The other end of the same mistake.
+ *
+ *   The driver's profile sheet still offered boxes for the guarantor's
+ *   relationship, address and NIN — asking an applicant to type a third party's
+ *   national identifier from memory, into columns nothing reads, and, because
+ *   they sit among the identity fields, pausing their approval to do it. The
+ *   guarantor supplies all three themselves now.
+ */
+const editSheet = code(read('src/components/ui/profile-edit-sheet.tsx'));
+
+check(
+  'the driver is no longer asked for their guarantor\'s NIN',
+  !/guarantor_nin/.test(editSheet) &&
+    !/guarantor_address/.test(editSheet) &&
+    !/guarantor_relationship/.test(editSheet),
+  'those boxes wrote to columns nothing reads and paused the driver\'s approval for it',
+);
+check(
+  'but can still fix the name and number the invitation is chased on',
+  /guarantor_name/.test(editSheet) && /guarantor_phone/.test(editSheet),
+  'a mistyped guarantor contact is the commonest reason an invitation goes unanswered',
+);
+
 // --------------------------------------------------------- the phone field --
 
 /*
