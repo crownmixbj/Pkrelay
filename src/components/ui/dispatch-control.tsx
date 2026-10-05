@@ -15,6 +15,7 @@ import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { showDialog } from '@/components/ui/dialog';
+import { DriversWaiting } from '@/components/ui/drivers-waiting';
 import { EmptyState, SectionLabel } from '@/components/ui/screen';
 import { showToast } from '@/components/ui/toast';
 import { FontSize, Radius, Spacing, Typography, font } from '@/constants/theme';
@@ -240,6 +241,21 @@ export function DispatchControl() {
           <Stat label="Blocked drivers" value={unavailable ? '—' : String(health.blockedDrivers)} />
         </View>
       </Card>
+
+      {/* ---------------------------------------- the other direction ---- */}
+      {/*
+        Above the parcel queue, deliberately.
+
+        An operator placing parcels by hand works driver-first when there are
+        drivers sitting idle — one driver, one journey, the parcels that fit it —
+        and parcel-first only for the awkward ones nobody is going towards.
+        Putting the people above the packages also means the first thing on
+        screen is the thing that costs money while it waits.
+      */}
+      <DriversWaiting
+        mode={unavailable ? null : health.mode}
+        onAssigned={() => void refresh()}
+      />
 
       {/* -------------------------------------------------- the queue ---- */}
       <SectionLabel>Waiting for a driver</SectionLabel>

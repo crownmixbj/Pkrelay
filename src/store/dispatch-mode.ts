@@ -212,6 +212,176 @@ export async function assignParcel(
   return { ok: true };
 }
 
+// ------------------------------------------------- the other direction ----
+
+/**
+ * A driver on an open shift with nothing in their hands.
+ *
+ * ⚠ The mirror of `UnassignedParcel`, and the two are read together.
+ *
+ *   One screen, two questions: why has this parcel not moved, and why is this
+ *   driver idle. A platform that can only answer the first hears about the
+ *   second from the driver.
+ */
+export type WaitingDriver = {
+  driverId: string;
+  fullName: string;
+  /** Dialable (+234 …). The action after "waiting two hours" is to ring them. */
+  phone: string;
+  vehicleType: string;
+  baseCity: string;
+  journeyId: string;
+  /** 'scheduled' is a declared route; 'flash' is a shift inside one city. */
+  mode: 'scheduled' | 'flash';
+  originCity: string;
+  destinationCity: string;
+  departsBefore: string | null;
+  departureTime: string | null;
+  capacityKg: number;
+  /** Since they declared the shift. */
+  waitingMinutes: number;
+  /** Until it lapses. */
+  leavesInMinutes: number;
+  /**
+   * Unassigned parcels this shift would match, counted through `journey_matches`
+   * itself. A row with none is a driver nobody can help; a row with several is
+   * either manual mode or the matcher failing.
+   */
+  matchingParcels: number;
+  /** Offers they declined or let expire in the last 24h. */
+  offersPassed: number;
+  /** The matcher is skipping them after a decline. Not a reason not to assign. */
+  inCooldown: boolean;
+  deliveredToday: number;
+};
+
+/**
+ * ⚠ `null` for "could not load", `[]` for "nobody is waiting" — the same
+ *   distinction `fetchUnassignedParcels` draws, for the same reason: an empty
+ *   array rendered as "everyone is busy" is a confident claim about a query
+ *   that never returned.
+ */
+export async function fetchWaitingDrivers(limit = 50): Promise<WaitingDriver[] | null> {
+  const { data, error } = await supabase.rpc('admin_waiting_drivers', { max_rows: limit });
+
+  if (error || !data) return null;
+
+  return (data as Record<string, unknown>[]).map((row) => ({
+    driverId: String(row.driver_id),
+    fullName: String(row.full_name ?? ''),
+    phone: String(row.phone ?? ''),
+    vehicleType: String(row.vehicle_type ?? ''),
+    baseCity: String(row.base_city ?? ''),
+    journeyId: String(row.journey_id ?? ''),
+    mode: row.mode === 'flash' ? 'flash' : 'scheduled',
+    originCity: String(row.origin_city ?? ''),
+    destinationCity: String(row.destination_city ?? ''),
+    departsBefore: (row.departs_before as string | null) ?? null,
+    departureTime: (row.departure_time as string | null) ?? null,
+    capacityKg: Number(row.capacity_kg ?? 0),
+    waitingMinutes: Number(row.waiting_minutes ?? 0),
+    leavesInMinutes: Number(row.leaves_in_minutes ?? 0),
+    matchingParcels: Number(row.matching_parcels ?? 0),
+    offersPassed: Number(row.offers_passed ?? 0),
+    inCooldown: row.in_cooldown === true,
+    deliveredToday: Number(row.delivered_today ?? 0),
+  }));
+}
+
+/** An unassigned parcel, judged against one driver's shift. */
+export type ParcelForDriver = UnassignedParcel & {
+  /** Whether their open shift would have been offered it. */
+  routeMatches: boolean;
+  /** Plain English for the row that is not a match. */
+  note: string;
+};
+
+/**
+ * What one driver could be given.
+ *
+ * ⚠ Parcels the matcher would refuse them are in this list, marked — the same
+ *   call `assignable_drivers` makes in the other direction. An operator is here
+ *   because they know something the automation does not; a list that hid
+ *   everything off-route would be a slower copy of the matcher.
+ */
+export async function fetchParcelsForDriver(driverId: string): Promise<ParcelForDriver[]> {
+  const { data, error } = await supabase.rpc('admin_parcels_for_driver', { driver: driverId });
+
+  if (error || !data) return [];
+
+  return (data as Record<string, unknown>[]).map((row) => ({
+    id: String(row.id),
+    trackingId: String(row.tracking_id ?? ''),
+    originCity: String(row.origin_city ?? ''),
+    destinationCity: String(row.destination_city ?? ''),
+    weight: Number(row.weight ?? 0),
+    deliveryType: String(row.delivery_type ?? ''),
+    estimatedFee: Number(row.estimated_fee ?? 0),
+    waitingMinutes: Number(row.waiting_minutes ?? 0),
+    offersMade: Number(row.offers_made ?? 0),
+    routeMatches: row.route_matches === true,
+    note: String(row.note ?? ''),
+  }));
+}
+
+/**
+ * The tiles above the list.
+ *
+ * ⚠ Four of these six numbers are about drivers the list does not show, which
+ *   is the question an operator asks the moment it is shorter than they
+ *   expected. Without them an empty list and a broken query look identical.
+ */
+export type DriverAvailability = {
+  approved: number;
+  waiting: number;
+  withOffer: number;
+  carrying: number;
+  offShift: number;
+  /** On shift, and refused by the document gate. The one to act on. */
+  blocked: number;
+  unassignedParcels: number;
+};
+
+export const UNKNOWN_AVAILABILITY: DriverAvailability = {
+  approved: 0,
+  waiting: 0,
+  withOffer: 0,
+  carrying: 0,
+  offShift: 0,
+  blocked: 0,
+  unassignedParcels: 0,
+};
+
+export async function fetchDriverAvailability(): Promise<DriverAvailability | null> {
+  const { data, error } = await supabase.rpc('admin_driver_availability');
+
+  if (error || !data) return null;
+
+  const raw = data as Record<string, unknown>;
+
+  return {
+    approved: Number(raw.approved ?? 0),
+    waiting: Number(raw.waiting ?? 0),
+    withOffer: Number(raw.with_offer ?? 0),
+    carrying: Number(raw.carrying ?? 0),
+    offShift: Number(raw.off_shift ?? 0),
+    blocked: Number(raw.blocked ?? 0),
+    unassignedParcels: Number(raw.unassigned_parcels ?? 0),
+  };
+}
+
+/**
+ * How a shift reads on one line.
+ *
+ * Flash shifts have the same city at both ends by design, and rendering that as
+ * "Ibadan → Ibadan" makes a deliberate shape look like a bug.
+ */
+export function shiftLabel(driver: Pick<WaitingDriver, 'mode' | 'originCity' | 'destinationCity'>): string {
+  return driver.mode === 'flash'
+    ? `In ${driver.originCity}`
+    : `${driver.originCity} → ${driver.destinationCity}`;
+}
+
 // ------------------------------------------------------------------ words --
 
 /** "2h 15m" — a queue age somebody can react to. */
