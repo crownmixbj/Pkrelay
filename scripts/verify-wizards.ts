@@ -498,14 +498,20 @@ for (const [screen, source] of [
    *   This required `setForm(mergeDraft(` character for character, and went red
    *   the day the booking form narrowed one restored field on its way in —
    *   `setForm({ ...mergeDraft(…), category: asCategory(…) })`, which obeys the
-   *   rule and failed the regex. What matters is that the merge happens and
-   *   that nothing assigns the stored object straight through; the check below
-   *   is the half that catches the real mistake.
+   *   rule and failed the regex. Then again when the driver form wrapped the
+   *   merge to reapply the account's phone number:
+   *   `setForm(withRegisteredPhone(mergeDraft(…), registeredPhone))`.
+   *
+   *   Twice is a pattern, and the second attempt at a tighter regex broke the
+   *   booking form instead, which assigns the merge to a `const` first. The
+   *   shape of the statement is simply not the rule. So this asks only that the
+   *   merge happens against the current shape; the check below — that nothing
+   *   passes the stored object to `setForm` — is the half that catches the real
+   *   mistake, and it is the one worth keeping sharp.
    */
   check(
     `${screen} merges its draft rather than assigning it`,
-    /mergeDraft\(INITIAL_FORM|mergeDraft\(INITIAL_APPLICATION/.test(source) &&
-      /setForm\((mergeDraft\(|\{\s*\.\.\.)/.test(source),
+    /mergeDraft\((INITIAL_FORM|INITIAL_APPLICATION)/.test(source),
     'setForm(draft) replaces the shape with whatever an older build wrote',
   );
   check(
@@ -514,6 +520,70 @@ for (const [screen, source] of [
     'one direct assignment is one crash for anybody with a day-old draft',
   );
 }
+
+// ------------------------------------- the refusal names the field, and moves --
+
+/*
+ * ⚠ "Something on this step is missing" is a dead end on the last step.
+ *
+ *   The booking form told a sender "Something on 'Dropoff & review' is missing
+ *   or invalid. We have taken you back to it." while they were already standing
+ *   on that step, at the bottom of it, with the red field scrolled off the top.
+ *   Nothing moved and nothing was named, so the page looked complete and the
+ *   refusal looked like a bug in the app. That is the last action of the flow
+ *   and the point at which somebody abandons a parcel.
+ *
+ *   Two things fix it and both are asserted: the dialog names the fields, and
+ *   the page scrolls whether or not the step changed.
+ */
+const errorKeys = [...new Set([...book.matchAll(/errors\.([a-zA-Z]+)\s*=/g)].map((m) => m[1]))];
+
+check(
+  'the booking form can raise at least one error worth naming',
+  errorKeys.length > 0,
+  'the scan found nothing, so the assertion below proves nothing',
+);
+
+/*
+ * ⚠ Scoped to the object literal, not to the rest of the file.
+ *
+ *   `recipientPhone:` also appears in `INITIAL_FORM` and in the insert payload,
+ *   so a search from `const FIELD_LABELS` to the end of the file matches those
+ *   and passes with the label deleted — which is exactly the mistake this is
+ *   meant to catch.
+ */
+const labelsBlock = (() => {
+  const from = book.indexOf('const FIELD_LABELS');
+  if (from < 0) return '';
+  const to = book.indexOf('\n};', from);
+  return to < 0 ? '' : book.slice(from, to);
+})();
+
+check('the label map was found', labelsBlock.length > 0, 'nothing was sliced, so nothing is proven');
+
+const unlabelled = errorKeys.filter(
+  (key) => !new RegExp(`\\b${key}:\\s*'`).test(labelsBlock),
+);
+
+check(
+  'every error the booking form can raise has a name a sender would recognise',
+  unlabelled.length === 0,
+  `unlabelled: ${unlabelled.join(', ')} — an unnamed field prints its own variable name at somebody mid-parcel`,
+);
+
+check(
+  'and a failed submit scrolls, not only when the step changes',
+  /scrollRef\.current\?\.scrollTo\(\{ y: 0, animated: true \}\);/.test(
+    book.slice(book.indexOf('const firstBad =')),
+  ),
+  'the scroll keyed on [step] does nothing when the bad field is on the step already open',
+);
+
+check(
+  'the dialog names the fields rather than only the step',
+  /namedProblems\(firstBad, nextErrors\)/.test(book),
+  'naming the step sends somebody to a page they are already looking at',
+);
 
 if (failures > 0) {
   console.error(`\n${failures} failing assertion${failures === 1 ? '' : 's'}.`);

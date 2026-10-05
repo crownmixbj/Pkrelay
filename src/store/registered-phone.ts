@@ -45,6 +45,40 @@ export function displayRegisteredPhone(registered: string): string {
   return normalizePhone(registered) ?? registered;
 }
 
+/**
+ * Puts the account's number back into a form, wherever that form came from.
+ *
+ * ⚠ The prefill effect is not enough on its own, and this is why.
+ *
+ *   The form is rebuilt from `INITIAL_FORM` in three places — first render, the
+ *   saved-draft restore, and the reset after a submitted application. All three
+ *   set `phone` to an empty string. The effect that fills it is keyed on
+ *   `[phoneLocked, registeredPhone]`, and both of those are stable once the
+ *   session has settled, so after the first fill it never fires again: a draft
+ *   saved during the half-second before the session restored, or a reset after a
+ *   rejection, leaves a LOCKED field empty with no way to type into it and no
+ *   effect that will refill it. The applicant then meets "Phone number is
+ *   required" on a field they cannot edit, which is a dead end.
+ *
+ *   Applying this at each rebuild makes the account the authority rather than
+ *   whatever the previous form state happened to hold.
+ *
+ * ⚠ Only when the account HAS a number.
+ *
+ *   An account created before sign-up captured a phone keeps its editable, empty
+ *   field — overwriting that with '' would be the same no-op, but returning the
+ *   form untouched says plainly that there was nothing to apply.
+ */
+export function withRegisteredPhone<T extends { phone: string }>(
+  form: T,
+  registered: string | null | undefined,
+): T {
+  if (!hasRegisteredPhone(registered)) return form;
+
+  const wanted = displayRegisteredPhone(registered ?? '');
+  return form.phone === wanted ? form : { ...form, phone: wanted };
+}
+
 export const PHONE_LOCK_TITLE = 'Use your registered number';
 
 /**

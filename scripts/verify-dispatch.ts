@@ -12,7 +12,7 @@
  * None of those produces an error. Each produces an app that looks like it is
  * working while parcels quietly stop moving.
  */
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
@@ -1311,6 +1311,104 @@ check(
 check(
   'the countdown itself reads from the row, so both windows tick correctly',
   secondsLeft(held(10, 60)) > 8 * 60 && secondsLeft(held(5, 60)) < 5 * 60,
+);
+
+// ------------------------------------------- every caller agrees on the shape --
+
+/*
+ * ⚠ One `journey_matches`, and every call site passing its full arity.
+ *
+ *   `create or replace` cannot change a signature, so each time a parameter was
+ *   added the previous function stayed behind as an overload — 15, then 18,
+ *   then 22, then 26. Migration 26 drops the nine-argument one for a stated
+ *   reason: with the tenth parameter defaulted, a nine-argument call fits two
+ *   functions and Postgres refuses it as "not unique".
+ *
+ *   That is not hypothetical. A production database where 26 landed halfway —
+ *   new function created, old overload left, `sweep_for_journey` not rewritten —
+ *   raised exactly that error from an insert trigger on `driver_journeys`, so
+ *   every driver who tried to declare a route was told to check their
+ *   connection. It went unnoticed for seven weeks.
+ *
+ *   These read the migrations rather than a database, so they cannot see that
+ *   drift. What they can do is stop the repo from ever shipping a caller and a
+ *   definition that disagree, which is what makes the drift possible.
+ */
+const migrationFiles = readdirSync(join(ROOT, 'supabase/migrations'))
+  .filter((name) => name.endsWith('.sql'))
+  .sort();
+const migrationSql = migrationFiles
+  .map((name) => read(join('supabase/migrations', name)))
+  .join('\n');
+
+/** Arguments (or parameters) between one pair of brackets, counted at depth zero. */
+function arityAt(source: string, open: number): number {
+  let depth = 0;
+  let count = 1;
+  for (let i = open; i < source.length; i += 1) {
+    const c = source[i];
+    if (c === '(') depth += 1;
+    else if (c === ')') {
+      depth -= 1;
+      if (depth === 0) return count;
+    } else if (c === ',' && depth === 1) count += 1;
+  }
+  return -1;
+}
+
+/**
+ * The arity of the LAST definition, and of the call inside the LAST definition
+ * of each caller.
+ *
+ * ⚠ Only the last of each, because migrations are append-only.
+ *
+ *   15, 18 and 22 each define an earlier `journey_matches` and call it with the
+ *   arity of their day. Those files are history and are correct as they stand;
+ *   asserting over the whole corpus would demand editing a migration that has
+ *   already run everywhere, which is the one thing this repo never does. What
+ *   has to agree is the end state: the function as it finally stands, and every
+ *   caller as it finally stands.
+ */
+function lastDefinitionArity(name: string): number {
+  const marker = `create or replace function public.${name}(`;
+  const at = migrationSql.lastIndexOf(marker);
+  return at < 0 ? -1 : arityAt(migrationSql, at + marker.length - 1);
+}
+
+function lastBodyOf(name: string): string {
+  const marker = `create or replace function public.${name}()`;
+  const at = migrationSql.lastIndexOf(marker);
+  if (at < 0) return '';
+  const end = migrationSql.indexOf('\n$$;', at);
+  return end < 0 ? migrationSql.slice(at) : migrationSql.slice(at, end);
+}
+
+const declaredArity = lastDefinitionArity('journey_matches');
+
+check(
+  'journey_matches finally takes ten parameters',
+  declaredArity === 10,
+  `the last definition takes ${declaredArity}`,
+);
+
+for (const caller of ['sweep_for_journey']) {
+  const body = lastBodyOf(caller);
+  const at = body.indexOf('public.journey_matches(');
+  const called = at < 0 ? -1 : arityAt(body, at + 'public.journey_matches'.length);
+
+  check(
+    `${caller} calls it with all ${declaredArity}`,
+    called === declaredArity,
+    `it passes ${called} — and a short call is ambiguous against the defaulted definition, which is the error that stopped every driver declaring a route`,
+  );
+}
+
+check(
+  'and the superseded signature is dropped rather than left as an overload',
+  /drop function if exists public\.journey_matches\(\s*text, text, timestamptz, timestamptz, numeric, text, text, numeric, text\s*\)/.test(
+    migrationSql,
+  ),
+  'create or replace cannot change a signature, so the old one survives unless it is dropped',
 );
 
 if (failures > 0) {

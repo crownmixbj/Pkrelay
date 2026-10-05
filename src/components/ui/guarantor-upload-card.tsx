@@ -1,6 +1,7 @@
+import * as DocumentPicker from 'expo-document-picker';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { Camera, Check, IdCard, ImageIcon, RefreshCw } from 'lucide-react-native';
+import { Camera, Check, FileText, IdCard, ImageIcon, RefreshCw } from 'lucide-react-native';
 import { useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -12,7 +13,12 @@ import {
   WebcamPreview,
   useWebcam,
 } from '@/components/ui/webcam-capture';
-import { DOCUMENT_LABELS, type DocumentKind } from '@/constants/guarantor';
+import {
+  DOCUMENT_LABELS,
+  GUARANTOR_ID_FORMATS,
+  GUARANTOR_ID_MIME,
+  type DocumentKind,
+} from '@/constants/guarantor';
 import { Radius, Spacing, Typography, font } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { uploadGuarantorDocument } from '@/store/guarantor';
@@ -81,12 +87,26 @@ export function GuarantorUploadCard({
   const { error: webcamError, streaming, start, stop, capture } = webcam;
 
   const [preview, setPreview] = useState('');
+  /*
+   * ⚠ A PDF has no frame to show, and `<Image>` given one renders nothing.
+   *
+   *   An empty box where a preview should be reads as "it did not work", which
+   *   is the one thing this card exists to answer. So the kind of the chosen
+   *   file is remembered and a named chip stands in for the thumbnail — the
+   *   guarantor still gets a confirmation they can see.
+   */
+  const [previewPdf, setPreviewPdf] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [webcamOpen, setWebcamOpen] = useState(false);
 
-  /** Uploads a local uri, and only reports success once the server confirms. */
-  const send = async (uri: string) => {
+  /**
+   * Uploads a local uri, and only reports success once the server confirms.
+   *
+   * `pdfName` is passed when the chosen file is not renderable, and is what the
+   * chip shows in place of a thumbnail.
+   */
+  const send = async (uri: string, pdfName = '') => {
     setBusy(true);
     setError('');
     try {
@@ -98,10 +118,12 @@ export function GuarantorUploadCard({
          * an error message is the shape that makes people press Submit anyway.
          */
         setPreview('');
+        setPreviewPdf('');
         onCleared();
         return;
       }
       setPreview(uri);
+      setPreviewPdf(pdfName);
       onUploaded();
     } finally {
       setBusy(false);
@@ -136,14 +158,46 @@ export function GuarantorUploadCard({
     }
   };
 
+  /**
+   * The ID's "choose a file" path.
+   *
+   * ⚠ `DocumentPicker`, not `ImagePicker`, and that is the whole fix.
+   *
+   *   This was `launchImageLibraryAsync({ mediaTypes: ['images'] })`, which
+   *   cannot show a PDF at all — so a guarantor whose NIN slip came from NIMC
+   *   as a PDF had no way to attach it, on any platform. Nothing else in the
+   *   chain objected: the bucket has allowed `application/pdf` since 51,
+   *   `contentTypeFor` maps the extension, and `uploadGuarantorDocument` demands
+   *   an image only for the live photo. The picker was the single narrow point.
+   *
+   *   `fromGallery` keeps its name on purpose. `verify-guarantor-portal` asserts
+   *   that this function is reachable from the ID branch and not from the live
+   *   photo's, and that assertion is about which branch may choose a saved file
+   *   — a truth that does not change with the picker behind it.
+   */
   const fromGallery = async () => {
     setError('');
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        quality: 0.6,
+      const result = await DocumentPicker.getDocumentAsync({
+        type: [...GUARANTOR_ID_MIME],
+        /* Needed on native: the provider uri is not readable after the sheet closes. */
+        copyToCacheDirectory: true,
+        multiple: false,
       });
-      if (!result.canceled && result.assets[0]?.uri) await send(result.assets[0].uri);
+
+      if (result.canceled) return;
+
+      const file = result.assets?.[0];
+      if (!file?.uri) return;
+
+      /*
+       * The name is kept only for a PDF. For an image the thumbnail says more
+       * than a filename does, and showing both is clutter.
+       */
+      const isPdf =
+        file.mimeType === 'application/pdf' || /\.pdf$/i.test(file.name ?? file.uri);
+
+      await send(file.uri, isPdf ? (file.name ?? 'Your NIN slip.pdf') : '');
     } catch {
       setError('Something went wrong opening your files.');
     }
@@ -169,6 +223,7 @@ export function GuarantorUploadCard({
 
   const retake = () => {
     setPreview('');
+    setPreviewPdf('');
     onCleared();
     if (live && isWeb) void openWebcam();
     else if (live) void fromCamera();
@@ -204,8 +259,30 @@ export function GuarantorUploadCard({
 
       {!uploaded && <Text style={[styles.body, { color: theme.textSecondary }]}>{hint}</Text>}
 
+      {/*
+        ⚠ The accepted formats, stated where the file is chosen.
+
+          Read off `GUARANTOR_ID_MIME` rather than typed here, so the sentence
+          and the picker's filter cannot disagree — a page that says PDF while
+          the picker greys PDFs out is worse than one that never offered it.
+      */}
+      {!uploaded && !live && (
+        <Text style={[styles.body, { color: theme.textMuted }]}>
+          {GUARANTOR_ID_FORMATS}, up to 6 MB. A PDF from NIMC is fine as it is — no need to
+          screenshot it.
+        </Text>
+      )}
+
       {/* ---------- the preview, the live camera, or nothing ---------- */}
-      {preview.length > 0 ? (
+      {preview.length > 0 && previewPdf.length > 0 ? (
+        /* A PDF: named, not drawn. See `previewPdf` above. */
+        <View style={[styles.pdf, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
+          <FileText color={theme.primary} size={18} />
+          <Text style={[styles.pdfName, { color: theme.text }]} numberOfLines={1}>
+            {previewPdf}
+          </Text>
+        </View>
+      ) : preview.length > 0 ? (
         <Image
           source={{ uri: preview }}
           style={live ? styles.previewPortrait : styles.preview}
@@ -357,6 +434,21 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 180,
     borderRadius: Radius.md,
+  },
+  /* The stand-in for a PDF, which has no thumbnail to show. */
+  pdf: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingVertical: Spacing.three,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+  },
+  pdfName: {
+    flex: 1,
+    fontSize: Typography.body.fontSize,
+    ...font(500),
   },
   /**
    * The live photo is a face, so it takes the same portrait box the camera

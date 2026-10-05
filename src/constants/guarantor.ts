@@ -189,6 +189,38 @@ export const DOCUMENT_LABELS: Record<DocumentKind, string> = {
 };
 
 /**
+ * What the NIN slip may be, as MIME types.
+ *
+ * ⚠ A PDF is a first-class answer here, not a tolerated one.
+ *
+ *   A NIN slip arrives from NIMC as a PDF at least as often as it arrives as a
+ *   photograph, and a guarantor who has one in their inbox should not have to
+ *   screenshot it to satisfy a picker. The bucket has allowed `application/pdf`
+ *   since 51 and `uploadGuarantorDocument` only demands an image for the *live
+ *   photo* — the one thing that had never been widened was the file picker, so
+ *   the format was supported everywhere except the place somebody chooses it.
+ *
+ * ⚠ This list is the single source of truth for three things that must agree:
+ *   the picker's filter, the sentence under the field, and the bucket's
+ *   `allowed_mime_types`. They drifted once already; `verify-guarantor-portal`
+ *   now checks the first two against this constant.
+ *
+ * ⚠ It governs the ID only. The live photo comes from the camera, so it has no
+ *   picker to filter and must never acquire one.
+ */
+export const GUARANTOR_ID_MIME = [
+  'image/jpeg',
+  'image/png',
+  'image/heic',
+  'image/heif',
+  'image/webp',
+  'application/pdf',
+] as const;
+
+/** The same list as a sentence, so the copy cannot promise a format the picker refuses. */
+export const GUARANTOR_ID_FORMATS = 'JPG, PNG or PDF';
+
+/**
  * Six megabytes, matching the ceiling in the edge function.
  *
  * The bucket allows ten. This is the rule and that is the backstop; two files at

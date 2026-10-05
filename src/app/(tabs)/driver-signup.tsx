@@ -115,7 +115,7 @@ import {
 import { recordDocument } from '@/store/documents';
 import { useAuthGate } from '@/hooks/use-auth-gate';
 import {
-  displayRegisteredPhone,
+  withRegisteredPhone,
   hasRegisteredPhone,
   phoneLockMessage,
   PHONE_LOCK_TITLE,
@@ -589,11 +589,22 @@ export default function DriverSignupScreen() {
    */
   useEffect(() => {
     if (!phoneLocked) return;
-    setForm((previous) => {
-      const wanted = displayRegisteredPhone(registeredPhone);
-      return previous.phone === wanted ? previous : { ...previous, phone: wanted };
-    });
-  }, [phoneLocked, registeredPhone]);
+    setForm((previous) => withRegisteredPhone(previous, registeredPhone));
+    /*
+     * ⚠ `form.phone` is in the dependency list, and it is the whole repair.
+     *
+     *   Without it this fires once and never again: `phoneLocked` and
+     *   `registeredPhone` are both stable the moment the session settles. So a
+     *   draft restored a beat later, or the reset after a submitted application,
+     *   emptied a LOCKED field — one the applicant cannot type into — and
+     *   nothing refilled it. They met "Phone number is required" on a field with
+     *   no keyboard, which is where the application stopped.
+     *
+     *   Listing it cannot loop: `withRegisteredPhone` returns the same object
+     *   when the value already matches, so the state does not change and React
+     *   does not re-run this.
+     */
+  }, [phoneLocked, registeredPhone, form.phone]);
 
   /*
    * The account's email, filled in for them.
@@ -694,12 +705,21 @@ export default function DriverSignupScreen() {
      *   assigning it wholesale produced a form whose type said `string` where
      *   the value was `undefined` — the crash on `guarantorEmail.trim()`.
      */
-    setForm(mergeDraft(INITIAL_FORM, draft.form));
+    /*
+     * ⚠ The account's number is reapplied on top of the draft.
+     *
+     *   A draft is written on every keystroke, including during the half-second
+     *   before the session restores — so a perfectly ordinary first visit saves
+     *   `phone: ''`, and restoring it wholesale puts that blank back over a
+     *   locked field. The account is the authority here, not the draft; the
+     *   trigger in 16 says so too.
+     */
+    setForm(withRegisteredPhone(mergeDraft(INITIAL_FORM, draft.form), registeredPhone));
     // Local file URIs can expire between sessions. Restoring them anyway is
     // right: the upload reports "attach it again" if one has gone stale, which
     // beats silently dropping five attachments.
     setDocuments(draft.documents ?? NO_DOCUMENTS);
-  }, [draftReady, draft]);
+  }, [draftReady, draft, registeredPhone]);
 
   useEffect(() => {
     // Don't write the empty initial state over a draft still being read.
@@ -1173,7 +1193,8 @@ export default function DriverSignupScreen() {
    */
   const goToDashboard = () => {
     void clearDraft();
-    setForm(INITIAL_FORM);
+    /* Reapplied rather than blanked — the next application is from the same account. */
+    setForm(withRegisteredPhone(INITIAL_FORM, registeredPhone));
     setDocuments(NO_DOCUMENTS);
     setErrors({});
     setIsSubmitted(false);

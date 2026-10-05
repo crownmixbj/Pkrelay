@@ -146,14 +146,21 @@ export function JourneyPlanner() {
       return;
     }
 
-    const created = await declareJourney(input);
+    const outcome = await declareJourney(input);
     setBusy(false);
 
-    if (!created) {
-      showDialog(
-        'Could not save that journey',
-        'Check your connection and try again. Your driver approval has to be active.',
-      );
+    if (!outcome.ok) {
+      /*
+       * ⚠ The database's own reason, not a guess at it.
+       *
+       *   This said "check your connection and try again, your driver approval
+       *   has to be active" for every failure, including the ones that were
+       *   neither — a departure that had just passed, a column this build did
+       *   not send. A driver whose connection and approval were both fine was
+       *   told to check the two things that were already right, and nobody
+       *   reading the report could tell what had actually happened.
+       */
+      showDialog('Could not save that journey', outcome.message);
       return;
     }
 

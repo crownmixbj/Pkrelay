@@ -212,6 +212,53 @@ const STEPS: WizardStep[] = [
   { key: 'dropoff', label: 'Dropoff & review' },
 ];
 
+/**
+ * What to call each field when the submit dialog has to name it.
+ *
+ * ⚠ Named, because naming the STEP was not enough.
+ *
+ *   The dialog said "Something on 'Dropoff & review' is missing or invalid. We
+ *   have taken you back to it." — to somebody who was already standing on that
+ *   step, at the bottom of it, with the offending field scrolled off the top of
+ *   the screen. Nothing moved, nothing was named, and the page looked complete.
+ *   That is a dead end on the last action of the flow, and it is the point at
+ *   which a sender gives up.
+ *
+ *   Every key here is one `validate` can return, so a new error with no label
+ *   still reads sensibly: `fieldLabel` falls back to the key rather than
+ *   printing "undefined".
+ */
+const FIELD_LABELS: Partial<Record<keyof BookingForm, string>> = {
+  itemDescription: 'What is in the parcel',
+  itemPhotoUri: 'Photo of the parcel',
+  category: 'Category',
+  weight: 'Weight',
+  declaredValue: 'Declared value',
+  originCity: 'Pickup city',
+  pickupHubId: 'Package Relay hub',
+  pickupAreaSelection: 'Pickup area',
+  pickupAreaCustom: 'Pickup area',
+  pickupAddress: 'Pickup address',
+  pickupContactName: 'Contact person',
+  senderPhone: 'Pickup phone',
+  destinationCity: 'Destination',
+  dropoffAreaSelection: 'Dropoff area',
+  dropoffAreaCustom: 'Dropoff area',
+  dropoffAddress: 'Dropoff address',
+  recipientName: 'Recipient name',
+  recipientPhone: 'Recipient phone',
+};
+
+const fieldLabel = (key: string): string => FIELD_LABELS[key as keyof BookingForm] ?? key;
+
+/** The offending fields on one step, named, de-duplicated and in reading order. */
+function namedProblems(step: number, all: FieldErrors): string[] {
+  const order = STEP_FIELDS[step] ?? [];
+  const named = order.filter((key) => all[key as keyof FieldErrors]).map((key) => fieldLabel(key));
+  /* `dropoffAreaSelection` and `dropoffAreaCustom` are one control and one name. */
+  return [...new Set(named)];
+}
+
 /** Which booking fields each step is responsible for. */
 const STEP_FIELDS: (keyof BookingForm)[][] = [
   ['itemDescription', 'itemPhotoUri', 'category', 'weight', 'declaredValue', 'fragile'],
@@ -889,10 +936,31 @@ export default function BookScreen() {
 
       if (firstBad >= 0) setStep(firstBad);
 
+      /*
+       * ⚠ Scrolled unconditionally, not only when the step changes.
+       *
+       *   The scroll that runs on `[step]` does nothing when the bad field is on
+       *   the step already open — which is the commonest case, because the
+       *   submit button lives at the bottom of the last step. So the dialog
+       *   claimed to have taken somebody somewhere while the page stayed exactly
+       *   where it was, with the red field above the fold.
+       */
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+
+      const problems = firstBad >= 0 ? namedProblems(firstBad, nextErrors) : [];
+
       showDialog(
         'Check the form',
-        firstBad >= 0
-          ? `Something on "${STEPS[firstBad].label}" is missing or invalid. We have taken you back to it.`
+        /*
+         * The fields by name. Three at most: a list longer than that stops being
+         * read, and anything past the first few is usually a consequence of it.
+         */
+        problems.length > 0
+          ? `${problems.slice(0, 3).join(', ')}${
+              problems.length > 3 ? ` and ${problems.length - 3} more` : ''
+            } ${problems.length === 1 ? 'needs' : 'need'} attention on "${
+              STEPS[firstBad].label
+            }". We have scrolled you to it.`
           : 'Some required details are missing or invalid.',
       );
       return;

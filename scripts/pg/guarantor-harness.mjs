@@ -198,6 +198,26 @@ await db.exec(read('supabase/migrations/20250101000051_guarantor_full_form.sql')
 await db.exec(read('supabase/migrations/20250101000054_guarantor_link_window.sql'));
 await db.exec(read('supabase/migrations/20250101000055_guarantor_invite_payload_refresh.sql'));
 
+/*
+ * ⚠ And 65, which restates the storage policy 51 created.
+ *
+ *   It was recreated by hand on a live project and the hand-written version
+ *   dropped the scalar subquery around `is_admin()`. 65 makes every environment
+ *   agree with the file again; running the chain without it would test a
+ *   predicate shape that is no longer the one being shipped.
+ */
+await db.exec(read('supabase/migrations/20250101000065_guarantor_policy_canonical.sql'));
+
+/*
+ * ⚠ And 66, which emails the applicant when their guarantor finishes.
+ *
+ *   It also installs `email_outbox`'s kind check on this stub table, so from
+ *   here the harness refuses an unlisted kind exactly as the real database does
+ *   — which is the constraint that would otherwise abort a guarantor's
+ *   submission in production and pass in here.
+ */
+await db.exec(read('supabase/migrations/20250101000066_guarantor_completed_email.sql'));
+
 const DELE = '22222222-2222-2222-2222-222222222222';
 await db.exec(`insert into auth.users (id) values ('${DELE}');`);
 await db.exec(`insert into public.who (id) values ('${DELE}');`);
@@ -1018,6 +1038,139 @@ await run('an admin sees the record, and four digits of the NIN', async () => {
   await db.exec(`update public.who set admin = false;`);
   const none = await q('select * from public.admin_guarantor_summary($1)', [app.id]);
   check('and it answers nothing to somebody who is not an admin', none.length === 0);
+});
+
+await run('the storage policy is the one in the repo, not a hand-written cousin', async () => {
+  const [canonical] = await q('select public.guarantor_identity_policy_canonical() as ok');
+  check('the shipped form passes its own probe', canonical.ok === true);
+
+  const [row] = await q(`
+    select qual from pg_policies
+     where schemaname = 'storage' and tablename = 'objects'
+       and policyname = 'admins read guarantor identity files'
+  `);
+  /*
+   * ⚠ The whole point of the probe is that these two render differently.
+   *
+   *   `(select public.is_admin())` normalises to `( SELECT is_admin() ...)` and a
+   *   bare `is_admin()` does not, which is the only handle SQL has on the
+   *   difference. If Postgres ever stopped distinguishing them the probe would
+   *   silently pass on both, so the rendering itself is asserted.
+   */
+  check(
+    'the predicate is evaluated once per statement, not once per row',
+    /SELECT (public\.)?is_admin\(\)/.test(String(row?.qual ?? '')),
+    String(row?.qual ?? '(no policy)'),
+  );
+
+  /* The hand-written version, rebuilt exactly — the probe must reject it. */
+  await db.exec(`
+    drop policy if exists "admins read guarantor identity files" on storage.objects;
+    create policy "admins read guarantor identity files"
+      on storage.objects for select
+      to authenticated
+      using (bucket_id = 'guarantor-identity' and public.is_admin());
+  `);
+
+  const [bare] = await q('select public.guarantor_identity_policy_canonical() as ok');
+  check('and the per-row form is reported as drift', bare.ok === false);
+
+  /* A policy on the wrong bucket is the other failure worth catching. */
+  await db.exec(`
+    drop policy if exists "admins read guarantor identity files" on storage.objects;
+    create policy "admins read guarantor identity files"
+      on storage.objects for select
+      to authenticated
+      using (bucket_id = 'driver-documents' and (select public.is_admin()));
+  `);
+
+  const [wrongBucket] = await q('select public.guarantor_identity_policy_canonical() as ok');
+  check('so is a policy pointed at the wrong bucket', wrongBucket.ok === false);
+
+  /* Put the shipped one back, so nothing after this runs against the cousin. */
+  await db.exec(read('supabase/migrations/20250101000065_guarantor_policy_canonical.sql'));
+  const [restored] = await q('select public.guarantor_identity_policy_canonical() as ok');
+  check('and re-running 65 repairs it', restored.ok === true);
+});
+
+await run('the applicant is emailed when their guarantor finishes', async () => {
+  const { app, token } = await submit('tells-the-driver@example.test');
+  const outcome = await complete(token, { full_name: 'Bisi Okoro', signature_name: 'Bisi Okoro' });
+  check('the completion itself succeeded', outcome?.ok === true, JSON.stringify(outcome));
+
+  const [mail] = await q(
+    `select * from public.email_outbox where kind = 'guarantor_completed' and subject_id = $1`,
+    [app.id],
+  );
+
+  check('an email is queued for the application', !!mail);
+  /*
+   * ⚠ To the applicant, not to the guarantor.
+   *
+   *   Both addresses are in scope at that point in the trigger and they are one
+   *   typo apart. Sending "your guarantor is verified" to the guarantor would
+   *   tell a stranger the outcome of somebody else's application.
+   */
+  check(
+    'addressed to the applicant',
+    mail?.recipient === 'tunde@example.test',
+    `went to ${mail?.recipient}`,
+  );
+  check(
+    "carrying the reference and the guarantor's name",
+    mail?.payload?.reference === 'LOCI-G' && mail?.payload?.guarantor_name === 'Bisi Okoro',
+    JSON.stringify(mail?.payload),
+  );
+  /*
+   * ⚠ And nothing else about the guarantor.
+   *
+   *   The applicant never sees what their guarantor filed — that separation is
+   *   the reason the portal exists. A payload is the easiest place to leak it,
+   *   because every field is one `jsonb_build_object` line away.
+   */
+  check(
+    'and nothing else the guarantor filed',
+    !/12345678901/.test(JSON.stringify(mail?.payload ?? {})) &&
+      !/whatsapp|residential|nin|signature|employment/i.test(
+        Object.keys(mail?.payload ?? {}).join(','),
+      ),
+    JSON.stringify(mail?.payload),
+  );
+
+  /* The status the email claims is the status the row actually moved to. */
+  const [after] = await q('select status from public.driver_applications where id = $1', [app.id]);
+  check('and the application really is with the review team', after.status === 'ready_for_review');
+
+  const [probe] = await q('select public.guarantor_completed_email_installed() as installed');
+  check('the probe agrees it is installed', probe.installed === true);
+});
+
+await run('the email can never cost the guarantor their submission', async () => {
+  /*
+   * ⚠ The trigger runs inside the guarantor's transaction.
+   *
+   *   Anything it raises rolls back the verification — so somebody who has just
+   *   uploaded an ID and taken a live photo would be told "could not submit",
+   *   because of an email. Blanking the applicant's address is the cheapest way
+   *   to make the trigger take its early return and prove the submission lands
+   *   anyway.
+   */
+  const { app, token } = await submit('no-driver-address@example.test');
+  await q(`update public.driver_applications set email = '' where id = $1`, [app.id]);
+
+  const outcome = await complete(token);
+
+  check('the verification is still accepted', outcome?.ok === true, JSON.stringify(outcome));
+
+  const [counted] = await q(
+    `select count(*)::int as n from public.email_outbox
+      where kind = 'guarantor_completed' and subject_id = $1`,
+    [app.id],
+  );
+  check('and no email was queued to nobody', counted.n === 0);
+
+  const [after] = await q('select status from public.driver_applications where id = $1', [app.id]);
+  check('and the application still advanced', after.status === 'ready_for_review');
 });
 
 await run('an invitation lasts thirty days, not seven', async () => {

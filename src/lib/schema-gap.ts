@@ -323,6 +323,35 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
     fn: 'status_email_has_driver_name',
     migration: '20250101000064_status_email_driver_name.sql',
   },
+  /*
+   * ⚠ 65 is the only entry here that reports on a policy rather than a table or
+   *   a function, and it is here because that is exactly the failure that hides.
+   *
+   *   The storage policy was recreated by hand on a live project to fix a
+   *   reviewer who could not open the guarantor's photographs. The hand-written
+   *   version works — it just evaluates `is_admin()` once per row instead of
+   *   once per statement, and no screen, log or error ever says so. A database
+   *   whose policy has drifted from the file looks completely healthy until
+   *   somebody reads the catalogue, so the panel is where it gets read.
+   */
+  {
+    label: 'Guarantor identity policy matches the repo',
+    fn: 'guarantor_identity_policy_canonical',
+    migration: '20250101000065_guarantor_policy_canonical.sql',
+  },
+  /*
+   * ⚠ Without 66 the applicant is told in the app and nowhere else.
+   *
+   *   The bell icon lights for somebody who has the app open; the person waiting
+   *   on this step is an applicant who submitted days ago and has no reason to
+   *   open it. There is no error and no failed row — the email simply never
+   *   existed — so the panel is the only place its absence shows.
+   */
+  {
+    label: 'Guarantor-completed email to the applicant',
+    fn: 'guarantor_completed_email_installed',
+    migration: '20250101000066_guarantor_completed_email.sql',
+  },
 ];
 
 /**
