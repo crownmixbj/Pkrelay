@@ -352,6 +352,19 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
     migration: '20250101000073_parcels_in_flight.sql',
   },
   /*
+   * ⚠ Probed on the action itself.
+   *
+   *   Without 74 the In transit board renders a "Record delivery" button that
+   *   fails with PGRST202 the moment somebody uses it on a parcel a driver left
+   *   at Out for Delivery — which is the one moment they need it. The attribution
+   *   column rides along in the same file.
+   */
+  {
+    label: 'Admin-recorded delivery',
+    fn: 'admin_record_delivery',
+    migration: '20250101000074_admin_record_delivery.sql',
+  },
+  /*
    * Without 62 nothing breaks on screen — new accounts are simply never sent
    * the welcome email — which is exactly why it needs a line here.
    */

@@ -884,6 +884,173 @@ const ibadanLagos = await parcel();
   );
 }
 
+// ---------------------- 10. closing a delivery the driver never recorded ---
+
+/*
+ * ⚠ The case this exists for, reproduced: a driver who collects a parcel, moves
+ *   it along, and stops one step short. On production PKG-483203 sat at Out for
+ *   Delivery with no `delivered_at`, no recipient name and no error anywhere —
+ *   the driver simply never tapped the last step, and 10 lets nobody else.
+ */
+{
+  await asOwner();
+  const stuck = await parcel({ origin: 'Kano', destination: 'Jos' });
+  await db.query(
+    `update public.bookings
+        set driver_id = $1, driver = 'Free Driver', status = 'Out for Delivery',
+            accepted_at = now() - interval '4 hours',
+            picked_up_at = now() - interval '3 hours'
+      where id = $2`,
+    [FREE, stuck.id],
+  );
+
+  /* A non-admin cannot close anybody's delivery. */
+  await asUser(SENDER);
+  const notAdmin = await refusal(() =>
+    db.query('select public.admin_record_delivery($1, $2, $3)', [
+      stuck.id,
+      'Someone',
+      'because I said so',
+    ]),
+  );
+  check('a non-admin cannot record a delivery', notAdmin !== null && /not allowed/i.test(notAdmin));
+
+  await asUser(ADMIN);
+
+  const nameless = await refusal(() =>
+    db.query('select public.admin_record_delivery($1, $2, $3)', [stuck.id, ' ', 'rang the driver']),
+  );
+  check(
+    'a nameless delivery is refused, exactly as it is for a driver',
+    nameless !== null && /who received/i.test(nameless),
+    'an admin typing it does not stop it being the gap 10 closed',
+  );
+
+  const reasonless = await refusal(() =>
+    db.query('select public.admin_record_delivery($1, $2, $3)', [stuck.id, 'Ngozi', '']),
+  );
+  check(
+    'and so is one with no account of how they know',
+    reasonless !== null && /how you know/i.test(reasonless),
+    'the operator did not witness this; in six months that sentence is the whole defence',
+  );
+
+  /* A parcel never collected cannot be closed. */
+  const uncollected = await parcel({ origin: 'Kano', destination: 'Jos' });
+  await asOwner();
+  await db.query(
+    `update public.bookings set driver_id = $1, driver = 'Free Driver', status = 'Assigned'
+      where id = $2`,
+    [FREE, uncollected.id],
+  );
+  await asUser(ADMIN);
+  const tooEarly = await refusal(() =>
+    db.query('select public.admin_record_delivery($1, $2, $3)', [
+      uncollected.id,
+      'Ngozi',
+      'driver says it went',
+    ]),
+  );
+  check(
+    'a parcel that was never collected cannot be closed',
+    tooEarly !== null && /not been collected/i.test(tooEarly),
+    'closing it would assert a collection nobody recorded, on the word of somebody who saw neither',
+  );
+
+  /* The real thing. */
+  const before = await db.query(
+    `select count(*)::int as n from public.driver_earnings where booking_id = $1`,
+    [stuck.id],
+  );
+  check('no earning yet', before.rows[0].n === 0);
+
+  await db.query('select public.admin_record_delivery($1, $2, $3)', [
+    stuck.id,
+    'Ngozi at reception',
+    'Driver confirmed by phone, recipient called to say it arrived.',
+  ]);
+
+  await asOwner();
+  const closed = await db.query(
+    `select status, delivered_at, received_by, delivery_recorded_by
+       from public.bookings where id = $1`,
+    [stuck.id],
+  );
+  check('the parcel is delivered', closed.rows[0].status === 'Delivered');
+  check('with a timestamp', closed.rows[0].delivered_at !== null);
+  check('and who took it', closed.rows[0].received_by === 'Ngozi at reception');
+  check(
+    'the row records that an admin closed it, not the driver',
+    closed.rows[0].delivery_recorded_by === ADMIN,
+    'without this the two are indistinguishable six months later',
+  );
+
+  const email = await db.query(
+    `select recipient from public.email_outbox
+      where kind = 'delivery_completed' and subject_id = $1`,
+    [stuck.id],
+  );
+  check(
+    'the sender is emailed, exactly as for a driver-recorded delivery',
+    email.rows.length === 1 && email.rows[0].recipient === 'sender@pkrelay.test',
+    `got ${JSON.stringify(email.rows)}`,
+  );
+
+  const earned = await db.query(
+    `select net, gross from public.driver_earnings where booking_id = $1`,
+    [stuck.id],
+  );
+  check(
+    'and the driver is credited for the work they did',
+    earned.rows.length === 1 && Number(earned.rows[0].gross) > 0,
+    'suppressing the fare would be a punishment for a flat phone battery',
+  );
+
+  const logged = await db.query(
+    `select level, actor_id, context from public.app_events
+      where message = 'admin recorded a delivery the driver did not'`,
+  );
+  check('the override is logged', logged.rows.length === 1);
+  check(
+    'as a warning, because a run of these is the delivery flow failing',
+    logged.rows[0].level === 'warning',
+  );
+  check('naming the admin', logged.rows[0].actor_id === ADMIN);
+  check(
+    'and carrying how they knew',
+    String(logged.rows[0].context?.reason ?? '').includes('confirmed by phone'),
+  );
+
+  /* Twice is refused rather than paying twice. */
+  await asUser(ADMIN);
+  const again = await refusal(() =>
+    db.query('select public.admin_record_delivery($1, $2, $3)', [
+      stuck.id,
+      'Ngozi',
+      'closing it again',
+    ]),
+  );
+  check(
+    'a second close is refused',
+    again !== null && /already delivered/i.test(again),
+    'and `on conflict (booking_id) do nothing` means it would not have paid twice either',
+  );
+
+  const attribution = await db.query('select * from public.admin_delivery_attribution($1)', [
+    stuck.id,
+  ]);
+  check(
+    'the drawer can say who closed it',
+    attribution.rows[0]?.recorded_by_admin === true &&
+      attribution.rows[0]?.admin_name === 'Test Admin',
+    JSON.stringify(attribution.rows[0]),
+  );
+
+  await asUser(SENDER);
+  const hidden = await db.query('select * from public.admin_delivery_attribution($1)', [stuck.id]);
+  check('and a non-admin is told nothing by it', hidden.rows.length === 0);
+}
+
 await db.close();
 
 if (failures > 0) {

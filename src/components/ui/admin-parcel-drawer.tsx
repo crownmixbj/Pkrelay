@@ -15,11 +15,13 @@ import {
   ageLabel,
   fetchAdminParcelDetail,
   fetchAdminParcels,
+  fetchDeliveryAttribution,
   fetchUnassignedByDestination,
   revealParcelContacts,
   waitedLabel,
   type AdminParcelDetail,
   type AdminParcelRow,
+  type DeliveryAttribution,
   type ParcelContacts,
   type ParcelScope,
   type UnassignedDestination,
@@ -128,9 +130,18 @@ export function AdminParcelDrawer({
         {openId ? (
           <ParcelDetail
             id={openId}
-            /* With no list behind it, Back is Close. */
-            backLabel={focusId ? 'Close' : 'Back to the list'}
-            onBack={() => (focusId ? onClose() : setOpenId(null))}
+            /*
+              ⚠ No back control at all when the drawer was opened on one parcel.
+
+                The sheet already ends with its own Close, outside this branch.
+                Giving the detail a second one labelled Close stacked two
+                identical buttons at the bottom of the sheet — which is what
+                shipped. With a list behind it the two are different actions and
+                both earn their place: Back returns to the list, Close dismisses
+                the sheet.
+            */
+            backLabel={focusId ? null : 'Back to the list'}
+            onBack={() => setOpenId(null)}
           />
         ) : (
           <>
@@ -269,7 +280,8 @@ function ParcelDetail({
   onBack,
 }: {
   id: string;
-  backLabel: string;
+  /** Null when the sheet's own Close is the only way out. */
+  backLabel: string | null;
   onBack: () => void;
 }) {
   const theme = useTheme();
@@ -278,6 +290,8 @@ function ParcelDetail({
   const [missing, setMissing] = useState(false);
   /** Null while loading and if the call fails — the line says which. */
   const [attempts, setAttempts] = useState<OfferAttempts | null>(null);
+  /** Who closed the delivery: the carrier, or an operator. */
+  const [attribution, setAttribution] = useState<DeliveryAttribution | null>(null);
 
   const [contacts, setContacts] = useState<ParcelContacts | null>(null);
   const [asking, setAsking] = useState(false);
@@ -293,6 +307,9 @@ function ParcelDetail({
     });
     void fetchOfferAttempts(id).then((result) => {
       if (!cancelled) setAttempts(result);
+    });
+    void fetchDeliveryAttribution(id).then((result) => {
+      if (!cancelled) setAttribution(result);
     });
     return () => {
       cancelled = true;
@@ -315,7 +332,7 @@ function ParcelDetail({
         <Text style={[styles.note, { color: theme.textMuted }]}>
           That parcel could not be read. It may have been deleted.
         </Text>
-        <Button label={backLabel} variant="secondary" onPress={onBack} />
+        {!!backLabel && <Button label={backLabel} variant="secondary" onPress={onBack} />}
       </View>
     );
   }
@@ -346,6 +363,21 @@ function ParcelDetail({
       <Row label="Accepted" value={when(detail.acceptedAt)} />
       <Row label="Collected" value={when(detail.pickedUpAt)} />
       <Row label="Delivered" value={when(detail.deliveredAt)} />
+      {/*
+        Who said so, when it was not the driver.
+
+        ⚠ Shown only for an admin-recorded delivery, because that is the case
+          where the question has an answer worth printing. A delivery the carrier
+          recorded needs no line saying the carrier recorded it — but one closed
+          from an office, months later, is indistinguishable from the real thing
+          unless the row says otherwise. See `delivery_recorded_by` in 74.
+      */}
+      {attribution?.recordedByAdmin && (
+        <Row
+          label="Closed by"
+          value={`${attribution.adminName ?? 'An administrator'} — the driver never recorded it`}
+        />
+      )}
       {detail.cancelledAt && (
         <Row
           label="Cancelled"
@@ -461,7 +493,7 @@ function ParcelDetail({
         )}
       </View>
 
-      <Button label={backLabel} variant="secondary" onPress={onBack} />
+      {!!backLabel && <Button label={backLabel} variant="secondary" onPress={onBack} />}
     </View>
   );
 }

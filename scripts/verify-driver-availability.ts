@@ -47,6 +47,7 @@ const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');
 const repair = read('supabase/migrations/20250101000069_assign_parcel_repair.sql');
 const counts = read('supabase/migrations/20250101000071_offer_attempt_counts.sql');
 const inFlight = read('supabase/migrations/20250101000073_parcels_in_flight.sql');
+const closing = read('supabase/migrations/20250101000074_admin_record_delivery.sql');
 const board = read('src/components/ui/parcels-in-flight.tsx');
 const adminScreen = read('src/app/(tabs)/admin.tsx');
 const drawer = read('src/components/ui/admin-parcel-drawer.tsx');
@@ -571,6 +572,123 @@ for (const fn of FUNCTIONS) {
   check('half a day is amber', stallTone(13 * 60) === 'warning');
   check('a full day is red', stallTone(25 * 60) === 'danger');
   check('an hour is neither', stallTone(60) === 'neutral');
+}
+
+// ------------------- 14. closing a delivery the driver never did (74) -----
+
+{
+  const sql = code(closing);
+
+  check(
+    'the row records who closed it',
+    /add column if not exists delivery_recorded_by uuid references auth\.users/.test(sql),
+    'null for a driver-recorded delivery and set for an admin one — the only thing that tells\n' +
+      '       them apart six months later',
+  );
+
+  const fn = sql.slice(sql.indexOf('function public.admin_record_delivery('));
+  check('admin_record_delivery exists', fn.length > 0);
+  check('it checks is_admin()', /is_admin\(\)/.test(fn));
+  check(
+    'it is security definer with a pinned search_path',
+    /security definer/.test(fn) && /set search_path = ''/.test(fn),
+  );
+  check(
+    'it is revoked from anon',
+    /revoke all on function public\.admin_record_delivery\(uuid, text, text\) from public, anon/.test(
+      closing,
+    ),
+  );
+
+  check(
+    'a parcel that was never collected is refused',
+    /row_picked is null/.test(fn) && /not been collected/.test(sql),
+    'closing it would assert a collection nobody recorded',
+  );
+  check(
+    'a delivered or cancelled parcel is refused',
+    /already delivered/.test(sql) && /was cancelled/.test(sql),
+    'a second close would be a second delivery email',
+  );
+  check(
+    'a parcel with no driver is refused',
+    /row_driver is null/.test(fn),
+    'nobody carried it, so nobody delivered it',
+  );
+  check(
+    'the recipient name is still required',
+    /length\(clean_name\) < 2/.test(fn),
+    "10's rule does not stop applying because an admin is the one typing",
+  );
+  check(
+    'and so is an account of how they know',
+    /length\(clean_reason\) < 4/.test(fn),
+    'the operator did not witness it',
+  );
+  check(
+    'the attribution is written with the delivery',
+    /delivery_recorded_by = actor/.test(fn),
+  );
+  check(
+    'and the override is logged as a warning naming the reason',
+    /'warning',\s*\n\s*'delivery'/.test(fn) && /'reason', left\(clean_reason/.test(fn),
+    'one of these is a flat battery; a run of them is the delivery flow failing on real phones',
+  );
+  check(
+    'nothing suppresses the downstream effects',
+    !/alter table public\.bookings disable trigger/.test(sql) && !/session_replication_role/.test(sql),
+    'the sender email, the notification and the fare all fire exactly as they would for the driver',
+  );
+
+  check(
+    'the drawer can ask who closed it',
+    /function public\.admin_delivery_attribution\(parcel uuid\)/.test(sql) &&
+      /is_admin\(\)/.test(sql.slice(sql.indexOf('function public.admin_delivery_attribution('))),
+  );
+}
+
+// ------------------------------------- 15. the action, where it is offered --
+
+{
+  check(
+    'only a collected parcel offers the action',
+    /onRecordDelivery\?: \(\) => void;/.test(board) &&
+      /moving\.map[\s\S]{0,260}onRecordDelivery=/.test(board) &&
+      !/awaiting\.map[\s\S]{0,260}onRecordDelivery=/.test(board),
+    'there is nothing to close on a parcel nobody has picked up',
+  );
+  check(
+    'the consequences are named before the button',
+    /email the sender/.test(board) &&
+      /credit \{parcel \? formatNaira/.test(board) &&
+      /you closed it, not the driver/.test(board),
+    'an operator who thought they were tidying a list has just told a customer their parcel\n' +
+      '       arrived and paid somebody for it',
+  );
+  check(
+    'the button cannot fire without both fields',
+    /receivedBy\.trim\(\)\.length < 2 \|\| reason\.trim\(\)\.length < 4/.test(board),
+    'the server refuses it anyway; the screen should not offer it',
+  );
+  check(
+    "the server's refusals are shown verbatim",
+    /showDialog\('Could not record that delivery', outcome\.error\)/.test(board),
+    'each one tells the operator what to do instead',
+  );
+  check(
+    'and the drawer says when a delivery was closed from an office',
+    /recordedByAdmin/.test(drawer) && /never recorded it/.test(drawer),
+  );
+  check(
+    'the drawer opened on one parcel has exactly one way out',
+    /backLabel=\{focusId \? null : 'Back to the list'\}/.test(drawer),
+    'the sheet already ends with its own Close; a second one stacked two identical buttons',
+  );
+  check(
+    'and the detail renders its back control only when it has somewhere to go',
+    (drawer.match(/\{!!backLabel && <Button label=\{backLabel\}/g) ?? []).length === 2,
+    'both the missing-parcel branch and the normal one',
+  );
 }
 
 if (failures > 0) {

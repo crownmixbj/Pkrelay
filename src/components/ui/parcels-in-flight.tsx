@@ -1,18 +1,29 @@
-import { PackageCheck, PackageSearch, TriangleAlert, UserRound } from 'lucide-react-native';
+import {
+  PackageCheck,
+  PackageSearch,
+  CircleCheck,
+  TriangleAlert,
+  UserRound,
+} from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { AdminError, Metric, adminStyles } from '@/components/ui/admin-shell';
 import { AdminParcelDrawer } from '@/components/ui/admin-parcel-drawer';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Field } from '@/components/ui/field';
+import { BottomSheet } from '@/components/ui/bottom-sheet';
+import { showDialog } from '@/components/ui/dialog';
+import { showToast } from '@/components/ui/toast';
 import { SectionLabel } from '@/components/ui/screen';
 import { Radius, Spacing, Typography, font } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
   EMPTY_IN_FLIGHT,
   fetchParcelsInFlight,
+  recordDelivery,
   stallTone,
   waitedLabel,
   type InFlightTotals,
@@ -47,6 +58,8 @@ export function ParcelsInFlight() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  /** The parcel an operator is closing by hand, or null. */
+  const [closing, setClosing] = useState<ParcelInFlight | null>(null);
 
   const load = useCallback(async () => {
     const result = await fetchParcelsInFlight();
@@ -131,7 +144,12 @@ export function ParcelsInFlight() {
           ) : (
             <View style={styles.list}>
               {moving.map((parcel) => (
-                <ParcelRow key={parcel.id} parcel={parcel} onOpen={() => setOpenId(parcel.id)} />
+                <ParcelRow
+                  key={parcel.id}
+                  parcel={parcel}
+                  onOpen={() => setOpenId(parcel.id)}
+                  onRecordDelivery={() => setClosing(parcel)}
+                />
               ))}
             </View>
           )}
@@ -153,6 +171,15 @@ export function ParcelsInFlight() {
         title="Parcel"
         onClose={() => setOpenId(null)}
       />
+
+      <RecordDeliverySheet
+        parcel={closing}
+        onClose={() => setClosing(null)}
+        onRecorded={() => {
+          setClosing(null);
+          void load();
+        }}
+      />
     </View>
   );
 }
@@ -164,18 +191,32 @@ export function ParcelsInFlight() {
  *   operator scanning twenty of these reads the first column and the colour, and
  *   nothing else.
  */
-function ParcelRow({ parcel, onOpen }: { parcel: ParcelInFlight; onOpen: () => void }) {
+function ParcelRow({
+  parcel,
+  onOpen,
+  onRecordDelivery,
+}: {
+  parcel: ParcelInFlight;
+  onOpen: () => void;
+  /** Only passed for a collected parcel — there is nothing to close before that. */
+  onRecordDelivery?: () => void;
+}) {
   const theme = useTheme();
 
   const tone = stallTone(parcel.minutesSinceMove);
   const stalled = tone === 'danger';
 
+  /*
+   * ⚠ A Card with buttons, not a tappable card with a button inside it.
+   *
+   *   The first version wrapped the whole row in a Pressable and stopped
+   *   propagation on the action — which `verify-layout.ts` rejects by name: a
+   *   Button inside a Pressable that is itself a button is invalid DOM on web,
+   *   and a tap on the inner control fires the outer one too. The dispatch queue
+   *   below already settled this shape; this follows it.
+   */
   return (
-    <Pressable
-      onPress={onOpen}
-      accessibilityRole="button"
-      accessibilityLabel={`${parcel.trackingId}, ${parcel.status}. Open the parcel.`}
-      style={({ pressed }) => [styles.slot, pressed && { opacity: 0.7 }]}>
+    <View>
       <Card style={styles.card}>
         <View style={styles.head}>
           <View style={styles.headText}>
@@ -233,8 +274,140 @@ function ParcelRow({ parcel, onOpen }: { parcel: ParcelInFlight; onOpen: () => v
             </Text>
           </View>
         )}
+
+        <View style={styles.rowActions}>
+          <Button
+            label="Open parcel"
+            variant="secondary"
+            size="md"
+            onPress={onOpen}
+          />
+          {/* Only on a collected parcel — there is nothing to close before that. */}
+          {!!onRecordDelivery && (
+            <Button
+              label="Record delivery"
+              variant="secondary"
+              size="md"
+              icon={(color, size) => <CircleCheck color={color} size={size} />}
+              onPress={onRecordDelivery}
+            />
+          )}
+        </View>
       </Card>
-    </Pressable>
+    </View>
+  );
+}
+
+/**
+ * Closing a delivery the driver never recorded.
+ *
+ * ⚠ The consequences are listed before the button, because every one of them
+ *   reaches somebody outside this screen: the sender is emailed that their
+ *   parcel arrived, and the driver is paid for it. An operator who thought they
+ *   were tidying a list has just told a customer their parcel is at its
+ *   destination.
+ */
+function RecordDeliverySheet({
+  parcel,
+  onClose,
+  onRecorded,
+}: {
+  parcel: ParcelInFlight | null;
+  onClose: () => void;
+  onRecorded: () => void;
+}) {
+  const theme = useTheme();
+
+  const [receivedBy, setReceivedBy] = useState('');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!parcel) {
+      setReceivedBy('');
+      setReason('');
+    }
+  }, [parcel]);
+
+  const submit = async () => {
+    if (!parcel) return;
+
+    setBusy(true);
+    const outcome = await recordDelivery(parcel.id, receivedBy.trim(), reason.trim());
+    setBusy(false);
+
+    if (!outcome.ok) {
+      /*
+       * Verbatim. The server's refusals here each tell the operator what to do
+       * instead — "that parcel has not been collected yet", "say how you know it
+       * arrived" — and a generic failure would throw all of that away.
+       */
+      showDialog('Could not record that delivery', outcome.error);
+      return;
+    }
+
+    showToast(`#${parcel.trackingId} marked delivered`, {
+      message: 'The sender has been emailed and the driver has been credited.',
+    });
+    onRecorded();
+  };
+
+  return (
+    <BottomSheet visible={!!parcel} onClose={onClose}>
+      <View style={styles.sheet}>
+        <Text style={[styles.sheetTitle, { color: theme.text }]}>
+          Record delivery — #{parcel?.trackingId}
+        </Text>
+        <Text style={[styles.route, { color: theme.textSecondary }]}>
+          {parcel?.originCity} → {parcel?.destinationCity} · carried by {parcel?.driverName}
+        </Text>
+
+        <Field
+          label="Who received it"
+          value={receivedBy}
+          onChangeText={setReceivedBy}
+          placeholder="Ngozi at reception"
+          hint="The person who actually took it — often not the named recipient."
+        />
+
+        <Field
+          label="How you know it arrived"
+          value={reason}
+          onChangeText={setReason}
+          multiline
+          numberOfLines={3}
+          placeholder="Driver confirmed by phone; recipient called to say it came yesterday."
+          hint="Recorded against your account, with your name on the parcel."
+        />
+
+        <View style={[styles.consequences, { backgroundColor: theme.warningSoft }]}>
+          <Text style={[styles.consequenceText, { color: theme.warningOnSoft }]}>
+            Marking this delivered will:
+          </Text>
+          <Text style={[styles.consequenceText, { color: theme.warningOnSoft }]}>
+            · email the sender that their parcel arrived
+          </Text>
+          <Text style={[styles.consequenceText, { color: theme.warningOnSoft }]}>
+            · credit {parcel ? formatNaira(parcel.estimatedFee) : 'the fare'} to the driver, less
+            commission
+          </Text>
+          <Text style={[styles.consequenceText, { color: theme.warningOnSoft }]}>
+            · record on the parcel that you closed it, not the driver
+          </Text>
+        </View>
+
+        <View style={styles.sheetActions}>
+          <Button
+            label={busy ? 'Recording…' : 'Record delivery'}
+            size="md"
+            disabled={busy || receivedBy.trim().length < 2 || reason.trim().length < 4}
+            icon={(color, size) => <CircleCheck color={color} size={size} />}
+            onPress={() => void submit()}
+          />
+          <Button label="Cancel" variant="secondary" size="md" onPress={onClose} />
+        </View>
+      </View>
+    </BottomSheet>
   );
 }
 
@@ -264,8 +437,10 @@ const styles = StyleSheet.create({
     ...Typography.meta,
     lineHeight: 20,
   },
-  slot: {
-    cursor: 'pointer',
+  rowActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
   },
   card: {
     gap: Spacing.two,
@@ -303,6 +478,27 @@ const styles = StyleSheet.create({
   },
   factText: {
     ...Typography.caption,
+  },
+  sheet: {
+    gap: Spacing.three - 2,
+  },
+  sheetTitle: {
+    ...Typography.meta,
+    ...font(800),
+  },
+  sheetActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
+  consequences: {
+    gap: Spacing.half,
+    padding: Spacing.three - 2,
+    borderRadius: Radius.md,
+  },
+  consequenceText: {
+    ...Typography.caption,
+    lineHeight: 18,
   },
   alert: {
     flexDirection: 'row',

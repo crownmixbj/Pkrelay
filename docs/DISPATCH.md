@@ -169,6 +169,41 @@ override would be a different act needing its own audit trail, not a button on a
 monitoring screen. Rows open the existing parcel drawer (`focusId`), which
 already carries the audited contact reveal.
 
+## Closing a delivery the driver never recorded (74)
+
+`advance_booking` (10) refuses everybody but the carrying driver, and says why:
+an admin correcting a stuck delivery is *a different action with a different
+audit trail*. 74 is that action.
+
+On production, PKG-483203 ran accepted 13:57 → collected 14:05 → In Transit
+14:06 → Out for Delivery 14:33, and then nothing. No attempt, no error. The
+parcel reached its recipient; the driver never tapped the last step, and nobody
+else could — so the sender's delivery email could never send and the driver's
+fare could never be credited.
+
+`admin_record_delivery(parcel, received_by_name, reason)` closes it. It refuses:
+
+- a parcel that was never collected — closing it would assert a collection
+  nobody recorded, on the word of somebody who witnessed neither;
+- one already delivered or cancelled;
+- one with no driver;
+- a missing recipient name (10's rule, which does not stop applying because an
+  admin is typing);
+- a missing account of how they know it arrived.
+
+Everything downstream fires exactly as it does for a driver's own delivery — the
+sender's email (38), the in-app notification (50) and the driver's earnings
+(30). The driver did the work; suppressing the fare because an operator typed
+the last step would be a punishment for a flat phone battery. The admin screen
+names all three before the button does anything.
+
+`bookings.delivery_recorded_by` is null for every delivery a driver recorded and
+set for every one an admin closed — the only thing that tells them apart six
+months later. The parcel drawer renders it as "Closed by <name> — the driver
+never recorded it", read through `admin_delivery_attribution`. The override logs
+at **warning**: one is a flat battery, a run of them is the delivery flow failing
+on real phones, and the log is where that shows up before anybody thinks to ask.
+
 ## The delivery email already exists
 
 `email_on_booking_status` (38) queues a `delivery_completed` email to the

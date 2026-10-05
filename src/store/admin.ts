@@ -712,6 +712,57 @@ export async function fetchParcelsInFlight(
 }
 
 /**
+ * Records a delivery the carrying driver never did.
+ *
+ * ⚠ Everything a driver's own delivery sets off happens here too — the sender's
+ *   email, the in-app notification and the driver's fare. The screen says all
+ *   three before the button does anything, because an operator closing a parcel
+ *   is asserting it arrived, not tidying a list.
+ *
+ * The server refuses a parcel that was never collected, one already delivered or
+ * cancelled, a missing recipient name and a missing reason. Its messages are
+ * written for the person reading them, so they are shown verbatim.
+ */
+export async function recordDelivery(
+  parcelId: string,
+  receivedBy: string,
+  reason: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { error } = await supabase.rpc('admin_record_delivery', {
+    parcel: parcelId,
+    received_by_name: receivedBy,
+    reason,
+  });
+
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+/** Who closed a delivery: the carrier, or an operator. */
+export type DeliveryAttribution = {
+  deliveredAt: string | null;
+  recordedByAdmin: boolean;
+  adminName: string | null;
+};
+
+export async function fetchDeliveryAttribution(
+  parcelId: string,
+): Promise<DeliveryAttribution | null> {
+  const { data, error } = await supabase.rpc('admin_delivery_attribution', { parcel: parcelId });
+
+  if (error || !data) return null;
+
+  const row = (data as Record<string, unknown>[])[0];
+  if (!row) return null;
+
+  return {
+    deliveredAt: maybeText(row.delivered_at),
+    recordedByAdmin: row.recorded_by_admin === true,
+    adminName: maybeText(row.admin_name),
+  };
+}
+
+/**
  * How alarmed to be about a parcel that has not moved.
  *
  * Amber at half a day, red at a full one, measured from the last stage change
