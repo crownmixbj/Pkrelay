@@ -33,6 +33,7 @@ import {
 
 export type EmailKind =
   | 'guarantor_invitation'
+  | 'guarantor_completed'
   | 'sender_verification_submitted'
   | 'driver_application_approved'
   | 'driver_application_rejected'
@@ -200,6 +201,72 @@ function applicationRejected(payload: Payload, context: Context): Rendered {
  *   line is logged by more systems than a URL path, and shows in notification
  *   previews on a lock screen.
  */
+/**
+ * The applicant's side of the guarantor step: it is done, and nothing is owed.
+ *
+ * ⚠ Written for somebody who has been waiting and cannot do anything.
+ *
+ *   An applicant whose guarantor has not answered is stuck on a step they do not
+ *   control, and the only thing they can act on is chasing that person. This
+ *   email exists to end that chase — so it says plainly that the guarantor is
+ *   done, that the application has moved on by itself, and that there is nothing
+ *   to do next. An email that said "your guarantor completed" and left them
+ *   guessing whether that was enough would restart the same anxiety in a new
+ *   place.
+ *
+ * ⚠ It names the guarantor and reveals nothing else about them.
+ *
+ *   The driver chose this person, so the name is how they know who answered. The
+ *   NIN, address, phone, ID photograph and live photo stay out — the applicant
+ *   never sees what their guarantor filed, which is the point of the separate
+ *   portal and the reason the two are not stored on the same row.
+ */
+function guarantorCompleted(payload: Payload, context: Context): Rendered {
+  const name = firstName(str(payload, 'full_name'));
+  const reference = str(payload, 'reference');
+  const guarantor = str(payload, 'guarantor_name') || 'Your guarantor';
+  const url = link(context, '/driver');
+
+  const text = [
+    `Hi ${name},`,
+    '',
+    `${guarantor} has completed their guarantor verification. Your driver application is now with our review team.`,
+    '',
+    `Reference: ${reference}`,
+    '',
+    /*
+     * ⚠ "Nothing to do" is the sentence this email is for.
+     *
+     *   Everything else here is context. Somebody who has been waiting reads the
+     *   first two lines and then looks for what is being asked of them; saying
+     *   plainly that the answer is nothing is what lets them close the tab.
+     */
+    'There is nothing for you to do. We will email you as soon as a decision is made.',
+    '',
+    url ? `Check your application: ${url}` : '',
+    '',
+    support(context),
+    '',
+    'Package Relay',
+  ]
+    .filter((line) => line !== '')
+    .join('\n');
+
+  return {
+    subject: headerSafe(`Your guarantor is verified — your application is under review (${reference})`),
+    text,
+    html: layout({
+      heading: 'Your guarantor is verified',
+      intro:
+        `Hi ${name}, ${guarantor} has completed their guarantor verification. Your driver application ` +
+        'is now with our review team, and there is nothing for you to do.',
+      bodyHtml: [ROW('Reference', reference), ROW('Guarantor', guarantor)].join(''),
+      cta: url ? { label: 'Check your application', url } : null,
+      footerNote: support(context),
+    }),
+  };
+}
+
 function guarantorInvitation(payload: Payload, context: Context): Rendered {
   const guarantor = firstName(str(payload, 'guarantor_name'));
   const driver = str(payload, 'driver_name');
@@ -963,6 +1030,7 @@ function passwordChanged(payload: Payload, context: Context): Rendered {
 
 const TEMPLATES: Record<EmailKind, (payload: Payload, context: Context) => Rendered> = {
   guarantor_invitation: guarantorInvitation,
+  guarantor_completed: guarantorCompleted,
   sender_verification_submitted: verificationSubmitted,
   driver_application_approved: applicationApproved,
   driver_application_rejected: applicationRejected,

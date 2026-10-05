@@ -27,6 +27,8 @@ import { join } from 'node:path';
 
 import {
   CONSENT_TEXT,
+  GUARANTOR_ID_FORMATS,
+  GUARANTOR_ID_MIME,
   GUARANTOR_LINK_DAYS,
   GUARANTOR_SURETYSHIP_REVIEW_REQUIRED,
   KNOWN_DURATIONS,
@@ -128,6 +130,61 @@ check(
   portal.includes('label={CONSENT_TEXT}') && /consentText: CONSENT_TEXT/.test(portal),
 );
 check('the consent still says the NIN is their own', /my own/.test(CONSENT_TEXT));
+
+// ------------------------------------------------ what the NIN slip may be --
+
+/*
+ * ⚠ A PDF is an answer, and the picker is the only place that ever said no.
+ *
+ *   The NIN slip arrives from NIMC as a PDF at least as often as a photograph.
+ *   The bucket has allowed `application/pdf` since 51, `contentTypeFor` maps the
+ *   extension, and `uploadGuarantorDocument` demands an image only for the live
+ *   photo — but the ID's picker was `launchImageLibraryAsync`, which cannot
+ *   show a PDF at all. Every layer supported the format except the one where
+ *   somebody chooses a file.
+ *
+ *   These assert the three places that have to keep agreeing: the picker's
+ *   filter, the sentence under the field, and the bucket's allowed types.
+ */
+check(
+  'the ID picker can show a PDF',
+  /DocumentPicker\.getDocumentAsync/.test(code(uploadCard)) &&
+    !/launchImageLibraryAsync/.test(code(uploadCard)),
+  'an image picker greys out the PDF a guarantor was emailed by NIMC',
+);
+check(
+  'and it filters on the shared list rather than a hand-typed one',
+  /type: \[\.\.\.GUARANTOR_ID_MIME\]/.test(code(uploadCard)),
+  'a second copy of the accepted types is a second thing to forget to update',
+);
+check(
+  'the shared list carries pdf and both common photo types',
+  GUARANTOR_ID_MIME.includes('application/pdf') &&
+    GUARANTOR_ID_MIME.includes('image/jpeg') &&
+    GUARANTOR_ID_MIME.includes('image/png'),
+  'jpg, jpeg, png and pdf are what a NIN slip actually arrives as',
+);
+check(
+  'the bucket accepts everything the picker offers',
+  GUARANTOR_ID_MIME.every((type) =>
+    new RegExp(`'${type.replace('/', '\\/')}'`).test(migration.replace(/\\\//g, '/')),
+  ),
+  'a picker that offers a type Storage refuses produces a failed upload and no explanation',
+);
+check(
+  'the guarantor is told which formats are accepted',
+  /GUARANTOR_ID_FORMATS/.test(code(uploadCard)) && /PDF/.test(GUARANTOR_ID_FORMATS),
+  'a file picker that silently refuses a file is indistinguishable from a broken one',
+);
+/*
+ * ⚠ A PDF has no frame, so `<Image>` given one renders an empty box — which
+ *   reads as "it did not work" on the one card whose job is to say it did.
+ */
+check(
+  'a chosen PDF is confirmed on screen without being drawn',
+  /previewPdf/.test(code(uploadCard)),
+  'an empty preview box is how somebody concludes the upload failed and tries again',
+);
 
 // ----------------------------------------- the live photo is taken, not picked
 

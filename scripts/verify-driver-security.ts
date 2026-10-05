@@ -14,7 +14,11 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { hasRegisteredPhone, phoneMatchesAccount } from '../src/store/registered-phone';
+import {
+  hasRegisteredPhone,
+  phoneMatchesAccount,
+  withRegisteredPhone,
+} from '../src/store/registered-phone';
 import {
   hoursUntil,
   maskAccount,
@@ -126,8 +130,75 @@ check(
 );
 check(
   'the field is prepopulated from the account, and not only on mount',
-  flat(signup).includes('}, [phoneLocked, registeredPhone]);'),
+  flat(signup).includes('}, [phoneLocked, registeredPhone, form.phone]);'),
   'the session restores asynchronously — a mount-only effect leaves the field empty on a cold start',
+);
+/*
+ * ⚠ The three places the form is rebuilt, each of which emptied a locked field.
+ *
+ *   `phoneLocked` and `registeredPhone` are both stable once the session has
+ *   settled, so an effect keyed only on those fires once and never again. That
+ *   was enough until something rebuilt the form afterwards — and three things
+ *   do: the first render, the saved-draft restore, and the reset after a
+ *   submitted application. Each sets `phone` to '' from `INITIAL_FORM`, and on a
+ *   locked field the applicant then meets "Phone number is required" with no
+ *   keyboard to answer it. Listing `form.phone` in the effect repairs it; these
+ *   assert the two rebuild sites apply the account's number themselves rather
+ *   than relying on that.
+ */
+check(
+  'a restored draft cannot put its own blank over the account number',
+  /setForm\(withRegisteredPhone\(mergeDraft\(INITIAL_FORM, draft\.form\), registeredPhone\)\)/.test(
+    flat(signup),
+  ),
+  'a draft is saved on every keystroke, including before the session has restored',
+);
+check(
+  'and neither can the reset after a submitted application',
+  /setForm\(withRegisteredPhone\(INITIAL_FORM, registeredPhone\)\)/.test(flat(signup)),
+  'the next application is from the same account, so the number is still theirs',
+);
+/*
+ * ⚠ Identity, not equality.
+ *
+ *   `displayRegisteredPhone('')` is also '', so comparing values passes whether
+ *   the helper returned the form untouched or rebuilt it around an empty string.
+ *   The same object back is the only evidence it declined to act — and it is
+ *   also what stops the effect above from looping.
+ */
+const untouched = { phone: '' };
+check(
+  'the helper leaves an account with no number alone',
+  withRegisteredPhone(untouched, '') === untouched &&
+    withRegisteredPhone(untouched, null) === untouched &&
+    withRegisteredPhone(untouched, undefined) === untouched,
+  'a locked empty field is a form nobody can submit — those accounts keep an editable one',
+);
+const settled = { phone: '+2348031234567' };
+check(
+  'and returns the same object when it already matches',
+  withRegisteredPhone(settled, '08031234567') === settled,
+  'a new object every render is an effect that re-runs for ever',
+);
+/*
+ * ⚠ The case the guard actually exists for.
+ *
+ *   With an empty form and an empty account the helper is a no-op either way, so
+ *   that pairing proves nothing. The guard earns its place when the applicant
+ *   HAS typed a number and the account has none: without it, the helper would
+ *   resolve '' and wipe what they entered on a field they are allowed to edit.
+ */
+check(
+  'an account with no number never erases what the applicant typed',
+  withRegisteredPhone({ phone: '+2348031234567' }, '').phone === '+2348031234567' &&
+    withRegisteredPhone({ phone: '+2348031234567' }, null).phone === '+2348031234567',
+  'those accounts keep an editable field, and editable means what they type survives',
+);
+check(
+  'and fills one that has a number, in the shape the form shows',
+  withRegisteredPhone({ phone: '' }, '08031234567').phone === '+2348031234567' &&
+    withRegisteredPhone({ phone: '' }, '+2348031234567').phone === '+2348031234567',
+  'the account is the authority, whichever shape it stored',
 );
 
 // ------------------------------------------------ 2. the payout cooling window --

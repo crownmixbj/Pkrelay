@@ -1,3 +1,4 @@
+import { errorMessage } from '@/lib/errors';
 import { supabase } from '@/lib/supabase';
 import { MAX_DEPARTURE_DAYS } from '@/lib/departure';
 import type { City } from '@/store/bookings';
@@ -175,10 +176,58 @@ export function validateJourney(input: NewJourney, now: Date = new Date()): Jour
 
 // -------------------------------------------------------------- journeys ---
 
-export async function declareJourney(input: NewJourney): Promise<Journey | null> {
+/**
+ * Why a journey could not be saved, in words a driver can act on.
+ *
+ * ⚠ This exists because the screen used to say "check your connection".
+ *
+ *   `declareJourney` returned `null` on every failure, so a check-constraint
+ *   violation, an RLS refusal, a missing column and an actual network drop all
+ *   arrived as one sentence blaming the network and the driver's approval. A
+ *   driver whose approval was fine and whose connection was fine had nothing to
+ *   go on, and neither did anybody reading the report — the database had said
+ *   exactly what was wrong and the client threw it away.
+ *
+ *   The three codes below are the ones the schema can actually raise here. The
+ *   default carries Postgres's own message rather than a guess: a sentence
+ *   somebody can quote is worth more than a tidy one that is wrong.
+ */
+export function journeyRefusal(error: unknown): string {
+  const code = (error as { code?: unknown } | null)?.code;
+
+  /*
+   * `journey_window_ordered` is `departs_before > departs_after`, and
+   * `departs_after` defaults to now() — so this fires when the departure has
+   * passed, including when it passed in the seconds between picking it and
+   * pressing the button.
+   */
+  if (code === '23514') {
+    return 'That departure time has already passed. Pick a later one and try again.';
+  }
+
+  /* The RLS insert policy: `driver_id = auth.uid() and is_approved_driver()`. */
+  if (code === '42501') {
+    return 'Your driver approval is not active, so routes cannot be declared on this account. Contact support if you think that is wrong.';
+  }
+
+  /* A column the database requires and this build did not send. */
+  if (code === '23502') {
+    return 'Something is missing from this journey. Please report it to support — it is not something you can fix from here.';
+  }
+
+  return errorMessage(error, 'Could not save that journey. Check your connection and try again.');
+}
+
+export type JourneyOutcome =
+  | { ok: true; journey: Journey }
+  | { ok: false; message: string };
+
+export async function declareJourney(input: NewJourney): Promise<JourneyOutcome> {
   const { data: auth } = await supabase.auth.getUser();
   const driverId = auth.user?.id;
-  if (!driverId) return null;
+  if (!driverId) {
+    return { ok: false, message: 'Sign in again to declare a route.' };
+  }
 
   const { data, error } = await supabase
     .from('driver_journeys')
@@ -201,8 +250,8 @@ export async function declareJourney(input: NewJourney): Promise<Journey | null>
     .select()
     .single();
 
-  if (error || !data) return null;
-  return toJourney(data as JourneyRow);
+  if (error || !data) return { ok: false, message: journeyRefusal(error) };
+  return { ok: true, journey: toJourney(data as JourneyRow) };
 }
 
 export async function fetchJourneys(): Promise<Journey[]> {
