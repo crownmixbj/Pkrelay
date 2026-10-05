@@ -304,6 +304,25 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
     migration: '20250101000061_capture_session_fk_repair.sql',
   },
   /*
+   * ⚠ Probed on the waiting list, and 69 is deliberately not listed beside it.
+   *
+   *   Without 70 the Dispatch screen's driver panel reads "availability
+   *   unavailable" and says so plainly, so its absence is already legible —
+   *   `admin_waiting_drivers` is new in 70 and is the first thing that panel
+   *   calls.
+   *
+   *   69 adds no function: it repairs `admin_assign_parcel`, which exists
+   *   either way. Giving it a probe for this list would mean inventing a
+   *   function whose only job is to be present, and unlike 61 its absence is
+   *   not silent — pressing Assign fails with the database's own message naming
+   *   the ambiguous column. A filename would tell somebody less than that does.
+   */
+  {
+    label: 'Dispatch: drivers waiting for work',
+    fn: 'admin_waiting_drivers',
+    migration: '20250101000070_driver_availability.sql',
+  },
+  /*
    * Without 62 nothing breaks on screen — new accounts are simply never sent
    * the welcome email — which is exactly why it needs a line here.
    */
@@ -351,6 +370,22 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
     label: 'Guarantor-completed email to the applicant',
     fn: 'guarantor_completed_email_installed',
     migration: '20250101000066_guarantor_completed_email.sql',
+  },
+  /*
+   * ⚠ The one entry here that reports on a database being able to make an
+   *   outbound call at all.
+   *
+   *   `extensions.net.http_post` is three names and Postgres refuses it before
+   *   looking anything up. In the offer notifier it had no exception handler, so
+   *   a database still carrying it could not post a parcel — the raise rolled
+   *   the booking back. In the application notifier it did have one, so it was
+   *   silent for a year. One line, two completely different symptoms, and the
+   *   probe scans every function rather than the two we know about.
+   */
+  {
+    label: 'pg_net calls resolve to a real schema',
+    fn: 'pg_net_calls_are_resolvable',
+    migration: '20250101000068_pg_net_probe_self_match.sql',
   },
 ];
 

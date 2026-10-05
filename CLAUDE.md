@@ -54,7 +54,8 @@ supabase/migrations/  timestamped CLI migrations (20250101000001 … 45)
 supabase/functions/   Deno edge functions + _shared/
 scripts/            the test suite (see below)
 docs/               STAGING, DEEP-LINKS, AUTH-REDIRECTS, DOJAH, DISTRIBUTION,
-                    PUSH-DEPLOY, PRIVACY-NOTES, SCHEMA-AUDIT, PAYMENTS, SUPPORT
+                    PUSH-DEPLOY, PRIVACY-NOTES, SCHEMA-AUDIT, PAYMENTS, SUPPORT,
+                    DISPATCH
 ```
 
 ## Commands that matter

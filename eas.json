@@ -51,11 +51,12 @@
     "production": {
       "extends": "base",
       "autoIncrement": true,
+      "node": "22.23.2",
       "env": {
         "EXPO_PUBLIC_BUILD_CHANNEL": "production"
       },
       "android": {
-        "buildType": "app-bundle"
+        "buildType": "apk"
       },
       "environment": "production"
     }

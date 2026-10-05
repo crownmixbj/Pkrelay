@@ -10,7 +10,7 @@
  *   - A dead token never stops being dead, and keeping it makes "we notified
  *     them" true in the log and false in the world.
  */
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
@@ -178,6 +178,70 @@ check(
   !deliveryCode.includes('extensions.net.http_post'),
   'Postgres reads extensions.net.http_post as database.schema.function and refuses before it looks for anything',
 );
+// ------------------------------- and nowhere else still carries the bad name --
+
+/*
+ * ⚠ 24 fixed one function. There was a second, and it went unfixed for a year.
+ *
+ *   `notify_new_driver_application`, created in 5, carries the same
+ *   `extensions.net.http_post` — three names, which Postgres reads as
+ *   database.schema.function and refuses outright. It survived because that
+ *   function ends in `exception when others then raise warning`, so the failure
+ *   went to a server log instead of a user: the Slack alert for a new driver
+ *   application has never once arrived, and the symptom is silence.
+ *
+ *   The offer notifier had no such handler, which is why the same line stopped
+ *   senders posting parcels entirely on a database still running 19's version.
+ *
+ *   Asserted against the LAST definition of each function, because migrations
+ *   are append-only: 5 and 19 still contain the bad name and are correct as
+ *   history.
+ */
+function lastDefinitionOf(name: string): string {
+  const all = readdirSync(join(ROOT, 'supabase/migrations'))
+    .filter((file) => file.endsWith('.sql'))
+    .sort()
+    .map((file) => read(join('supabase/migrations', file)))
+    .join('\n');
+
+  const marker = `create or replace function public.${name}()`;
+  const at = all.lastIndexOf(marker);
+  if (at < 0) return '';
+  const end = all.indexOf('\n$$;', at);
+  return end < 0 ? all.slice(at) : all.slice(at, end);
+}
+
+for (const notifier of ['notify_dispatch_offer', 'notify_new_driver_application']) {
+  const body = lastDefinitionOf(notifier);
+
+  check(`${notifier} is defined`, body.length > 0, 'nothing was sliced, so nothing is proven');
+  check(
+    `${notifier} resolves pg_net rather than naming a schema`,
+    body.includes('private.pg_net_post_fn()'),
+    'a hardcoded schema is a guess, and both guesses have been wrong on a real project',
+  );
+  check(
+    `${notifier} no longer carries the three-part name`,
+    !body.includes('extensions.net.http_post'),
+    'Postgres refuses database.schema.function before it looks anything up',
+  );
+  /*
+   * ⚠ The EXCEPTION handler specifically, not the function anywhere.
+   *
+   *   Both of these also write to `app_events` on the "pg_net is not installed"
+   *   branch, so looking for the table anywhere in the body passes while the
+   *   handler still does `raise warning` — which is the exact state that hid a
+   *   broken call for a year.
+   */
+  const handler = body.slice(body.indexOf('exception when others then'));
+
+  check(
+    `${notifier} records a failure where somebody will read it`,
+    handler.length > 0 && handler.includes('public.app_events'),
+    'raise warning goes to a server log nobody reads, which is how this survived a year',
+  );
+}
+
 check(
   'the send cannot abort the offer',
   flat(deliveryCode).includes('exception when others then'),

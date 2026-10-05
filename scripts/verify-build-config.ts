@@ -62,6 +62,40 @@ check(
   'they may legally differ, but two ids means two places to get wrong and two app records to keep in step',
 );
 
+/*
+ * ⚠ The home-screen label is user-facing prose, so it is "Package Relay".
+ *
+ *   The brand rule is that PKRELAY is the wordmark and identifiers, and Package
+ *   Relay is what a person reads. A home-screen label is the most-read string
+ *   the product has — it sits under the icon on every tester's phone — so it
+ *   follows the prose rule, and it is also the name the store listings carry.
+ *   The nav-bar wordmark on the website is unaffected and still says PKRELAY.
+ */
+check(
+  'the home-screen name is the user-facing one',
+  app.name === 'Package Relay',
+  `it is ${JSON.stringify(app.name)} — the icon label and the store listing have to agree`,
+);
+/*
+ * ⚠ A purpose string for every permission the app actually asks for.
+ *
+ *   iOS terminates an app that requests a permission with no string, and App
+ *   Review rejects a build carrying a string for a permission it never uses.
+ *   The app asks for camera and photo library; it does not use location, and
+ *   `expo-location` is deliberately not installed.
+ */
+check(
+  'every permission the app requests has a purpose string',
+  typeof app.ios?.infoPlist?.NSCameraUsageDescription === 'string' &&
+    typeof app.ios?.infoPlist?.NSPhotoLibraryUsageDescription === 'string',
+  'iOS kills the app on a permission request with no string, and Review rejects the build',
+);
+check(
+  'and none for a permission it does not',
+  !('NSLocationWhenInUseUsageDescription' in (app.ios?.infoPlist ?? {})) &&
+    !('NSMicrophoneUsageDescription' in (app.ios?.infoPlist ?? {})),
+  'a string for an unused permission is a rejection and an invitation to start using it',
+);
 check(
   'the app has a human name',
   typeof app.name === 'string' && app.name !== 'parcel_mobile',
