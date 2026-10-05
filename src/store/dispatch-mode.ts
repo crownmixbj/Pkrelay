@@ -109,6 +109,24 @@ export async function setDispatchMode(mode: DispatchMode): Promise<ModeOutcome> 
   return { ok: true, mode: data === 'manual' ? 'manual' : 'auto' };
 }
 
+/**
+ * How dispatch has gone on one parcel.
+ *
+ * ⚠ `attempts` and `driversTried` are different numbers, and reading one as the
+ *   other is what sent us looking for a pricing problem while the real one was a
+ *   driver who had never been notified. Seven attempts across seven drivers is a
+ *   parcel the market has refused; seven attempts at one driver is a parcel one
+ *   person has not answered. See `20250101000071_offer_attempt_counts.sql`.
+ */
+export type OfferAttempts = {
+  attempts: number;
+  driversTried: number;
+  declined: number;
+  expired: number;
+  /** An offer outstanding right now. At most one, by partial unique index. */
+  live: number;
+};
+
 export type UnassignedParcel = {
   id: string;
   trackingId: string;
@@ -118,9 +136,19 @@ export type UnassignedParcel = {
   deliveryType: string;
   estimatedFee: number;
   waitingMinutes: number;
-  /** How many drivers have already been offered it and passed. */
+  /** Attempts — the number of offer rows, not the number of drivers. */
   offersMade: number;
+  attempts: OfferAttempts;
 };
+
+const toAttempts = (row: Record<string, unknown>): OfferAttempts => ({
+  attempts: Number(row.offers_made ?? 0),
+  driversTried: Number(row.drivers_tried ?? 0),
+  declined: Number(row.offers_declined ?? 0),
+  expired: Number(row.offers_expired ?? 0),
+  live: Number(row.offers_live ?? 0),
+});
+
 
 /**
  * The queue, in both modes.
@@ -152,6 +180,7 @@ export async function fetchUnassignedParcels(limit = 100): Promise<UnassignedPar
     estimatedFee: Number(row.estimated_fee ?? 0),
     waitingMinutes: Number(row.waiting_minutes ?? 0),
     offersMade: Number(row.offers_made ?? 0),
+    attempts: toAttempts(row),
   }));
 }
 
@@ -319,6 +348,7 @@ export async function fetchParcelsForDriver(driverId: string): Promise<ParcelFor
     estimatedFee: Number(row.estimated_fee ?? 0),
     waitingMinutes: Number(row.waiting_minutes ?? 0),
     offersMade: Number(row.offers_made ?? 0),
+    attempts: toAttempts(row),
     routeMatches: row.route_matches === true,
     note: String(row.note ?? ''),
   }));
@@ -382,7 +412,72 @@ export function shiftLabel(driver: Pick<WaitingDriver, 'mode' | 'originCity' | '
     : `${driver.originCity} → ${driver.destinationCity}`;
 }
 
+/** The same five counts for one parcel, where there is no list to read them from. */
+export async function fetchOfferAttempts(parcelId: string): Promise<OfferAttempts | null> {
+  const { data, error } = await supabase.rpc('offer_attempts', { parcel: parcelId });
+
+  if (error || !data) return null;
+
+  const row = (data as Record<string, unknown>[])[0];
+  if (!row) return null;
+
+  return {
+    attempts: Number(row.attempts ?? 0),
+    driversTried: Number(row.drivers_tried ?? 0),
+    declined: Number(row.declined ?? 0),
+    expired: Number(row.expired ?? 0),
+    live: Number(row.live ?? 0),
+  };
+}
+
 // ------------------------------------------------------------------ words --
+
+/**
+ * What has been tried on a parcel, in one line.
+ *
+ * ⚠ Written once and used by all three screens that say it.
+ *
+ *   The queue card, the give-a-parcel sheet and the parcel drawer each had their
+ *   own version of this sentence, and all three said "Offered to N drivers"
+ *   about a count of offer rows. One phrasing means there is no fourth place for
+ *   it to drift to.
+ */
+export function attemptsLabel(counts: OfferAttempts): string | null {
+  if (counts.attempts === 0) return null;
+
+  const offers = `${counts.attempts} offer${counts.attempts === 1 ? '' : 's'}`;
+  const drivers = `${counts.driversTried} driver${counts.driversTried === 1 ? '' : 's'}`;
+
+  const parts: string[] = [];
+  if (counts.declined > 0) parts.push(`${counts.declined} declined`);
+  if (counts.expired > 0) {
+    /*
+      "All timed out, none declined" rather than a bare number, because that is
+      the shape worth noticing: nobody refused this parcel, nobody answered.
+    */
+    parts.push(
+      counts.declined === 0 && counts.live === 0
+        ? 'all timed out, none declined'
+        : `${counts.expired} timed out`,
+    );
+  }
+  if (counts.live > 0) parts.push('one live right now');
+
+  return parts.length > 0 ? `${offers} to ${drivers} — ${parts.join(', ')}` : `${offers} to ${drivers}`;
+}
+
+/**
+ * Whether a parcel is being ignored rather than refused.
+ *
+ * ⚠ This is the signal that would have saved a day. A parcel offered three or
+ *   more times with not one decline is not a parcel drivers are turning down —
+ *   it is a parcel nobody is seeing, which is a notification fault, not a
+ *   dispatch one. On production PKG-483203 sat at seven attempts, one driver,
+ *   zero declines, while `notify_on_dispatch_offer` was not installed at all.
+ */
+export function offersGoingUnanswered(counts: OfferAttempts): boolean {
+  return counts.attempts >= 3 && counts.declined === 0 && counts.expired >= 3;
+}
 
 /** "2h 15m" — a queue age somebody can react to. */
 export function waitLabel(minutes: number): string {

@@ -323,6 +323,35 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
     migration: '20250101000070_driver_availability.sql',
   },
   /*
+   * ⚠ Probed on the counter, which is the only new object in 71.
+   *
+   *   Without it the three dispatch screens call `unassigned_parcels` and
+   *   `admin_parcels_for_driver` for columns that are not there yet, and the
+   *   attempts line renders empty — a parcel that has been offered seven times
+   *   reads as one that has never been offered at all. `offer_attempts` is new
+   *   in 71 and is what all three read the counts from.
+   */
+  {
+    label: 'Dispatch: offer attempt counts',
+    fn: 'offer_attempts',
+    migration: '20250101000071_offer_attempt_counts.sql',
+  },
+  /*
+   * ⚠ Probed on the board, which is the only function 72 adds.
+   *
+   *   Without it the In transit tab reads "could not be read" and says so, which
+   *   is honest but unhelpful on a database where the answer is simply that the
+   *   migration has not been run. The stage clock it also adds —
+   *   `bookings.status_changed_at` — is a column, and `COLUMN_MIGRATIONS` below
+   *   only maps columns the *client writes*; nothing writes this one, the
+   *   trigger does.
+   */
+  {
+    label: 'In transit board',
+    fn: 'admin_parcels_in_flight',
+    migration: '20250101000073_parcels_in_flight.sql',
+  },
+  /*
    * Without 62 nothing breaks on screen — new accounts are simply never sent
    * the welcome email — which is exactly why it needs a line here.
    */

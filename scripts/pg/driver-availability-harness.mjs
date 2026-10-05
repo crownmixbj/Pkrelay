@@ -594,6 +594,296 @@ const ibadanLagos = await parcel();
   );
 }
 
+// ----------------------------- 8. attempts, drivers, and the retry loop --
+
+/*
+ * ⚠ The rule everybody assumed was missing.
+ *
+ *   `dispatch_offers_once_per_driver` (15) was dropped by 20, and its successor
+ *   `dispatch_offers_no_repeat_decline` by 23. What is left is a rolling
+ *   per-pair cooldown inside the matcher: a driver who let an offer lapse is
+ *   eligible for that same parcel again `offer_cooldown()` later. Production had
+ *   seven offers on one parcel to one driver in a day, which is this working.
+ *
+ *   It is pinned here because the natural reading of 15's comment is that a pair
+ *   is blocked for ever, and somebody acting on that reading would "fix" a thing
+ *   that is not broken — by widening the window, which makes retries rarer.
+ */
+{
+  await asUser(ADMIN);
+  await db.query('select public.set_dispatch_mode($1)', ['auto']);
+
+  await asOwner();
+  /* A clean driver and a parcel only they can take. */
+  await db.query(`update public.driver_journeys set status = 'completed'`);
+  /*
+    Their licence has been renewed. Section 5 expired it to prove the document
+    gate keeps a driver off the waiting list; the matcher reads the same gate, so
+    leaving it expired here would test nothing but that.
+  */
+  await db.query('delete from public.driver_documents where driver_id = $1', [FREE]);
+  const journeyId = await journey(FREE, { origin: 'Kano', destination: 'Jos', ageMinutes: 5 });
+  const retry = await parcel({ origin: 'Kano', destination: 'Jos' });
+
+  await asOwner();
+  await db.query('select public.dispatch_booking($1)', [retry.id]);
+
+  const first = await db.query(
+    'select id, status, expires_at from public.dispatch_offers where booking_id = $1',
+    [retry.id],
+  );
+  check(
+    'the matcher offers the parcel to the only matching driver',
+    first.rows.length === 1,
+    `got ${first.rows.length} offers`,
+  );
+
+  /* Let it lapse: wind the hold into the past and run the matcher again. */
+  await db.query(
+    `update public.dispatch_offers set expires_at = now() - interval '1 minute'
+      where booking_id = $1 and status = 'offered'`,
+    [retry.id],
+  );
+  await db.query('select public.dispatch_booking($1)', [retry.id]);
+
+  const afterLapse = await db.query(
+    `select status from public.dispatch_offers where booking_id = $1 order by offered_at`,
+    [retry.id],
+  );
+  check(
+    'a lapsed offer is settled rather than left hanging',
+    afterLapse.rows[0].status === 'expired',
+  );
+  check(
+    'and the same driver is not offered it again inside the cooldown',
+    afterLapse.rows.length === 1,
+    'the 15-minute window is the whole point — re-offering instantly would be a loop',
+  );
+
+  /* Now push the lapse back beyond the cooldown. */
+  await db.query(
+    `update public.dispatch_offers
+        set expires_at = now() - public.offer_cooldown() - interval '5 minutes',
+            responded_at = now() - public.offer_cooldown() - interval '5 minutes'
+      where booking_id = $1`,
+    [retry.id],
+  );
+  await db.query('select public.dispatch_booking($1)', [retry.id]);
+
+  const afterCooldown = await db.query(
+    `select driver_id, status from public.dispatch_offers where booking_id = $1 order by offered_at`,
+    [retry.id],
+  );
+  check(
+    'once the cooldown has passed the same pair is offered again',
+    afterCooldown.rows.length === 2 && afterCooldown.rows[1].driver_id === FREE,
+    'there is no permanent once-per-driver block, and nothing should reintroduce one',
+  );
+
+  /* And the counts tell the two numbers apart. */
+  await asUser(ADMIN);
+  const counted = await db.query('select * from public.offer_attempts($1)', [retry.id]);
+  const row = counted.rows[0];
+
+  check('two attempts are counted', Number(row.attempts) === 2, JSON.stringify(row));
+  check(
+    'at one driver',
+    Number(row.drivers_tried) === 1,
+    'this is the number the screens were missing: 7 attempts at 1 driver read as "5 drivers"',
+  );
+  check('one of them timed out', Number(row.expired) === 1);
+  check('none were declined', Number(row.declined) === 0);
+  check('and one is live', Number(row.live) === 1);
+
+  const queue = await db.query('select * from public.unassigned_parcels()');
+  const queued = queue.rows.find((candidate) => candidate.id === retry.id);
+  check(
+    'the queue carries both numbers',
+    Number(queued?.offers_made) === 2 && Number(queued?.drivers_tried) === 1,
+    JSON.stringify(queued),
+  );
+  check(
+    'and splits declines from timeouts',
+    Number(queued?.offers_declined) === 0 && Number(queued?.offers_expired) === 1,
+  );
+
+  const forDriver = await db.query('select * from public.admin_parcels_for_driver($1)', [FREE]);
+  const mine = forDriver.rows.find((candidate) => candidate.id === retry.id);
+  check(
+    'and so does the driver-first list',
+    Number(mine?.drivers_tried) === 1 && Number(mine?.offers_live) === 1,
+    JSON.stringify(mine),
+  );
+
+  await asUser(SENDER);
+  const refused = await refusal(() => db.query('select * from public.offer_attempts($1)', [retry.id]));
+  const leaked = refused === null
+    ? (await db.query('select * from public.offer_attempts($1)', [retry.id])).rows[0]
+    : null;
+  check(
+    'a non-admin is told nothing by the counter',
+    leaked === null || Number(leaked.attempts) === 0,
+    'it reads the offer table, which has no select policy for anybody else',
+  );
+}
+
+// ------------------------- 9. the in-flight board, and the delivery email --
+
+/*
+ * ⚠ Both halves of this run against the real chain on purpose.
+ *
+ *   `emails-harness.mjs` proves the delivery email over a schema it builds
+ *   itself, which is exactly the arrangement that hid `admin_assign_parcel`
+ *   being broken for eight migrations. The sender's email on a real delivery is
+ *   worth one more assertion against the real tables.
+ */
+{
+  await asOwner();
+
+  /* BUSY is carrying a parcel from section 4, claimed and not yet collected. */
+  await asUser(ADMIN);
+  const board = await db.query('select * from public.admin_parcels_in_flight()');
+
+  const claimed = board.rows.find((row) => row.driver_id === BUSY);
+  check('a claimed parcel is on the board', !!claimed, `${board.rows.length} rows`);
+  check(
+    'and it is not counted as collected',
+    claimed?.collected === false,
+    'collected is the pickup timestamp — the sender has not handed it over yet',
+  );
+  check('the carrier is named', claimed?.driver_name === 'Busy Driver', claimed?.driver_name);
+  check(
+    'the totals ride on the row rather than being counted from the page',
+    Number(claimed?.total_awaiting_collection) >= 1,
+    JSON.stringify({
+      in_flight: claimed?.total_in_flight,
+      awaiting: claimed?.total_awaiting_collection,
+      collected: claimed?.total_collected,
+      stalled: claimed?.total_stalled,
+    }),
+  );
+
+  /* Now collect it, as the driver — the only role 10 allows to advance a parcel. */
+  await asUser(BUSY);
+  const notTheDriver = await refusal(() =>
+    db.query('select public.advance_booking($1)', [claimed.id]),
+  );
+  check('the carrying driver can advance it', notTheDriver === null, `${notTheDriver}`);
+
+  await asOwner();
+  const afterPickup = await db.query(
+    'select status, picked_up_at, status_changed_at from public.bookings where id = $1',
+    [claimed.id],
+  );
+  check("the parcel is 'Picked Up'", afterPickup.rows[0].status === 'Picked Up');
+  check(
+    'the collection is timestamped',
+    afterPickup.rows[0].picked_up_at !== null,
+    'this is the moment the admin board calls "collected from the sender"',
+  );
+  check(
+    'and the stage clock moved with it',
+    afterPickup.rows[0].status_changed_at !== null,
+    '73 adds this because In Transit and Out for Delivery have no timestamp of their own',
+  );
+
+  await asUser(ADMIN);
+  const moving = (await db.query('select * from public.admin_parcels_in_flight()')).rows.find(
+    (row) => row.id === claimed.id,
+  );
+  check('it moves to the collected half of the board', moving?.collected === true);
+  check(
+    'with a fresh stage clock',
+    Number(moving?.minutes_since_move) <= 1,
+    `got ${moving?.minutes_since_move}`,
+  );
+  check('and nothing is stalled', Number(moving?.total_stalled) === 0);
+
+  /* A day without a move is what the red flag counts. */
+  await asOwner();
+  await db.query(
+    `update public.bookings set status_changed_at = now() - interval '30 hours' where id = $1`,
+    [claimed.id],
+  );
+  await asUser(ADMIN);
+  const stalled = (await db.query('select * from public.admin_parcels_in_flight()')).rows.find(
+    (row) => row.id === claimed.id,
+  );
+  check(
+    'a parcel that has not moved in a day is counted as stalled',
+    Number(stalled?.total_stalled) === 1 && Number(stalled?.minutes_since_move) > 24 * 60,
+    JSON.stringify({ stalled: stalled?.total_stalled, minutes: stalled?.minutes_since_move }),
+  );
+
+  /* ---------------------------- the sender hears about the delivery ------- */
+
+  await asUser(BUSY);
+  await db.query('select public.advance_booking($1)', [claimed.id]); // In Transit
+  await db.query('select public.advance_booking($1)', [claimed.id]); // Out for Delivery
+
+  const nameless = await refusal(() =>
+    db.query('select public.advance_booking($1)', [claimed.id]),
+  );
+  check(
+    'a delivery cannot be recorded without saying who took it',
+    nameless !== null && /who received/i.test(nameless),
+    '10 exists to close exactly that gap',
+  );
+
+  await db.query('select public.advance_booking($1, $2)', [claimed.id, 'Ngozi at reception']);
+
+  await asOwner();
+  const delivered = await db.query(
+    'select status, delivered_at, received_by from public.bookings where id = $1',
+    [claimed.id],
+  );
+  check('the parcel is delivered', delivered.rows[0].status === 'Delivered');
+  check('and who took it is on the record', delivered.rows[0].received_by === 'Ngozi at reception');
+
+  const email = await db.query(
+    `select o.recipient, o.payload, o.sent_at
+       from public.email_outbox o
+      where o.kind = 'delivery_completed' and o.subject_id = $1`,
+    [claimed.id],
+  );
+  check(
+    'a delivery email is queued',
+    email.rows.length === 1,
+    `${email.rows.length} rows — 38 queues this on the move to Delivered`,
+  );
+  check(
+    'addressed to the sender',
+    email.rows[0]?.recipient === 'sender@pkrelay.test',
+    `got ${email.rows[0]?.recipient}`,
+  );
+  check(
+    'carrying the tracking id and the fare',
+    email.rows[0]?.payload?.tracking_id === claimed.tracking_id &&
+      Number(email.rows[0]?.payload?.fare) > 0,
+    JSON.stringify(email.rows[0]?.payload),
+  );
+  check(
+    'and left unsent, which is the retry queue and the evidence both',
+    email.rows[0]?.sent_at === null,
+  );
+
+  /* Delivered parcels leave the board — it is what is in flight, not what moved. */
+  await asUser(ADMIN);
+  const afterDelivery = await db.query('select * from public.admin_parcels_in_flight()');
+  check(
+    'a delivered parcel drops off the in-flight board',
+    !afterDelivery.rows.some((row) => row.id === claimed.id),
+  );
+
+  await asUser(SENDER);
+  const refused = await db.query('select * from public.admin_parcels_in_flight()');
+  check(
+    'and a non-admin sees nothing on it',
+    refused.rows.length === 0,
+    'every driver name and route, otherwise',
+  );
+}
+
 await db.close();
 
 if (failures > 0) {

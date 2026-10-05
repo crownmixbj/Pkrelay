@@ -458,6 +458,13 @@ const NAV_LINKS: NavLink[] = [
           reason and always have.
       */
       {
+        key: 'transit',
+        label: 'In Transit',
+        href: '/admin',
+        section: 'transit',
+        icon: (color, size) => <Truck color={color} size={size} />,
+      },
+      {
         /*
           Above Finance by the same rule the comment there states: this is work
           that arrives with somebody waiting at the other end of it, and every

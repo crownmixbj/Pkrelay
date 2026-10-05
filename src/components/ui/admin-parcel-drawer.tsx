@@ -25,6 +25,11 @@ import {
   type UnassignedDestination,
 } from '@/store/admin';
 import { formatNaira } from '@/store/bookings';
+import {
+  attemptsLabel,
+  fetchOfferAttempts,
+  type OfferAttempts,
+} from '@/store/dispatch-mode';
 
 /**
  * The parcel drawer, opened from any admin stat card or list row.
@@ -44,18 +49,28 @@ export function AdminParcelDrawer({
   scope,
   city,
   title,
+  focusId,
   onClose,
 }: {
-  /** Null closes the drawer. */
+  /** Null closes the drawer, unless `focusId` is set. */
   scope: ParcelScope | null;
   city?: string;
   title: string;
+  /**
+   * One parcel, opened straight to its detail with no list behind it.
+   *
+   * ⚠ The alternative was a second drawer for the in-flight board, which would
+   *   have meant a second copy of the audited contact reveal — and the day those
+   *   two disagree about what an admin may see is the day one of them is wrong.
+   *   Back closes, rather than returning to a list that was never there.
+   */
+  focusId?: string | null;
   onClose: () => void;
 }) {
   const theme = useTheme();
 
   const [rows, setRows] = useState<AdminParcelRow[] | null>(null);
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(focusId ?? null);
 
   /*
    * The destination breakdown, moved here from the dashboard.
@@ -71,6 +86,14 @@ export function AdminParcelDrawer({
   const activeCity = pickedCity ?? city;
 
   useEffect(() => {
+    /* One parcel, straight to the detail: there is no list to fetch. */
+    if (focusId) {
+      setOpenId(focusId);
+      setRows(null);
+      setDestinations([]);
+      return;
+    }
+
     if (!scope) {
       setRows(null);
       setOpenId(null);
@@ -94,16 +117,21 @@ export function AdminParcelDrawer({
     return () => {
       cancelled = true;
     };
-  }, [scope, activeCity]);
+  }, [scope, activeCity, focusId]);
 
   return (
-    <BottomSheet visible={scope !== null} onClose={onClose}>
+    <BottomSheet visible={scope !== null || !!focusId} onClose={onClose}>
       {/* A View, not a ScrollView — BottomSheet already scrolls. */}
       <View style={styles.sheet}>
         <Text style={[styles.title, { color: theme.text }]}>{title}</Text>
 
         {openId ? (
-          <ParcelDetail id={openId} onBack={() => setOpenId(null)} />
+          <ParcelDetail
+            id={openId}
+            /* With no list behind it, Back is Close. */
+            backLabel={focusId ? 'Close' : 'Back to the list'}
+            onBack={() => (focusId ? onClose() : setOpenId(null))}
+          />
         ) : (
           <>
             {destinations.length > 0 && (
@@ -235,11 +263,21 @@ function Chip({
   );
 }
 
-function ParcelDetail({ id, onBack }: { id: string; onBack: () => void }) {
+function ParcelDetail({
+  id,
+  backLabel,
+  onBack,
+}: {
+  id: string;
+  backLabel: string;
+  onBack: () => void;
+}) {
   const theme = useTheme();
 
   const [detail, setDetail] = useState<AdminParcelDetail | null>(null);
   const [missing, setMissing] = useState(false);
+  /** Null while loading and if the call fails — the line says which. */
+  const [attempts, setAttempts] = useState<OfferAttempts | null>(null);
 
   const [contacts, setContacts] = useState<ParcelContacts | null>(null);
   const [asking, setAsking] = useState(false);
@@ -252,6 +290,9 @@ function ParcelDetail({ id, onBack }: { id: string; onBack: () => void }) {
       if (cancelled) return;
       setDetail(result);
       setMissing(result === null);
+    });
+    void fetchOfferAttempts(id).then((result) => {
+      if (!cancelled) setAttempts(result);
     });
     return () => {
       cancelled = true;
@@ -274,7 +315,7 @@ function ParcelDetail({ id, onBack }: { id: string; onBack: () => void }) {
         <Text style={[styles.note, { color: theme.textMuted }]}>
           That parcel could not be read. It may have been deleted.
         </Text>
-        <Button label="Back to the list" variant="secondary" onPress={onBack} />
+        <Button label={backLabel} variant="secondary" onPress={onBack} />
       </View>
     );
   }
@@ -316,11 +357,21 @@ function ParcelDetail({ id, onBack }: { id: string; onBack: () => void }) {
       <Row label="Driver" value={detail.driverName ?? 'Not assigned'} />
       <View style={styles.detailRow}>
         <Radio color={theme.textMuted} size={14} />
+        {/*
+          ⚠ Read from `offer_attempts`, not from `detail.offersMade`.
+
+            That column counts offer rows and this line used to render it as
+            "Offered to N drivers" — the same miscount the dispatch queue made,
+            which turned seven attempts at one driver into a sentence about five
+            drivers refusing a parcel. 71 added one function that counts both,
+            and all three screens that say this now read it from there.
+            `admin_parcel_detail` returns thirty columns and was left alone
+            rather than recreated to add three.
+        */}
         <Text style={[styles.detailValue, { color: theme.textSecondary }]}>
-          {detail.offersMade === 0
-            ? 'Never offered to a driver'
-            : `Offered to ${detail.offersMade} ${detail.offersMade === 1 ? 'driver' : 'drivers'}`}
-          {detail.offerOutstanding ? ' · one is holding it now' : ''}
+          {attempts === null
+            ? 'Dispatch history unavailable'
+            : (attemptsLabel(attempts) ?? 'Never offered to a driver')}
         </Text>
       </View>
 
@@ -410,7 +461,7 @@ function ParcelDetail({ id, onBack }: { id: string; onBack: () => void }) {
         )}
       </View>
 
-      <Button label="Back to the list" variant="secondary" onPress={onBack} />
+      <Button label={backLabel} variant="secondary" onPress={onBack} />
     </View>
   );
 }

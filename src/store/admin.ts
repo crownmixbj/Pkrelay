@@ -22,7 +22,10 @@ export type AdminOverview = {
   applicationsRejected: number;
   parcelsTotal: number;
   parcelsUnclaimed: number;
+  /** Every parcel with a driver and not yet finished. Includes ones not moving yet. */
   parcelsInTransit: number;
+  /** In Transit and Out for Delivery — the ones actually on the road. */
+  parcelsOnTheWay: number;
   parcelsDelivered: number;
   parcelsLast7Days: number;
   errorsLast24h: number;
@@ -53,6 +56,7 @@ export async function fetchOverview(): Promise<AdminOverview> {
     parcelsTotal: num(raw.parcels_total),
     parcelsUnclaimed: num(raw.parcels_unclaimed),
     parcelsInTransit: num(raw.parcels_in_transit),
+    parcelsOnTheWay: num(raw.parcels_on_the_way),
     parcelsDelivered: num(raw.parcels_delivered),
     parcelsLast7Days: num(raw.parcels_last_7_days),
     errorsLast24h: num(raw.errors_last_24h),
@@ -481,7 +485,17 @@ export type AdminParcelRow = {
   offerOutstanding: boolean;
 };
 
-export type ParcelScope = 'unassigned' | 'assigned' | 'all';
+/**
+ * Which list the admin drawer is showing.
+ *
+ * ⚠ 'assigned' and 'on_the_way' are not the same question, and the difference
+ *   is the whole point of the second one.
+ *
+ *   'assigned' is every parcel with a driver and not yet finished — including
+ *   Assigned and Picked Up, which have not left. 'on_the_way' is In Transit and
+ *   Out for Delivery: wheels turning. See `20250101000072_admin_on_the_way.sql`.
+ */
+export type ParcelScope = 'unassigned' | 'assigned' | 'on_the_way' | 'all';
 
 const text = (value: unknown): string => (typeof value === 'string' ? value : '');
 const maybeText = (value: unknown): string | null =>
@@ -589,6 +603,125 @@ export async function revealParcelContacts(
     recipientPhone: text(row.recipient_phone),
     dropoffAddress: text(row.dropoff_address),
   };
+}
+
+// ------------------------------------------------- collected, and moving ---
+
+/**
+ * A parcel a driver is holding — claimed, collected, or on its way.
+ *
+ * ⚠ `collected` is the line down the middle of the board, and it is the pickup
+ *   timestamp rather than the status. The two agree today and would not keep
+ *   agreeing: a stage inserted between Assigned and Picked Up, or a correction
+ *   that moves a status without a collection, would silently reclassify half the
+ *   list. The timestamp is the fact — somebody took this parcel from the sender
+ *   at that moment.
+ */
+export type ParcelInFlight = {
+  id: string;
+  trackingId: string;
+  status: string;
+  deliveryType: string;
+  originCity: string;
+  destinationCity: string;
+  weight: number;
+  estimatedFee: number;
+  driverId: string | null;
+  driverName: string;
+  /** Null when an admin placed it by hand: nobody accepted it. */
+  acceptedAt: string | null;
+  /** Null until it is collected from the sender. */
+  pickedUpAt: string | null;
+  statusChangedAt: string | null;
+  collected: boolean;
+  minutesSinceMove: number;
+  minutesSinceClaim: number;
+};
+
+/**
+ * The tiles, counted server-side over the whole set rather than over the page.
+ *
+ * Window counts, so a truncated list cannot understate them — which it would do
+ * exactly when the numbers matter most.
+ */
+export type InFlightTotals = {
+  inFlight: number;
+  awaitingCollection: number;
+  collected: number;
+  /** A full day without a move, at any stage. */
+  stalled: number;
+};
+
+export const EMPTY_IN_FLIGHT: InFlightTotals = {
+  inFlight: 0,
+  awaitingCollection: 0,
+  collected: 0,
+  stalled: 0,
+};
+
+/**
+ * ⚠ `null` for "could not load", never an empty list standing in for it. A board
+ *   that renders "nothing in flight" on a failed call is the same lie the
+ *   dispatch banner was built to stop telling.
+ */
+export async function fetchParcelsInFlight(
+  limit = 100,
+): Promise<{ rows: ParcelInFlight[]; totals: InFlightTotals } | null> {
+  const { data, error } = await supabase.rpc('admin_parcels_in_flight', { max_rows: limit });
+
+  if (error || !data) return null;
+
+  const raw = data as Record<string, unknown>[];
+
+  const rows: ParcelInFlight[] = raw.map((row) => ({
+    id: text(row.id),
+    trackingId: text(row.tracking_id),
+    status: text(row.status),
+    deliveryType: text(row.delivery_type),
+    originCity: text(row.origin_city),
+    destinationCity: text(row.destination_city),
+    weight: num(row.weight),
+    estimatedFee: num(row.estimated_fee),
+    driverId: maybeText(row.driver_id),
+    driverName: text(row.driver_name),
+    acceptedAt: maybeText(row.accepted_at),
+    pickedUpAt: maybeText(row.picked_up_at),
+    statusChangedAt: maybeText(row.status_changed_at),
+    collected: row.collected === true,
+    minutesSinceMove: num(row.minutes_since_move),
+    minutesSinceClaim: num(row.minutes_since_claim),
+  }));
+
+  /*
+   * The totals ride on every row, so an empty result has none to read. That is
+   * the honest answer: nothing in flight, all four zero.
+   */
+  const first = raw[0];
+
+  return {
+    rows,
+    totals: first
+      ? {
+          inFlight: num(first.total_in_flight),
+          awaitingCollection: num(first.total_awaiting_collection),
+          collected: num(first.total_collected),
+          stalled: num(first.total_stalled),
+        }
+      : EMPTY_IN_FLIGHT,
+  };
+}
+
+/**
+ * How alarmed to be about a parcel that has not moved.
+ *
+ * Amber at half a day, red at a full one, measured from the last stage change
+ * rather than from the booking — a parcel collected an hour ago is fine however
+ * long ago it was booked.
+ */
+export function stallTone(minutesSinceMove: number): 'neutral' | 'warning' | 'danger' {
+  if (minutesSinceMove >= 24 * 60) return 'danger';
+  if (minutesSinceMove >= 12 * 60) return 'warning';
+  return 'neutral';
 }
 
 /** How long a parcel has been waiting, from its creation timestamp. */

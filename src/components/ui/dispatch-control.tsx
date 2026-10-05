@@ -23,10 +23,12 @@ import { useTheme } from '@/hooks/use-theme';
 import { formatNaira } from '@/store/bookings';
 import {
   assignParcel,
+  attemptsLabel,
   fetchCandidates,
   fetchDispatchHealth,
   fetchUnassignedParcels,
   modeBanner,
+  offersGoingUnanswered,
   setDispatchMode,
   UNKNOWN_HEALTH,
   waitLabel,
@@ -301,11 +303,31 @@ export function DispatchControl() {
                 />
               </View>
 
-              {parcel.offersMade > 0 && (
+              {/*
+                Attempts and drivers, counted separately.
+
+                ⚠ This line used to read "Offered to N drivers already", where N
+                  was the number of offer *rows*. PKG-483203 therefore announced
+                  five drivers when the truth was seven offers to one, every one
+                  a timeout. A parcel five drivers refused is a pricing or
+                  routing problem; a parcel one driver never answered is a
+                  notification problem, and the sentence pointed at the wrong one
+                  for a day.
+              */}
+              {!!attemptsLabel(parcel.attempts) && (
                 <Text style={[styles.attempts, { color: theme.textMuted }]}>
-                  Offered to {parcel.offersMade} driver{parcel.offersMade === 1 ? '' : 's'} already
-                  — declined or timed out.
+                  {attemptsLabel(parcel.attempts)}
                 </Text>
+              )}
+
+              {offersGoingUnanswered(parcel.attempts) && (
+                <View style={[styles.unanswered, { backgroundColor: theme.warningSoft }]}>
+                  <TriangleAlert color={theme.warningOnSoft} size={14} />
+                  <Text style={[styles.unansweredText, { color: theme.warningOnSoft }]}>
+                    Nobody has refused this — the offers are expiring unanswered. Check the driver
+                    is actually being notified before assuming the route is the problem.
+                  </Text>
+                </View>
               )}
 
               <Button
@@ -594,6 +616,18 @@ const styles = StyleSheet.create({
   parcelText: { flex: 1, gap: Spacing.half },
   tracking: { ...Typography.meta, ...font(700) },
   route: { ...Typography.caption },
+  unanswered: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.one + 2,
+    padding: Spacing.two,
+    borderRadius: Radius.md,
+  },
+  unansweredText: {
+    ...Typography.caption,
+    flex: 1,
+    lineHeight: 18,
+  },
   attempts: { ...Typography.caption, lineHeight: 17 },
   sheet: { width: '100%', maxWidth: 560, alignSelf: 'center', gap: Spacing.two + 2 },
   sheetTitle: { ...Typography.sectionTitle },

@@ -34,6 +34,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { DispatchControl } from '@/components/ui/dispatch-control';
+import { ParcelsInFlight } from '@/components/ui/parcels-in-flight';
 import { ChipGroup } from '@/components/ui/chip';
 import { showDialog } from '@/components/ui/dialog';
 import { Field } from '@/components/ui/field';
@@ -83,7 +84,7 @@ import {
  *   people. It lives at `/admin-identity`, beside User & Role Mgmt. and Hubs &
  *   Operations, which are separate routes for exactly this reason.
  */
-const SECTIONS = ['overview', 'dispatch', 'review'] as const;
+const SECTIONS = ['overview', 'dispatch', 'transit', 'review'] as const;
 type Section = (typeof SECTIONS)[number];
 
 /**
@@ -100,6 +101,7 @@ const MIN_REASON = 12;
 const SECTION_LABELS: Record<Section, string> = {
   overview: 'Overview',
   dispatch: 'Dispatch',
+  transit: 'In transit',
   review: 'Driver review',
 };
 
@@ -115,6 +117,7 @@ const SECTION_LABELS: Record<Section, string> = {
 const SCREEN_TITLES: Record<Section, string> = {
   overview: 'Dashboard Overview',
   dispatch: 'Dispatch & Assignment',
+  transit: 'In Transit',
   review: 'Driver & App Review',
 };
 
@@ -360,7 +363,9 @@ export default function AdminScreen() {
               ? 'How the platform is running right now.'
               : section === 'dispatch'
                 ? 'Whether Package Relay matches parcels to drivers, or you do.'
-                : /*
+                : section === 'transit'
+                  ? 'What has been collected from the sender, and what has not.'
+                  : /*
                    * ⚠ True of this queue, and it used to leak onto another.
                    *
                    *   While Sender IDs was a fourth section this arm caught it
@@ -368,7 +373,7 @@ export default function AdminScreen() {
                    *   Package Relay publishes on the Drivers page and has never offered
                    *   to a sender. Three sections, three arms, no fall-through.
                    */
-                  `Review within ${REVIEW_WORKING_DAYS} working days, as the Drivers page promises.`
+                    `Review within ${REVIEW_WORKING_DAYS} working days, as the Drivers page promises.`
           }
         />
 
@@ -383,6 +388,15 @@ export default function AdminScreen() {
         {section === 'overview' && <OverviewPanel onReview={() => chooseSection('review')} />}
 
         {section === 'dispatch' && <DispatchControl />}
+
+        {/*
+          In transit sits after Dispatch and before the review queue, for the
+          reason the comment above gives: Overview says whether anything is
+          wrong, Dispatch is where you place a parcel, and this is where you
+          watch the ones already placed. The review queue is a different rhythm
+          and stays last.
+        */}
+        {section === 'transit' && <ParcelsInFlight />}
 
         {section === 'review' && (
           <>

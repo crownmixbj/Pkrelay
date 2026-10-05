@@ -23,7 +23,14 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { shiftLabel, waitLabel, UNKNOWN_AVAILABILITY } from '../src/store/dispatch-mode';
+import { stallTone } from '../src/store/admin';
+import {
+  attemptsLabel,
+  offersGoingUnanswered,
+  shiftLabel,
+  waitLabel,
+  UNKNOWN_AVAILABILITY,
+} from '../src/store/dispatch-mode';
 
 let failures = 0;
 
@@ -38,6 +45,11 @@ const ROOT = process.cwd();
 const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');
 
 const repair = read('supabase/migrations/20250101000069_assign_parcel_repair.sql');
+const counts = read('supabase/migrations/20250101000071_offer_attempt_counts.sql');
+const inFlight = read('supabase/migrations/20250101000073_parcels_in_flight.sql');
+const board = read('src/components/ui/parcels-in-flight.tsx');
+const adminScreen = read('src/app/(tabs)/admin.tsx');
+const drawer = read('src/components/ui/admin-parcel-drawer.tsx');
 const availability = read('supabase/migrations/20250101000070_driver_availability.sql');
 const matcher = read('supabase/migrations/20250101000026_departure_time.sql');
 const store = read('src/store/dispatch-mode.ts');
@@ -318,6 +330,247 @@ for (const fn of FUNCTIONS) {
     /could not be read/.test(panel),
     '"nobody is waiting" on a failed query is the same lie as a green banner',
   );
+}
+
+// ------------------------------- 10. attempts are not drivers (71) --------
+
+{
+  const sql = code(counts);
+
+  check(
+    'one function counts attempts and drivers',
+    /create or replace function public\.offer_attempts\(parcel uuid\)/.test(sql),
+    'three hand-written count blocks is how the next screen disagrees with the other two',
+  );
+  check(
+    'it counts distinct drivers, not rows',
+    /count\(distinct o\.driver_id\)/.test(sql),
+    'the whole defect: 7 offer rows at 1 driver rendered as "5 drivers"',
+  );
+  check(
+    'it separates declines from timeouts',
+    /filter \(where o\.status = 'declined'\)/.test(sql) &&
+      /filter \(where o\.status = 'expired'\)/.test(sql),
+    'a parcel drivers refused and a parcel nobody answered are different problems',
+  );
+  check(
+    'and it is admin-gated like everything that reads the offer table',
+    /is_admin\(\)/.test(sql) &&
+      /revoke all on function public\.offer_attempts\(uuid\) from public, anon/.test(counts),
+  );
+
+  for (const fn of ['unassigned_parcels', 'admin_parcels_for_driver'] as const) {
+    check(
+      `${fn} is dropped before it is recreated`,
+      new RegExp(`drop function if exists public\\.${fn}\\(`).test(counts),
+      'create or replace cannot widen a returns-table signature',
+    );
+    check(
+      `${fn} reads the counts from offer_attempts`,
+      new RegExp(`${fn}[\\s\\S]{0,2600}cross join lateral public\\.offer_attempts`).test(sql),
+      'otherwise there are two definitions of "tried" again',
+    );
+  }
+
+  check(
+    'the queue keeps its deliberate lack of a dispatch-mode gate',
+    !/unassigned_parcels[\s\S]{0,1200}dispatch_mode\(\)/.test(sql),
+    'blanking the queue in auto mode hides it exactly when the automation is failing',
+  );
+  check(
+    'and admin_parcel_detail is left alone',
+    !/function public\.admin_parcel_detail/.test(counts),
+    'thirty columns recreated to add three is how a condition goes missing',
+  );
+}
+
+// --------------------------------- 11. the sentence, and where it is said --
+
+{
+  check(
+    'seven offers at one driver reads as one driver',
+    attemptsLabel({ attempts: 7, driversTried: 1, declined: 0, expired: 7, live: 0 }) ===
+      '7 offers to 1 driver — all timed out, none declined',
+    attemptsLabel({ attempts: 7, driversTried: 1, declined: 0, expired: 7, live: 0 }) ?? 'null',
+  );
+  check(
+    'a live offer is called out rather than counted as a refusal',
+    attemptsLabel({ attempts: 7, driversTried: 1, declined: 0, expired: 6, live: 1 }) ===
+      '7 offers to 1 driver — 6 timed out, one live right now',
+    attemptsLabel({ attempts: 7, driversTried: 1, declined: 0, expired: 6, live: 1 }) ?? 'null',
+  );
+  check(
+    'declines and timeouts are reported separately',
+    attemptsLabel({ attempts: 5, driversTried: 4, declined: 3, expired: 2, live: 0 }) ===
+      '5 offers to 4 drivers — 3 declined, 2 timed out',
+    attemptsLabel({ attempts: 5, driversTried: 4, declined: 3, expired: 2, live: 0 }) ?? 'null',
+  );
+  check(
+    'a parcel never offered says nothing at all',
+    attemptsLabel({ attempts: 0, driversTried: 0, declined: 0, expired: 0, live: 0 }) === null,
+  );
+
+  check(
+    'three unanswered offers is a flag',
+    offersGoingUnanswered({ attempts: 3, driversTried: 1, declined: 0, expired: 3, live: 0 }),
+    'nobody refusing and nobody answering is a notification fault, not a dispatch one',
+  );
+  check(
+    'but a declined one is not',
+    !offersGoingUnanswered({ attempts: 4, driversTried: 2, declined: 1, expired: 3, live: 0 }),
+    'somebody looked at it and said no — that is the system working',
+  );
+
+  for (const [name, source] of [
+    ['the dispatch queue', control],
+    ['the give-a-parcel sheet', panel],
+    ['the parcel drawer', drawer],
+  ] as const) {
+    check(
+      `${name} uses the shared sentence`,
+      /attemptsLabel\(/.test(source),
+      'one phrasing means there is no fourth place for it to drift to',
+    );
+    check(
+      `${name} no longer claims N drivers from a row count`,
+      !/Offered to \{?\w*\.?offersMade/.test(source) &&
+        !/offered to \$\{parcel\.offersMade\}/.test(source),
+      'that sentence sent somebody looking for a routing problem for a day',
+    );
+  }
+
+  check(
+    'the queue warns when offers are expiring unanswered',
+    /offersGoingUnanswered\(/.test(control) && /being notified/.test(control),
+    'the signal that would have found this in a minute rather than a day',
+  );
+}
+
+// ------------------------------ 12. collected, and not collected (72) -----
+
+{
+  const sql = code(inFlight);
+
+  check(
+    'the stage clock is added nullable and backfilled, in that order',
+    /add column if not exists status_changed_at timestamptz;/.test(sql) &&
+      /update public\.bookings[\s\S]{0,260}where status_changed_at is null/.test(sql) &&
+      /alter column status_changed_at set default now\(\)/.test(sql),
+    'not null default now() would stamp every historical parcel with the migration, and a\n' +
+      '       re-run would wipe the real timestamps the trigger had since recorded',
+  );
+  check(
+    'the trigger only fires on a real move',
+    /when \(new\.status is distinct from old\.status\)/.test(sql),
+    'an update that leaves the status alone is not a stage change',
+  );
+  check(
+    'and it is not security definer',
+    !/function public\.set_booking_status_changed_at[\s\S]{0,260}security definer/.test(sql),
+    'it writes one column on a row the caller is already allowed to write',
+  );
+
+  const fn = sql.slice(sql.indexOf('function public.admin_parcels_in_flight('));
+  check('admin_parcels_in_flight exists', fn.length > 0);
+  check(
+    'it checks is_admin()',
+    /is_admin\(\)/.test(fn),
+    'every driver name and route on the platform, otherwise',
+  );
+  check(
+    'it is security definer with a pinned search_path',
+    /security definer/.test(fn) && /set search_path = ''/.test(fn),
+  );
+  check(
+    'it is revoked from anon and granted to authenticated',
+    /revoke all on function public\.admin_parcels_in_flight\(integer\) from public, anon/.test(
+      inFlight,
+    ) && /grant execute on function public\.admin_parcels_in_flight\(integer\)/.test(inFlight),
+  );
+
+  check(
+    'collected is the pickup timestamp, not the status',
+    /\(b\.picked_up_at is not null\) as collected/.test(fn),
+    'a stage inserted before Picked Up would silently reclassify half the board',
+  );
+  check(
+    'delivered and cancelled parcels are off the board',
+    /b\.status not in \('Delivered', 'Cancelled'\)/.test(fn),
+    'it is what is in flight, not what moved',
+  );
+  check(
+    'only parcels that have a driver are on it',
+    /b\.driver_id is not null/.test(fn),
+    'a parcel with no driver belongs to the Dispatch queue, which already has it',
+  );
+  check(
+    'the totals are window counts, evaluated before the limit',
+    /count\(\*\) over \(\)/.test(fn) &&
+      /count\(\*\) filter \(where not f\.collected\) over \(\)/.test(fn),
+    'tiles computed in the client from a capped list understate exactly when it matters',
+  );
+  check(
+    'the uncollected sort above the moving',
+    /order by f\.collected asc, f\.minutes_since_move desc/.test(fn),
+    'a parcel claimed yesterday and never collected is the most urgent row on the screen',
+  );
+  check(
+    'and nothing in the file writes to a parcel',
+    !/update public\.bookings\s+set status\s*=/.test(sql),
+    '10 lets only the carrying driver advance a parcel; an override here would need its own trail',
+  );
+}
+
+// -------------------------------------- 13. the board, and where it lives --
+
+{
+  check(
+    'the admin screen has an In transit section',
+    /const SECTIONS = \['overview', 'dispatch', 'transit', 'review'\]/.test(adminScreen),
+  );
+  check(
+    'it renders the board',
+    /section === 'transit' && <ParcelsInFlight \/>/.test(adminScreen),
+  );
+  check(
+    'the section has a title and a subtitle of its own',
+    /transit: 'In Transit'/.test(adminScreen) && /collected from the sender/.test(adminScreen),
+    'a fall-through arm once promised a review window on a screen that had never offered one',
+  );
+  check(
+    'and the nav can reach it',
+    /section: 'transit'/.test(read('src/components/ui/app-nav-bar.tsx')),
+  );
+
+  check(
+    'the board reuses the existing parcel drawer',
+    /<AdminParcelDrawer/.test(board) && /focusId=/.test(board),
+    'a second drawer would mean a second copy of the audited contact reveal',
+  );
+  check(
+    'it has no way to advance a parcel',
+    !/advance_booking|advanceBooking/.test(board),
+    'read-only is the design, not an omission',
+  );
+  check(
+    'it says plainly when a parcel was claimed and never collected',
+    /never collected/.test(board),
+    'nothing happens when a collection does not happen — that is why it needs saying',
+  );
+  check(
+    'a stalled parcel gets words, not just a colour',
+    /Ring the driver/.test(board),
+    'colour alone reads as decoration',
+  );
+  check(
+    'and a failed read is not rendered as an empty board',
+    /could not be read/.test(board),
+    '"nothing in flight" on a query that never returned is the same lie as a green banner',
+  );
+
+  check('half a day is amber', stallTone(13 * 60) === 'warning');
+  check('a full day is red', stallTone(25 * 60) === 'danger');
+  check('an hour is neither', stallTone(60) === 'neutral');
 }
 
 if (failures > 0) {

@@ -23,6 +23,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { formatNaira } from '@/store/bookings';
 import {
   assignParcel,
+  attemptsLabel,
   fetchDriverAvailability,
   fetchParcelsForDriver,
   fetchWaitingDrivers,
@@ -452,8 +453,8 @@ function GiveParcelSheet({
                         { color: parcel.routeMatches ? theme.primary : theme.textMuted },
                       ]}>
                       {parcel.note}
-                      {parcel.offersMade > 0 &&
-                        ` · offered to ${parcel.offersMade} driver${parcel.offersMade === 1 ? '' : 's'} already`}
+                      {/* The shared sentence — attempts and drivers are different numbers. */}
+                      {!!attemptsLabel(parcel.attempts) && ` · ${attemptsLabel(parcel.attempts)}`}
                     </Text>
                   </View>
                 </Card>

@@ -203,11 +203,38 @@ check(
  * The version this replaces had Unclaimed toggling an inline list on click and
  * opening the drawer on a *long press*. With a mouse that is barely an
  * affordance at all, and Unclaimed read as the one card that did not work.
+ *
+ * ⚠ Asserted by shape, not by counting the cards.
+ *
+ *   This used to require exactly four `<ParcelMetric>`, which made adding a
+ *   fifth parcel card a failing build — it broke the day "On the way" was added
+ *   beside "With a driver", and the assertion said nothing about what was
+ *   actually wrong, because nothing was. What matters is not how many cards
+ *   there are but that no card in the Parcels row is the odd one out: a plain
+ *   `Metric` among tappable ones looks identical and does nothing.
  */
+const parcelsRow = (() => {
+  const source = read('src/components/ui/admin-overview.tsx');
+  const start = source.indexOf('<SectionLabel>Parcels</SectionLabel>');
+  const end = source.indexOf('<SectionLabel>', start + 1);
+  return start < 0 ? '' : source.slice(start, end < 0 ? undefined : end);
+})();
+
+check('the Parcels row was found', parcelsRow.length > 0, 'the section heading moved or was renamed');
+
 check(
-  'all four parcel cards open the drawer',
-  (flat(overview).match(/<ParcelMetric/g) ?? []).length === 4,
-  'a number an operator cannot act on is one they learn to ignore',
+  'every card in the Parcels row opens the drawer',
+  (parcelsRow.match(/<ParcelMetric/g) ?? []).length >= 4 &&
+    (parcelsRow.match(/<Metric\b/g) ?? []).length === 0,
+  'a number an operator cannot act on is one they learn to ignore — and a static card that\n' +
+    '       looks tappable is worse than one that does not',
+);
+
+check(
+  'and each of them is wired to it rather than just styled like it',
+  (parcelsRow.match(/<ParcelMetric/g) ?? []).length ===
+    (parcelsRow.match(/onPress=\{\(\) => setDrawer/g) ?? []).length,
+  'a ParcelMetric with no handler is the long-press bug again, in a different shape',
 );
 check(
   'nothing important is behind a long press',

@@ -85,12 +85,118 @@ be ambiguous with, no constraint to violate.
 `scripts/pg/driver-availability-harness.mjs` uses the real chain and is the
 regression test.
 
+## Retries: there is no once-per-driver rule
+
+`dispatch_offers_once_per_driver` (15) was dropped by **20**, and its successor
+`dispatch_offers_no_repeat_decline` by **23**. The only unique index left is
+`dispatch_offers_one_live_per_booking` — one outstanding offer per parcel.
+
+What governs re-offering is a rolling per-pair cooldown inside `dispatch_booking`:
+
+```sql
+and not exists (
+  select 1 from dispatch_offers o
+  where o.booking_id = <parcel> and o.driver_id = j.driver_id
+    and o.status in ('declined','expired')
+    and coalesce(case when o.status = 'expired' then o.expires_at else o.responded_at end,
+                 o.expires_at) > now() - public.offer_cooldown()
+)
+```
+
+`offer_cooldown()` is **15 minutes**. With the 10-minute hold and the
+`loci-redispatch` cron every 5 minutes, a parcel comes back to the same driver
+roughly every 25 minutes, indefinitely, for as long as it stays unassigned. The
+matcher also prefers untried drivers first and logs `repeat: true` when it comes
+back round.
+
+⚠ Reading 15's comment and concluding a pair is blocked for ever is an easy
+mistake — it was made in October 2026, and the proposed "fix" was to widen the
+window to an hour, which would have *halved* the retries. Check 20 and 23 before
+believing any statement about that index.
+
+## Attempts are not drivers (71)
+
+`unassigned_parcels`, `admin_parcels_for_driver` and `admin_parcel_detail` all
+returned `offers_made` as `count(*)` over the offer rows, and three screens
+rendered it as "Offered to N drivers already".
+
+On production, PKG-483203 read "Offered to 5 drivers already". The truth was
+**seven offers to one driver, every one a timeout, not a single decline** — the
+matcher doing its job all day at a driver who was never notified, because
+migration 50 is not applied there and `notify_on_dispatch_offer` does not exist.
+Five drivers refusing a parcel is a pricing or routing problem; one driver never
+answering is a notification problem. The sentence pointed at the first.
+
+71 adds `offer_attempts(parcel)` — attempts, distinct drivers, declined, expired,
+live — and the three lists read their counts from it. `attemptsLabel()` in
+`src/store/dispatch-mode.ts` is the one place the sentence is written.
+`offersGoingUnanswered()` flags the shape worth noticing: three or more attempts
+with no declines at all, which is nobody seeing the parcel rather than nobody
+wanting it.
+
+`admin_parcel_detail` was deliberately not recreated — thirty columns rewritten
+to add three is how a condition goes missing. The drawer calls `offer_attempts`
+directly.
+
+## In transit: collected, and not collected (73)
+
+**Admin → Dashboard → In transit.** Two groups, because one list of "parcels
+with a driver" hides the failure that matters:
+
+| Group | What it is |
+| --- | --- |
+| Awaiting collection | A driver claimed it and has not picked it up. `picked_up_at is null`. |
+| Collected and in transit | Taken from the sender and moving. |
+
+Nothing happens when a collection does not happen — no event, no notification,
+no row anywhere — so the only way an uncollected parcel surfaces is if somebody
+is looking for it. That group is somebody looking for it.
+
+`collected` is the **pickup timestamp**, not the status. The two agree today and
+would not keep agreeing: a stage inserted before Picked Up, or a correction that
+moves a status without a collection, would silently reclassify half the board.
+
+73 adds `bookings.status_changed_at`, written by a trigger on the status change,
+because the two middle stages record no timestamp of their own — In Transit and
+Out for Delivery have neither an `accepted_at` nor a `picked_up_at` of their
+own, so "how long has this sat here" could not be asked of a parcel in either.
+Rows flag amber at 12 hours without a move and red at 24; the totals are window
+counts over the whole set, so a truncated list cannot understate them.
+
+The board is **read-only**. Migration 10 lets only the carrying driver advance a
+parcel, so that the record of who handled it is never ambiguous; an admin
+override would be a different act needing its own audit trail, not a button on a
+monitoring screen. Rows open the existing parcel drawer (`focusId`), which
+already carries the audited contact reveal.
+
+## The delivery email already exists
+
+`email_on_booking_status` (38) queues a `delivery_completed` email to the
+**sender** on the move to Delivered, carrying the tracking id, the fare, who
+received it and a flag that proof exists — never the storage path. The
+`notify-events` edge function has the template, and both are live on production.
+
+It has never fired there because the only delivered parcel predates the
+migration. `scripts/pg/driver-availability-harness.mjs` now proves the whole
+chain against the real schema — collect, move, deliver, assert the outbox row is
+addressed to the sender — because `emails-harness.mjs` proves it over a schema
+it builds itself, which is the arrangement that hid `admin_assign_parcel` being
+broken for eight migrations.
+
+⚠ One stale row on production: a `password_changed` email failed with *No
+template for kind "password_changed"* against an older deployment of
+`notify-events`. The current deployment has that template; the row has not been
+retried.
+
 ## Tests
 
 ```bash
 npm run verify:availability      # source assertions
-npm run verify:pg-availability   # 69 and 70 against real Postgres under RLS
+npm run verify:pg-availability   # 69, 70 and 71 against real Postgres under RLS
 ```
+
+The pg harness pins the retry loop as well: a lapsed offer is not re-offered
+inside the cooldown, and *is* re-offered to the same driver once it has passed.
 
 ## Deploy
 

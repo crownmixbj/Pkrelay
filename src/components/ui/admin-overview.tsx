@@ -157,10 +157,28 @@ export function AdminOverview({ onReview }: { onReview: () => void }) {
           tone={data.parcelsUnclaimed > 0 ? 'warning' : 'neutral'}
           onPress={() => setDrawer({ scope: 'unassigned', title: 'Unclaimed parcels' })}
         />
+        {/*
+          ⚠ Relabelled, not repurposed. This card has always counted every
+            parcel with a driver — Assigned and Picked Up included — and called
+            it "In transit", which is a different claim. The number is the same
+            one it always showed; the label now matches it, and the drawer title
+            it opens always did.
+        */}
         <ParcelMetric
-          label="In transit"
+          label="With a driver"
           value={data.parcelsInTransit}
           onPress={() => setDrawer({ scope: 'assigned', title: 'Parcels with a driver' })}
+        />
+        {/*
+          The question the old label was pretending to answer: what is on the
+          road right now. Appears the moment a driver starts the journey and
+          clears when the parcel is delivered or called off.
+        */}
+        <ParcelMetric
+          label="On the way"
+          value={data.parcelsOnTheWay}
+          tone={data.parcelsOnTheWay > 0 ? 'primary' : 'neutral'}
+          onPress={() => setDrawer({ scope: 'on_the_way', title: 'Parcels on the way' })}
         />
         <ParcelMetric
           label="Delivered"
