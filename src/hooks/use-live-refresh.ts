@@ -38,6 +38,7 @@ export function useLiveRefresh(
   {
     channel,
     tables,
+    filter,
     intervalMs = 20_000,
     debounceMs = 400,
     enabled = true,
@@ -46,6 +47,11 @@ export function useLiveRefresh(
     channel: string;
     /** `public` tables to listen to. Each must be in the `supabase_realtime` publication. */
     tables: string[];
+    /**
+     * A Realtime row filter applied to every table, e.g. `driver_id=eq.<uuid>`.
+     * RLS already limits what arrives; this just stops the server sending it.
+     */
+    filter?: string;
     intervalMs?: number;
     debounceMs?: number;
     enabled?: boolean;
@@ -98,7 +104,11 @@ export function useLiveRefresh(
 
     let live = supabase.channel(channel);
     for (const table of tableKey.split(',').filter(Boolean)) {
-      live = live.on('postgres_changes', { event: '*', schema: 'public', table }, schedule);
+      live = live.on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table, ...(filter ? { filter } : {}) },
+        schedule,
+      );
     }
     live.subscribe((status) => {
       setConnected(status === 'SUBSCRIBED');
@@ -110,7 +120,7 @@ export function useLiveRefresh(
       setConnected(false);
       void supabase.removeChannel(live);
     };
-  }, [channel, tableKey, enabled, schedule]);
+  }, [channel, tableKey, filter, enabled, schedule]);
 
   // The poll, paused while the tab is hidden — nobody is reading it.
   useEffect(() => {

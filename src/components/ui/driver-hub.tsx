@@ -60,11 +60,9 @@ import {
   activeFlashShift,
   endFlashShift,
   fetchJourneys,
-  fetchLiveOffers,
   fetchMissedOffers,
   matchStatus,
   modeAction,
-  respondToOffer,
   scheduledJourneys,
   startFlashShift,
   type DispatchOffer,
@@ -72,6 +70,7 @@ import {
   type OperatingMode,
 } from '@/store/dispatch';
 import { earningsSummary } from '@/store/earnings';
+import { answerLiveOffer, refreshLiveOffers, useLiveOffers } from '@/store/live-offers';
 import { pushIsEnabled, pushProblem, registerForPush } from '@/store/push';
 import { useSession } from '@/store/session';
 
@@ -139,7 +138,13 @@ export function DriverHub() {
    * stays a pure render — it is the piece most likely to be reused on another
    * screen, and a component that fetches cannot be.
    */
-  const [offers, setOffers] = useState<DispatchOffer[]>([]);
+  /*
+   * From the shared store, not fetched here. The pop-up that appears on every
+   * tab reads the same list, so an offer answered in either place leaves both —
+   * and a slow poll can no longer put a declined card back. See
+   * `@/store/live-offers`.
+   */
+  const offers = useLiveOffers();
   const [journeys, setJourneys] = useState<Journey[]>([]);
   const [missed, setMissed] = useState<DispatchOffer[]>([]);
 
@@ -192,13 +197,12 @@ export function DriverHub() {
     let cancelled = false;
 
     const load = async () => {
-      const [live, declared, gone] = await Promise.all([
-        fetchLiveOffers(),
+      const [, declared, gone] = await Promise.all([
+        refreshLiveOffers(),
         fetchJourneys(),
         fetchMissedOffers(),
       ]);
       if (cancelled) return;
-      setOffers(live);
       setJourneys(declared);
       setMissed(gone);
     };
@@ -256,12 +260,11 @@ export function DriverHub() {
   );
 
   const reloadDispatch = useCallback(async () => {
-    const [live, declared, gone] = await Promise.all([
-      fetchLiveOffers(),
+    const [, declared, gone] = await Promise.all([
+      refreshLiveOffers(),
       fetchJourneys(),
       fetchMissedOffers(),
     ]);
-    setOffers(live);
     setJourneys(declared);
     setMissed(gone);
   }, []);
@@ -352,16 +355,27 @@ export function DriverHub() {
   const answerOffer = useCallback(
     async (offer: DispatchOffer, accept: boolean) => {
       setBusyOffer(true);
-      const outcome = await respondToOffer(offer.id, accept);
+      // Takes the card off screen at once; see `answerLiveOffer`.
+      const outcome = await answerLiveOffer(offer.id, accept);
       setBusyOffer(false);
 
-      if (outcome === 'gone') {
-        showToast('That trip is no longer available', {
-          message: 'It expired or went to another driver.',
+      if (outcome.status === 'gone') {
+        /*
+         * The server's own reason. "No longer available" for every failure hid
+         * the difference between an expired hold and a refusal worth reporting.
+         */
+        showToast(accept ? 'Could not accept that trip' : 'Could not decline that trip', {
+          message: outcome.message ?? 'It expired or went to another driver.',
           tone: 'info',
         });
-      } else if (outcome === 'accepted') {
+      } else if (outcome.status === 'accepted') {
         showToast('Trip accepted', { message: 'It is now your assigned trip.' });
+      } else {
+        // Silence here used to read as the tap not registering.
+        showToast('Trip declined', {
+          message: 'It has been passed to another driver.',
+          tone: 'info',
+        });
       }
 
       await Promise.all([reloadDispatch(), refresh()]);

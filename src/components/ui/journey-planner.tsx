@@ -64,12 +64,34 @@ export function JourneyPlanner() {
   const [editing, setEditing] = useState<Journey | null>(null);
 
   const startEdit = (journey: Journey) => {
+    // A second tap on the row that is already open closes it.
+    if (editing?.id === journey.id) {
+      stopEdit();
+      return;
+    }
+
     setEditing(journey);
     setOrigin(journey.originCity);
     setDestination(journey.destinationCity);
     setCapacity(String(journey.capacityKg));
-    setDepartureAt(new Date(journey.departureAt ?? journey.departsBefore));
-    setErrors({});
+
+    /*
+     * ⚠ A departure that has already passed is not carried into the form.
+     *
+     *   It used to be, and Save then failed validation with "That time has
+     *   already passed" — shown under a picker at the top of the page, out of
+     *   sight of the row the driver had just tapped. The row sat on "Editing…"
+     *   and nothing appeared to happen. Rescheduling a departed journey means
+     *   picking a new time, so the form asks for one.
+     */
+    const departs = new Date(journey.departureAt ?? journey.departsBefore);
+    if (hasDeparted(journey, new Date().getTime())) {
+      setDepartureAt(null);
+      setErrors({ departureAt: 'This journey has already left. Pick a new departure time.' });
+    } else {
+      setDepartureAt(departs);
+      setErrors({});
+    }
   };
 
   const stopEdit = () => {
@@ -79,15 +101,25 @@ export function JourneyPlanner() {
     setErrors({});
   };
 
+  /*
+   * When the list was last read. "Has this departed" is judged against this
+   * rather than the clock during render, so a row cannot flip state mid-paint.
+   */
+  const [checkedAt, setCheckedAt] = useState(() => Date.now());
+
   const refresh = useCallback(async () => {
     setJourneys(await fetchJourneys());
+    setCheckedAt(Date.now());
   }, []);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
-  const open = useMemo(() => journeys.filter((j) => j.status === 'open'), [journeys]);
+  const open = useMemo(
+    () => journeys.filter((j) => j.status === 'open' && !hasDeparted(j, checkedAt)),
+    [journeys, checkedAt],
+  );
 
   const submit = async () => {
     /*
@@ -222,18 +254,7 @@ export function JourneyPlanner() {
     );
   }
 
-  return (
-    <View style={styles.wrap}>
-      {/*
-        Offers are not shown here.
-
-        They live on the Assigned Trip screen — `DispatchOffers`, rendered by
-        `driver-hub.tsx`. Scheduling is something a driver does once and leaves;
-        the home screen is the one they sit on. An offer is held five or ten
-        minutes, so which screen it appears on decides whether it is answered.
-      */}
-
-      {/* ---------- Declare one ---------- */}
+  const formCard = (
       <Card style={styles.form}>
         <View style={styles.formHead}>
           <Route color={theme.primary} size={18} />
@@ -322,6 +343,27 @@ export function JourneyPlanner() {
           between cities for {OFFER_HOLD_MINUTES.interstate}.
         </Text>
       </Card>
+  );
+
+  return (
+    <View style={styles.wrap}>
+      {/*
+        Offers are not shown here.
+
+        They live on the Assigned Trip screen — `DispatchOffers`, rendered by
+        `driver-hub.tsx`. Scheduling is something a driver does once and leaves;
+        the home screen is the one they sit on. An offer is held five or ten
+        minutes, so which screen it appears on decides whether it is answered.
+      */}
+
+      {/*
+        ---------- Declare one ----------
+
+        ⚠ Only here when nothing is being edited. An edit opens the same form
+          directly under the journey being changed — at the top of a long list
+          it was off screen, and the row just said "Editing…".
+      */}
+      {!editing && formCard}
 
       {/* ---------- What is live ---------- */}
       <View style={styles.section}>
@@ -336,17 +378,23 @@ export function JourneyPlanner() {
         ) : (
           <View style={styles.list}>
             {journeys.map((journey) => (
-              <JourneyRow
-                key={journey.id}
-                journey={journey}
-                editing={editing?.id === journey.id}
-                onToggle={async () => {
-                  await setJourneyStatus(journey.id, journey.status === 'open' ? 'paused' : 'open');
-                  void refresh();
-                }}
-                onEdit={() => startEdit(journey)}
-                onCancel={() => confirmCancel(journey)}
-              />
+              <View key={journey.id} style={styles.list}>
+                <JourneyRow
+                  journey={journey}
+                  now={checkedAt}
+                  editing={editing?.id === journey.id}
+                  onToggle={async () => {
+                    await setJourneyStatus(
+                      journey.id,
+                      journey.status === 'open' ? 'paused' : 'open',
+                    );
+                    void refresh();
+                  }}
+                  onEdit={() => startEdit(journey)}
+                  onCancel={() => confirmCancel(journey)}
+                />
+                {editing?.id === journey.id && formCard}
+              </View>
             ))}
           </View>
         )}
@@ -355,14 +403,22 @@ export function JourneyPlanner() {
   );
 }
 
+/** The departure has passed. Such a journey no longer matches any parcel. */
+function hasDeparted(journey: Journey, now: number): boolean {
+  return new Date(journey.departureAt ?? journey.departsBefore).getTime() <= now;
+}
+
 function JourneyRow({
   journey,
+  now,
   editing,
   onToggle,
   onEdit,
   onCancel,
 }: {
   journey: Journey;
+  /** When the list was read; see `checkedAt`. */
+  now: number;
   editing: boolean;
   onToggle: () => void;
   onEdit: () => void;
@@ -378,6 +434,11 @@ function JourneyRow({
    * Hiding it entirely would make a cancel look like the row failed to save.
    */
   const settled = journey.status === 'cancelled' || journey.status === 'completed';
+  /*
+   * Left already, but not closed off. It is not listening for parcels, so
+   * Pause/Resume means nothing — the useful action is to reschedule it.
+   */
+  const departed = !settled && hasDeparted(journey, now);
 
   return (
     <View
@@ -410,6 +471,8 @@ function JourneyRow({
           <Text style={[styles.journeyState, { color: theme.textMuted }]}>
             {journey.status === 'cancelled' ? 'Withdrawn' : 'Done'}
           </Text>
+        ) : departed ? (
+          <Text style={[styles.journeyState, { color: theme.warningOnSoft }]}>Departed</Text>
         ) : (
           <Pressable
             onPress={onToggle}
@@ -433,11 +496,11 @@ function JourneyRow({
           <Pressable
             onPress={onEdit}
             accessibilityRole="button"
-            accessibilityLabel={`Edit ${journey.originCity} to ${journey.destinationCity}`}
+            accessibilityLabel={`${editing ? 'Close edit for' : departed ? 'Reschedule' : 'Edit'} ${journey.originCity} to ${journey.destinationCity}`}
             style={({ pressed }) => [styles.rowAction, styles.tappable, pressed && styles.pressed]}>
             <Pencil color={theme.primary} size={15} />
             <Text style={[styles.rowActionText, { color: theme.primary }]}>
-              {editing ? 'Editing…' : 'Edit'}
+              {editing ? 'Close edit' : departed ? 'Reschedule' : 'Edit'}
             </Text>
           </Pressable>
 

@@ -10,6 +10,7 @@ import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { BuildBanner } from '@/components/ui/build-banner';
 import { CookieBanner } from '@/components/ui/cookie-banner';
 import { NotificationRouter } from '@/components/ui/notification-router';
+import { OfferPopup } from '@/components/ui/offer-popup';
 import { DialogHost } from '@/components/ui/dialog';
 import { ToastHost } from '@/components/ui/toast';
 import { SITE_DESCRIPTION, SITE_TITLE } from '@/constants/site';
@@ -201,6 +202,13 @@ export default function RootLayout() {
                   a mounted component and nothing else.
               */}
               <CookieBanner />
+
+              {/*
+                A trip offer pops up over whichever tab a driver is on, not
+                only on Assigned Trip. Before the dialog and toast hosts so a
+                confirmation raised from it paints on top.
+              */}
+              <OfferPopup />
 
               {/* Outside the Stack so these survive navigation. */}
               <DialogHost />

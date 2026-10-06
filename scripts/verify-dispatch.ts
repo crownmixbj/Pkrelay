@@ -342,10 +342,15 @@ check(
 check(
   'editing loads the route back into the one form',
   code(planner).includes('setCapacity(String(journey.capacityKg))') &&
-    code(planner).includes(
-      'setDepartureAt(new Date(journey.departureAt ?? journey.departsBefore))',
-    ),
+    code(planner).includes('const departs = new Date(journey.departureAt ?? journey.departsBefore)') &&
+    code(planner).includes('setDepartureAt(departs)'),
   'a second form for the same fields is a second place for the validation to drift',
+);
+check(
+  'a departed journey is rescheduled with a fresh time, never its stale one',
+  code(planner).includes('if (hasDeparted(journey, new Date().getTime())) {') &&
+    code(planner).includes('setDepartureAt(null)'),
+  'a past departure fails validation on Save, which read as the edit being stuck',
 );
 check(
   'and the submit button says which of the two things it does',
