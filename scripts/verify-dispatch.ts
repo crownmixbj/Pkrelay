@@ -1149,6 +1149,34 @@ check(
   flat(cooldownCode).includes('drop index if exists public.dispatch_offers_no_repeat_decline;'),
   'a second decline of the same parcel would collide with the first, and the driver would see an error on Decline',
 );
+
+/*
+ * ⚠ Dropped again by 78, because production had it back.
+ *
+ *   20 was re-run after 23 and recreated the index, so every second decline of
+ *   the same parcel raised a unique violation. Nothing after 23 may create it.
+ */
+{
+  const migrationsDir = join(ROOT, 'supabase/migrations');
+  const files = readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();
+  const recreatedLater = files
+    .filter((f) => f >= '20250101000024')
+    .some((f) =>
+      /create\s+unique\s+index[^;]*dispatch_offers_no_repeat_decline/i.test(
+        readFileSync(join(migrationsDir, f), 'utf8'),
+      ),
+    );
+  const repair = readFileSync(
+    join(migrationsDir, '20250101000078_repeat_decline_repair.sql'),
+    'utf8',
+  );
+  check(
+    'a driver may decline the same parcel twice (78 drops the stray index)',
+    !recreatedLater &&
+      repair.includes('drop index if exists public.dispatch_offers_no_repeat_decline;'),
+    'with a 15-minute cooldown the parcel comes back, and a second decline would raise',
+  );
+}
 check(
   'but one live offer per parcel still is not negotiable',
   flat(cooldownCode).includes(
