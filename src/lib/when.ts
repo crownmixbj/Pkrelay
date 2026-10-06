@@ -111,3 +111,56 @@ export function formatStamp(iso: string | null | undefined): string {
 
   return `${formatDay(iso)}, ${formatClock(iso)}`;
 }
+
+/**
+ * `Today, 14:35 WAT` · `Tomorrow, 06:00 WAT` · `9 Oct, 06:00 WAT` — a moment
+ * near enough to now that the day matters more than the date.
+ *
+ * ⚠ For things that have not happened yet, where `formatStamp` reads wrong.
+ *
+ *   "2 Oct 2026, 06:00 WAT" is the right way to write down when a parcel *was*
+ *   collected: it settles a dispute. It is the wrong way to tell an operator
+ *   when a driver is leaving, because the question they are actually asking is
+ *   "is that soon", and answering it from a full date means reading the date,
+ *   working out what today is, and subtracting. A driver leaving at 06:00
+ *   tomorrow and one leaving at 06:00 next Thursday render almost identically.
+ *
+ * ⚠ The year is dropped, and only here.
+ *
+ *   Everything this formats is inside a two-week window — `MAX_DEPARTURE_DAYS`
+ *   is 14 — so the year carries no information and costs the five characters
+ *   that would otherwise fit the time on one line on a phone.
+ *
+ * ⚠ "Today" means today in Lagos, not on the reader's machine.
+ *
+ *   Both instants are shifted into WAT before their dates are compared, which
+ *   is the only way an operator in London reading at 00:30 WAT sees the same
+ *   word the driver would. Comparing a shifted value against an unshifted
+ *   `new Date()` would make the boundary wrong for exactly one hour a day.
+ */
+export function formatSoon(
+  iso: string | null | undefined,
+  now: Date = new Date(),
+): string {
+  const date = iso ? inLagos(iso) : null;
+  if (!date) return '';
+
+  const here = new Date(now.getTime() + WAT_OFFSET_MINUTES * 60_000);
+
+  /* Whole days apart, in WAT, with the time of day discarded on both sides. */
+  const dayOf = (value: Date) =>
+    Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate());
+
+  const days = Math.round((dayOf(date) - dayOf(here)) / 86_400_000);
+
+  const day =
+    days === 0
+      ? 'Today'
+      : days === 1
+        ? 'Tomorrow'
+        : days === -1
+          ? 'Yesterday'
+          : `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]}`;
+
+  return `${day}, ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())} ${TIME_ZONE_LABEL}`;
+}

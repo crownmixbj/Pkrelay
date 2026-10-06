@@ -365,6 +365,39 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
     migration: '20250101000074_admin_record_delivery.sql',
   },
   /*
+   * ⚠ A sort order, which is the quietest thing on this list.
+   *
+   *   Without 75 both hand-assignment screens still work: they list the same
+   *   drivers, with the same notes, and the Assign button does the same thing.
+   *   They just put the driver leaving tomorrow above the one leaving in ten
+   *   minutes, and nothing on screen says so. `departure_priority_live` reads
+   *   the live function bodies rather than checking the functions exist,
+   *   because both existed before 75 and what changed is what they sort on.
+   */
+  {
+    label: 'Dispatch: soonest departure first',
+    fn: 'departure_priority_live',
+    migration: '20250101000075_departure_priority.sql',
+  },
+  /*
+   * ⚠ The entry this whole list exists for.
+   *
+   *   Production carried a migration-history row for 50 while none of that
+   *   file's thirteen objects were in the database — so for weeks a delivery
+   *   produced the sender's email and no in-app notification at all, and
+   *   nothing anywhere said so. A history row is not evidence that a migration
+   *   ran, and this is the line that would have caught it.
+   *
+   *   `notification_spine_live` asserts the two triggers rather than the
+   *   functions, deliberately: a function nothing is wired to is the exact
+   *   shape of the failure being probed for.
+   */
+  {
+    label: 'Notification spine (inbox and push)',
+    fn: 'notification_spine_live',
+    migration: '20250101000076_notification_spine_repair.sql',
+  },
+  /*
    * Without 62 nothing breaks on screen — new accounts are simply never sent
    * the welcome email — which is exactly why it needs a line here.
    */

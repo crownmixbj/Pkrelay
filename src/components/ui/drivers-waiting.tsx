@@ -1,4 +1,5 @@
 import {
+  CalendarClock,
   CircleAlert,
   Clock,
   PackageCheck,
@@ -24,6 +25,7 @@ import { formatNaira } from '@/store/bookings';
 import {
   assignParcel,
   attemptsLabel,
+  departureLine,
   fetchDriverAvailability,
   fetchParcelsForDriver,
   fetchWaitingDrivers,
@@ -213,6 +215,14 @@ function DriverRow({
 
   const hasWork = driver.matchingParcels > 0;
 
+  /*
+    The clock time, beside the countdown badge rather than instead of it. See
+    `departureLine` for why both are here.
+  */
+  const departure = departureLine(driver);
+  /* The same threshold the badge uses, so the two never disagree in tone. */
+  const soon = driver.leavesInMinutes <= 60;
+
   return (
     <Card style={styles.driver}>
       <View style={styles.driverHead}>
@@ -237,6 +247,31 @@ function DriverRow({
           }
         />
       </View>
+
+      {/*
+        When they are leaving, written out.
+
+        ⚠ This row is why the list is sorted the way it is. `admin_waiting_
+          drivers` orders by `coalesce(departure_time, departs_before)` as of
+          75, so the driver at the top is the one whose window closes first —
+          and without the time on the face of the row that order looks
+          arbitrary.
+      */}
+      {!!departure && (
+        <View style={styles.availability}>
+          <CalendarClock
+            color={soon ? theme.warningOnSoft : theme.textSecondary}
+            size={14}
+          />
+          <Text
+            style={[
+              styles.availabilityText,
+              { color: soon ? theme.warningOnSoft : theme.textSecondary },
+            ]}>
+            {departure}
+          </Text>
+        </View>
+      )}
 
       <View style={styles.tags}>
         <Badge
@@ -391,6 +426,16 @@ function GiveParcelSheet({
           <Text style={[styles.shift, { color: theme.textSecondary }]}>
             {shiftLabel(driver)} · {driver.capacityKg} kg free · waiting{' '}
             {waitLabel(driver.waitingMinutes)}
+          </Text>
+        )}
+        {/*
+          Repeated inside the sheet on purpose: the row that was tapped is
+          covered by the sheet, and "will they still be here" is the question
+          that decides whether to give them the parcel at all.
+        */}
+        {!!driver && !!departureLine(driver) && (
+          <Text style={[styles.shift, { color: theme.textSecondary }]}>
+            {departureLine(driver)}
           </Text>
         )}
 

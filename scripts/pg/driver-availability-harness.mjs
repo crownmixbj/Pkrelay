@@ -1051,6 +1051,313 @@ const ibadanLagos = await parcel();
   check('and a non-admin is told nothing by it', hidden.rows.length === 0);
 }
 
+// ------------------------------- 10. the soonest departure goes first (75) --
+
+/*
+ * ⚠ The discriminator here is that declaration order is the *reverse* of
+ *   departure order.
+ *
+ *   `LATEST` declares first and leaves last; `SOON` declares last and leaves
+ *   first. Under 70's ordering — matching count, then `created_at` — the list
+ *   comes back LATEST, LATER, SOON, which is exactly backwards for the question
+ *   an operator is asking. Under 75 it comes back SOON, LATER, LATEST. A test
+ *   that seeded them in departure order would pass against either.
+ */
+const SOON = '88888888-8888-8888-8888-888888888888';
+const LATER = '99999999-9999-9999-9999-999999999999';
+const LATEST = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+
+const CLOCK_DRIVERS = [
+  { label: 'Soon', id: SOON, phone: '08030000011' },
+  { label: 'Later', id: LATER, phone: '08030000012' },
+  { label: 'Latest', id: LATEST, phone: '08030000013' },
+];
+
+{
+  await asOwner();
+  await db.exec(`
+    insert into auth.users (id, email, phone) values
+      ('${SOON}',   'soon@pkrelay.test',   '08030000011'),
+      ('${LATER}',  'later@pkrelay.test',  '08030000012'),
+      ('${LATEST}', 'latest@pkrelay.test', '08030000013');
+
+    update public.profiles set full_name = 'Soon Driver',   phone = '08030000011' where id = '${SOON}';
+    update public.profiles set full_name = 'Later Driver',  phone = '08030000012' where id = '${LATER}';
+    update public.profiles set full_name = 'Latest Driver', phone = '08030000013' where id = '${LATEST}';
+  `);
+
+  let counter = 100;
+  for (const driver of CLOCK_DRIVERS) {
+    counter += 1;
+    await db.query(
+      `insert into public.driver_applications (
+         user_id, reference, full_name, phone, email, nin, address, state,
+         vehicle_type, plate_number, license_id,
+         guarantor_name, guarantor_phone, guarantor_relationship, guarantor_address, guarantor_nin,
+         bank_name, account_number, account_name, kin_name, kin_phone, kin_relationship, status
+       ) values (
+         $1, $2, $3, $4, $5, '1234567890' || $6, '1 Test Road', 'Lagos',
+         'bike', 'ABC-' || $6, 'DL-' || $6,
+         'G Name', '08039999999', 'Brother', '2 Test Road', '12345678902',
+         'Test Bank', '0123456' || $6, $3, 'K Name', '08038888888', 'Sister', 'approved'
+       )`,
+      [
+        driver.id,
+        `PKR-D-${counter}`,
+        `${driver.label} Driver`,
+        driver.phone,
+        `${driver.label.toLowerCase()}@pkrelay.test`,
+        String(counter),
+      ],
+    );
+  }
+
+  await db.exec(`
+    alter table public.driver_applications disable trigger user;
+    update public.driver_applications set status = 'approved', reviewed_at = now()
+      where user_id in ('${SOON}', '${LATER}', '${LATEST}');
+    alter table public.driver_applications enable trigger user;
+  `);
+
+  /* Manual, so posting the parcel below does not hand one of them an offer. */
+  await asUser(ADMIN);
+  await db.query('select public.set_dispatch_mode($1)', ['manual']);
+
+  /* Declared in the reverse of the order they leave. See the note above. */
+  await journey(LATEST, { hours: 9, ageMinutes: 90 });
+  await journey(LATER, { hours: 4, ageMinutes: 60 });
+  await journey(SOON, { hours: 1, ageMinutes: 5 });
+
+  /* One parcel all three could take, so the actionable-first key ties. */
+  const shared = await parcel({ origin: 'Ibadan', destination: 'Lagos', weight: 2 });
+
+  const clock = (await waiting()).filter((row) =>
+    [SOON, LATER, LATEST].includes(row.driver_id),
+  );
+
+  check(
+    'all three are waiting',
+    clock.length === 3,
+    `got ${clock.length}: ${JSON.stringify(clock.map((row) => row.full_name))}`,
+  );
+  check(
+    'each of them can see the parcel',
+    clock.every((row) => Number(row.matching_parcels) >= 1),
+    'the first sort key is a tie only if they all match it',
+  );
+  check(
+    'the one leaving soonest is first and the one leaving last is last',
+    clock.map((row) => row.driver_id).join() === [SOON, LATER, LATEST].join(),
+    `got ${JSON.stringify(clock.map((row) => row.full_name))} — 70 ordered on created_at, which\n` +
+      '       is the reverse of this seeding on purpose',
+  );
+  check(
+    'and the screen is given the timestamps it needs to say so',
+    clock.every((row) => row.departs_before instanceof Date || typeof row.departs_before === 'string'),
+    'departureLine() reads departure_time first and falls back to departs_before',
+  );
+
+  /*
+   * ⚠ `departure_time` wins over the window, because `coalesce` puts it first
+   *   and because a driver who has named an exact time has said something more
+   *   precise than "before six".
+   */
+  await asOwner();
+  await db.query(
+    `update public.driver_journeys set departure_time = now() + interval '20 minutes'
+      where driver_id = $1 and status = 'open'`,
+    [LATEST],
+  );
+  const reordered = (await waiting())
+    .filter((row) => [SOON, LATER, LATEST].includes(row.driver_id))
+    .map((row) => row.driver_id);
+  check(
+    'an exact departure overrides the window it sits inside',
+    reordered.join() === [LATEST, SOON, LATER].join(),
+    `got ${JSON.stringify(reordered)} — the sort key is coalesce(departure_time, departs_before)`,
+  );
+
+  /*
+   * Put it back — as an exact time matching its own window rather than as null,
+   * because 27's journey guard will not let a declared departure be unsaid.
+   */
+  await asOwner();
+  await db.query(
+    `update public.driver_journeys set departure_time = now() + interval '9 hours'
+      where driver_id = $1 and status = 'open'`,
+    [LATEST],
+  );
+
+  /*
+   * ⚠ And the one thing departure does NOT outrank.
+   *
+   *   A driver leaving in ten minutes with nothing on their route is not a
+   *   decision anybody can make. The top row has to be actionable, so "is there
+   *   anything this driver could take" stays the leading key — reduced to a
+   *   boolean in 75 so that a *count* can no longer push a distant departure to
+   *   the top.
+   */
+  await asOwner();
+  await db.query(
+    `update public.driver_journeys set status = 'completed' where driver_id = $1`,
+    [SOON],
+  );
+  /*
+    ⚠ Enugu → Owerri, not Kano → Jos: section 9 left two unassigned Kano → Jos
+      parcels behind, so that route is the opposite of a dead end.
+  */
+  await journey(SOON, { origin: 'Enugu', destination: 'Owerri', hours: 1, ageMinutes: 2 });
+
+  const withDeadEnd = (await waiting()).filter((row) =>
+    [SOON, LATER, LATEST].includes(row.driver_id),
+  );
+  check(
+    'a driver with nothing to carry is not first just for leaving soonest',
+    withDeadEnd[0]?.driver_id === LATER && Number(withDeadEnd[0]?.matching_parcels) >= 1,
+    `got ${JSON.stringify(withDeadEnd.map((row) => [row.full_name, row.matching_parcels]))}`,
+  );
+  check(
+    'they are still on the list, at the bottom',
+    withDeadEnd[withDeadEnd.length - 1]?.driver_id === SOON &&
+      Number(withDeadEnd[withDeadEnd.length - 1]?.matching_parcels) === 0,
+    'an idle driver with no work on their route is information, not an action',
+  );
+
+  /* ---------------------- and the parcel-first list agrees with it -------- */
+
+  await asUser(ADMIN);
+  const candidates = (await db.query('select * from public.assignable_drivers($1)', [shared.id]))
+    .rows;
+  const byId = new Map(candidates.map((row) => [row.driver_id, row]));
+
+  check(
+    'a candidate carries the departure it is now sorted on',
+    byId.get(LATER)?.next_departure !== null && byId.get(LATEST)?.next_departure !== null,
+    'the column is new in 75; before it the sheet sorted by full_name',
+  );
+  check(
+    'and the mode of that same journey, so the time can be worded correctly',
+    byId.get(LATER)?.journey_mode === 'scheduled',
+    `got ${byId.get(LATER)?.journey_mode}`,
+  );
+
+  const matching = candidates
+    .filter((row) => row.route_matches && row.documents_ok)
+    .map((row) => row.driver_id);
+  check(
+    'the matching candidates are offered soonest-departure first',
+    matching.indexOf(LATER) < matching.indexOf(LATEST),
+    `got ${JSON.stringify(matching)}`,
+  );
+  check(
+    'a driver whose route does not match still sorts below one whose does',
+    !matching.includes(SOON) && byId.has(SOON),
+    'the list keeps showing the overrides; it just stops recommending them',
+  );
+
+  check(
+    'and the deployment panel can tell whether any of this is deployed',
+    (await db.query('select public.departure_priority_live() as ok')).rows[0].ok === true,
+    'it reads both live function bodies — the functions existed before 75',
+  );
+}
+
+// ------------------------- 11. the delivery reaches the sender's inbox (76) --
+
+/*
+ * ⚠ This is the production defect, pinned.
+ *
+ *   The production database carried a migration-history row for 50 while none
+ *   of that file's objects existed — no `notify_on_booking_status`, no
+ *   `on_booking_status_notify` trigger — so a delivery produced the sender's
+ *   email and nothing in the app, silently, for weeks. 76 re-applies the spine.
+ *   What is asserted below is not that the functions exist but that the wiring
+ *   does, because a function nothing is attached to is the exact failure.
+ */
+{
+  await asOwner();
+
+  const wired = await db.query(
+    `select
+       exists (
+         select 1 from pg_trigger t
+         where t.tgrelid = 'public.bookings'::regclass
+           and t.tgname = 'on_booking_status_notify' and not t.tgisinternal
+       ) as booking,
+       exists (
+         select 1 from pg_trigger t
+         where t.tgrelid = 'public.notifications'::regclass
+           and t.tgname = 'notifications_dispatch_push' and not t.tgisinternal
+       ) as push,
+       public.notification_spine_live() as probe`,
+  );
+  check('the sender-facing status notifier is attached to bookings', wired.rows[0].booking === true);
+  check('and the push dispatcher to notifications', wired.rows[0].push === true);
+  check(
+    'and the deployment panel probe says so',
+    wired.rows[0].probe === true,
+    'a history row is not evidence that a migration ran — this is what would have caught it',
+  );
+
+  const done = await db.query(
+    `select id, tracking_id, sender_id, delivered_at from public.bookings
+      where status = 'Delivered' and delivered_at is not null
+      order by delivered_at desc limit 1`,
+  );
+  check('the harness delivered a parcel earlier to read this from', done.rows.length === 1);
+
+  const inbox = await db.query(
+    `select kind, title, body, push_requested, created_at, metadata
+       from public.notifications
+      where user_id = $1 and kind = 'delivery_completed' and subject_id = $2`,
+    [done.rows[0].sender_id, done.rows[0].id],
+  );
+  check(
+    'the sender has a delivery notification in their inbox',
+    inbox.rows.length === 1,
+    `${inbox.rows.length} rows — this is the one production never had`,
+  );
+  check(
+    'naming the parcel, because an inbox entry that does not is unusable',
+    String(inbox.rows[0]?.title ?? '').includes(done.rows[0].tracking_id),
+    String(inbox.rows[0]?.title),
+  );
+  check(
+    'and saying who took it',
+    /Ngozi/.test(String(inbox.rows[0]?.body ?? '')),
+    String(inbox.rows[0]?.body),
+  );
+  check(
+    'it is marked for a push rather than inbox-only',
+    inbox.rows[0]?.push_requested === true,
+    'the sender is not looking at the app when their parcel arrives',
+  );
+
+  /*
+   * ⚠ "Immediately" is the request this answers, so it is measured rather than
+   *   asserted in prose: the row is written by the AFTER UPDATE trigger inside
+   *   the same transaction as the status change, so its timestamp and
+   *   `delivered_at` are the same `now()`. Nothing is waiting for a sweep.
+   */
+  const gap = Math.abs(
+    new Date(inbox.rows[0]?.created_at).getTime() - new Date(done.rows[0].delivered_at).getTime(),
+  );
+  check(
+    'written in the same transaction as the delivery, not by a later sweep',
+    gap < 1000,
+    `${gap}ms between delivered_at and the notification`,
+  );
+
+  /* The driver is told too, and once — two buzzes for one delivery is how a
+     driver learns to ignore the first. */
+  const driverSide = await db.query(
+    `select count(*)::int as n from public.notifications
+      where kind = 'delivery_completed' and subject_id = $1 and user_id <> $2`,
+    [done.rows[0].id, done.rows[0].sender_id],
+  );
+  check('the driver gets exactly one as well', driverSide.rows[0].n === 1);
+}
+
 await db.close();
 
 if (failures > 0) {

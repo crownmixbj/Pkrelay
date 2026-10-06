@@ -24,6 +24,7 @@ import { formatNaira } from '@/store/bookings';
 import {
   assignParcel,
   attemptsLabel,
+  candidateDepartureLine,
   fetchCandidates,
   fetchDispatchHealth,
   fetchUnassignedParcels,
@@ -531,6 +532,21 @@ function AssignSheet({
                 <Text style={[styles.candidateMeta, { color: theme.textSecondary }]}>
                   {candidate.baseCity} · {candidate.vehicleType} · {candidate.activeParcels} active
                 </Text>
+                {/*
+                  When they leave, and the reason this list is in this order.
+                  `assignable_drivers` sorts on `next_departure` as of 75 — the
+                  same preference `dispatch_booking` has applied since 26, which
+                  this screen used to contradict by sorting on name.
+
+                  Absent rather than "unknown" when no journey is live: the note
+                  below already says "No journey declared", and a second line
+                  saying it in other words is noise.
+                */}
+                {!!candidateDepartureLine(candidate) && (
+                  <Text style={[styles.candidateMeta, { color: theme.textSecondary }]}>
+                    {candidateDepartureLine(candidate)}
+                  </Text>
+                )}
                 <Text
                   style={[
                     styles.candidateNote,

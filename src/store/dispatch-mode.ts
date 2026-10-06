@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { formatSoon } from '@/lib/when';
 
 /**
  * Automatic matching, or a person placing every parcel.
@@ -198,6 +199,14 @@ export type Candidate = {
   eligible: boolean;
   /** Plain English: what the matcher thinks of this driver for this parcel. */
   note: string;
+  /**
+   * When their soonest live journey leaves. Null when none is live — which
+   * includes a driver `hasOpenJourney` calls online on a window that has
+   * already lapsed, a state `assignable_drivers` never checked before 75.
+   */
+  nextDeparture: string | null;
+  /** The mode of that same journey, so the time above can be read correctly. */
+  journeyMode: 'scheduled' | 'flash' | null;
 };
 
 /**
@@ -225,6 +234,8 @@ export async function fetchCandidates(parcelId: string): Promise<Candidate[]> {
     documentsOk: row.documents_ok === true,
     eligible: row.eligible === true,
     note: String(row.note ?? ''),
+    nextDeparture: row.next_departure ? String(row.next_departure) : null,
+    journeyMode: row.journey_mode === 'flash' ? 'flash' : row.journey_mode === 'scheduled' ? 'scheduled' : null,
   }));
 }
 
@@ -410,6 +421,69 @@ export function shiftLabel(driver: Pick<WaitingDriver, 'mode' | 'originCity' | '
   return driver.mode === 'flash'
     ? `In ${driver.originCity}`
     : `${driver.originCity} → ${driver.destinationCity}`;
+}
+
+/**
+ * When this driver is leaving, in words, for the screens that assign by hand.
+ *
+ * ⚠ The number beside it on the row is a countdown; this is the clock time,
+ *   and both are there on purpose.
+ *
+ *   "Leaves in 40m" is what decides who gets the next parcel. "Leaves Today,
+ *   14:35 WAT" is what an operator reads out on the phone, writes on a
+ *   handover note, and checks a driver's own claim against. A countdown alone
+ *   cannot be repeated to anybody, and a timestamp alone has to be subtracted
+ *   from now before it means anything.
+ *
+ * ⚠ The two modes are different facts and are worded differently.
+ *
+ *   A scheduled route has a departure — a moment the driver sets off.
+ *   `declare_journey` gives a flash shift `departs_before = now() + hours`,
+ *   which is when their availability *lapses*, not when they leave; calling
+ *   that a departure would tell an operator a driver is about to set off for
+ *   somewhere when they are in fact about to go off shift.
+ *
+ * Returns null when there is nothing to say, so a caller renders no row rather
+ * than an empty one.
+ */
+export function departureLine(
+  journey: {
+    mode: 'scheduled' | 'flash' | null;
+    departureTime?: string | null;
+    departsBefore?: string | null;
+  },
+  now: Date = new Date(),
+): string | null {
+  if (journey.mode === 'flash') {
+    const until = formatSoon(journey.departsBefore, now);
+    return until ? `On shift until ${until}` : null;
+  }
+
+  /*
+   * `departure_time` is the exact moment, added in 26. A journey declared
+   * before that migration has only the window, so the copy says "by" rather
+   * than claiming a precision the row does not carry.
+   */
+  const exact = formatSoon(journey.departureTime, now);
+  if (exact) return `Leaves ${exact}`;
+
+  const latest = formatSoon(journey.departsBefore, now);
+  return latest ? `Leaves by ${latest}` : null;
+}
+
+/** The same sentence for a candidate row, which carries only the one timestamp. */
+export function candidateDepartureLine(
+  candidate: Pick<Candidate, 'nextDeparture' | 'journeyMode'>,
+  now: Date = new Date(),
+): string | null {
+  if (!candidate.nextDeparture) return null;
+
+  return departureLine(
+    candidate.journeyMode === 'flash'
+      ? { mode: 'flash', departsBefore: candidate.nextDeparture }
+      : { mode: 'scheduled', departureTime: candidate.nextDeparture },
+    now,
+  );
 }
 
 /** The same five counts for one parcel, where there is no list to read them from. */

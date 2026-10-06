@@ -339,6 +339,12 @@ function ParcelDetail({
 
   if (!detail) return <ActivityIndicator color={theme.primary} style={styles.loading} />;
 
+  /*
+   * Delivered or cancelled: the parcel has stopped moving, and nothing about
+   * placing it is a live question any more.
+   */
+  const finished = detail.status === 'Delivered' || detail.status === 'Cancelled';
+
   return (
     <View style={styles.detail}>
       <View style={styles.detailHead}>
@@ -385,27 +391,42 @@ function ParcelDetail({
         />
       )}
 
-      <SectionLabel>Dispatch</SectionLabel>
-      <Row label="Driver" value={detail.driverName ?? 'Not assigned'} />
-      <View style={styles.detailRow}>
-        <Radio color={theme.textMuted} size={14} />
-        {/*
-          ⚠ Read from `offer_attempts`, not from `detail.offersMade`.
+      {/*
+        ⚠ A finished parcel is not being dispatched, and the heading said it was.
 
-            That column counts offer rows and this line used to render it as
-            "Offered to N drivers" — the same miscount the dispatch queue made,
-            which turned seven attempts at one driver into a sentence about five
-            drivers refusing a parcel. 71 added one function that counts both,
-            and all three screens that say this now read it from there.
-            `admin_parcel_detail` returns thirty columns and was left alone
-            rather than recreated to add three.
-        */}
-        <Text style={[styles.detailValue, { color: theme.textSecondary }]}>
-          {attempts === null
-            ? 'Dispatch history unavailable'
-            : (attemptsLabel(attempts) ?? 'Never offered to a driver')}
-        </Text>
-      </View>
+          "Dispatch" on a delivered parcel reads as though the platform is still
+          trying to place it — and under it sat the offer history, which is the
+          story of how it got matched rather than anything about the delivery.
+          Once a parcel is done the only part of that still worth printing is
+          who carried it, and the offer attempts belong to the period when
+          placing it was still a question. They are not lost: every offer is an
+          `app_events` row, which the System Logs screen reads.
+      */}
+      <SectionLabel>
+        {finished ? (detail.status === 'Cancelled' ? 'Carrier' : 'Delivery') : 'Dispatch'}
+      </SectionLabel>
+      <Row label="Driver" value={detail.driverName ?? 'Not assigned'} />
+      {!finished && (
+        <View style={styles.detailRow}>
+          <Radio color={theme.textMuted} size={14} />
+          {/*
+            ⚠ Read from `offer_attempts`, not from `detail.offersMade`.
+
+              That column counts offer rows and this line used to render it as
+              "Offered to N drivers" — the same miscount the dispatch queue made,
+              which turned seven attempts at one driver into a sentence about five
+              drivers refusing a parcel. 71 added one function that counts both,
+              and all three screens that say this now read it from there.
+              `admin_parcel_detail` returns thirty columns and was left alone
+              rather than recreated to add three.
+          */}
+          <Text style={[styles.detailValue, { color: theme.textSecondary }]}>
+            {attempts === null
+              ? 'Dispatch history unavailable'
+              : (attemptsLabel(attempts) ?? 'Never offered to a driver')}
+          </Text>
+        </View>
+      )}
 
       {/*
         The photographs, above the checks that describe them.

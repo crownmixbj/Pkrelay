@@ -204,6 +204,18 @@ never recorded it", read through `admin_delivery_attribution`. The override logs
 at **warning**: one is a flat battery, a run of them is the delivery flow failing
 on real phones, and the log is where that shows up before anybody thinks to ask.
 
+## A finished parcel is not being dispatched
+
+The parcel drawer filed everything under **Dispatch** — the carrier and the
+offer history — whatever the parcel's status. On a delivered parcel that heading
+reads as though the platform is still trying to place it.
+
+Once a parcel is Delivered or Cancelled the section is headed **Delivery** (or
+**Carrier** for a cancellation), and the offer-attempt line is gone: how a parcel
+got matched is not part of how it ended. Who carried it stays, because that is
+the delivery record. The attempts themselves are not lost — every offer writes an
+`app_events` row, which the System Logs screen reads.
+
 ## The delivery email already exists
 
 `email_on_booking_status` (38) queues a `delivery_completed` email to the
@@ -223,15 +235,143 @@ template for kind "password_changed"* against an older deployment of
 `notify-events`. The current deployment has that template; the row has not been
 retried.
 
+## Soonest departure wins (75)
+
+Three lists answer "who should take this parcel", and until 75 only one of them
+sorted by the clock.
+
+| | ordered by, before 75 | after 75 |
+|---|---|---|
+| `dispatch_booking` (26) | untried first, then **soonest departure** | unchanged |
+| `admin_waiting_drivers` (70) | matching *count*, then when the shift was declared | can-be-helped, then **soonest departure** |
+| `assignable_drivers` (32) | documents, route, parcels in hand, **name** | documents, route, **soonest departure**, parcels in hand, name |
+
+The automatic matcher has preferred the soonest departure since 26 — *"a driver
+leaving in twenty minutes should be offered the parcel ahead of one leaving
+tomorrow"* is that file's own sentence. What was wrong is that the two screens
+an operator uses to assign **by hand** sorted on something else, so a human
+working the queue silently undid the priority the automation applies.
+
+All three now sort on the same expression, `coalesce(departure_time,
+departs_before)`, which is also the expression `journey_matches` gates
+liveness on. One definition of "leaving soonest", in one place, is the property
+worth keeping.
+
+⚠ **Departure is the second key on the waiting list, not the first.** A driver
+leaving in ten minutes with nothing on their route is not a decision anybody can
+make; the top row has to be actionable. So "is there anything this driver could
+take" stays ahead of it — reduced from 70's *count* to a boolean, because a
+count as the leading key is exactly how a driver with nine parcels leaving
+tomorrow outranked one with a single parcel leaving within the hour.
+
+### Saying it on screen
+
+`departureLine()` in `src/store/dispatch-mode.ts`, built on `formatSoon()` in
+`src/lib/when.ts`:
+
+| journey | reads |
+|---|---|
+| scheduled, `departure_time` set | `Leaves Today, 14:35 WAT` |
+| scheduled, leaving tomorrow | `Leaves Tomorrow, 06:00 WAT` |
+| scheduled, further off | `Leaves 12 Oct, 06:00 WAT` |
+| scheduled, declared before 26 | `Leaves by Today, 18:00 WAT` |
+| flash shift | `On shift until Today, 18:00 WAT` |
+
+Three things that line is careful about:
+
+- **The countdown badge stays.** "Leaves in 40m" is what decides who gets the
+  next parcel; the clock time is what gets read out on the phone and written on
+  a handover note. A countdown cannot be repeated to anybody and a timestamp has
+  to be subtracted from now first, so both are on the row.
+- **A flash shift is worded differently.** `declare_journey` sets a flash
+  journey's `departs_before` to `now() + hours` — when their availability
+  *lapses*, not when they leave. Calling that a departure would tell an operator
+  a driver is about to set off for somewhere when they are about to go off
+  shift.
+- **WAT, and the year dropped.** Everything it formats is inside
+  `MAX_DEPARTURE_DAYS`, so the year carries no information; "today" means today
+  in Lagos, which is why both instants are shifted before their dates are
+  compared.
+
+## The notification spine was never on production (76)
+
+The delivery **email** has always been immediate: `email_on_booking_status` (38,
+replaced in 64) queues `delivery_completed` to the sender in the same
+transaction as the status change, and `dispatch_email` (53) is an `after insert`
+trigger on `email_outbox` that POSTs it to `notify-events` through pg_net there
+and then. `loci-unsent-emails` is a retry sweep, not the sender.
+
+The in-app notification and the push beside it come from
+`notify_on_booking_status`, and on production that function did not exist —
+while `supabase_migrations.schema_migrations` carried a row saying 50 had been
+applied. Checked 2026-10-06: of 50's thirteen objects, **one** was present
+(`queue_notification`, which 49 owns). No `on_booking_status_notify` trigger, no
+`private.naira`, and none of its three pg_cron jobs. `public.notifications` had
+two rows, both from the guarantor path, after weeks of live deliveries.
+
+So a sender got an email and nothing in the app, and nothing anywhere said so.
+
+⚠ **A history row is not evidence that a migration ran.** That is the lesson,
+and `notification_spine_live()` is the line on the deployment panel that would
+have caught it. It asserts the two *triggers* rather than the functions,
+deliberately: a function nothing is wired to is the precise shape of this
+failure, and a `to_regprocedure` probe would have gone green on it.
+
+76 re-establishes the spine. Its body is 50's, generated from that file rather
+than retyped, and `verify:availability` asserts the two are byte-identical from
+50's `hardening` marker onward — if either is ever edited, both must be.
+
+⚠ **Why a new migration rather than clearing the history row.** `delete from
+supabase_migrations.schema_migrations where version = '20250101000050'` followed
+by a push would fix one database and leave no trace in the chain: any other
+environment whose history got confused the same way stays broken, and nothing in
+`npm run verify` would notice. 76 converges every environment on the next push.
+
+### The burst that was not there
+
+50 schedules three sweepers, two of which could in principle notify a backlog on
+their first run. Both are window-bounded and dedupe on `subject_id`, and both
+were counted against production before 76 was written:
+
+```sql
+-- unconfirmed signups with a driver application, 1–30 days old
+select count(*) from auth.users u
+ where u.email_confirmed_at is null
+   and u.created_at < now() - interval '24 hours'
+   and u.created_at > now() - interval '30 days'
+   and u.deleted_at is null
+   and exists (select 1 from public.driver_applications a where a.user_id = u.id);
+-- assigned parcels not collected after 30 minutes, under 2 days old
+select count(*) from public.bookings b
+ where b.status = 'Assigned' and b.driver_id is not null
+   and b.accepted_at < now() - interval '30 minutes'
+   and b.accepted_at > now() - interval '2 days';
+```
+
+Both returned **0**. Worth re-running before applying 76 to any environment that
+has been live longer.
+
 ## Tests
 
 ```bash
-npm run verify:availability      # source assertions
-npm run verify:pg-availability   # 69, 70 and 71 against real Postgres under RLS
+npm run verify:availability      # source assertions, including 75 and 76
+npm run verify:pg-availability   # 69–76 against real Postgres under RLS
 ```
 
 The pg harness pins the retry loop as well: a lapsed offer is not re-offered
 inside the cooldown, and *is* re-offered to the same driver once it has passed.
+
+Two assertions in it are worth knowing about:
+
+- **Declaration order is the reverse of departure order.** The three drivers
+  seeded for 75 declare their shifts last-leaving-first, so the old ordering
+  returns them backwards and a test seeded in departure order would have passed
+  against either.
+- **"Immediately" is measured, not asserted in prose.** The sender's delivery
+  notification is written by an `after update` trigger inside the same
+  transaction as the status change, so the harness compares its `created_at`
+  against `delivered_at` and requires them within a second. Nothing is waiting
+  for a sweep.
 
 ## Deploy
 
@@ -239,28 +379,23 @@ inside the cooldown, and *is* re-offered to the same driver once it has passed.
 supabase link --project-ref <ref> && supabase db push
 ```
 
-Both migrations are re-runnable. 70 creates three read-only functions and
-touches no table; 69 replaces one function and changes no signature.
+Every migration here is re-runnable. 70 and 75 create or replace read-only
+functions and touch no table; 69 replaces one function and changes no signature;
+76 is `create or replace` throughout with `drop trigger if exists` before every
+trigger.
 
-⚠ **The notification half of 69 needs migration 50.** On a database where 50 has
-not been applied there is no `on_booking_status_notify` trigger, so moving a
-parcel to `'Assigned'` tells nobody — by hand or by a driver accepting an offer.
-Check with:
+⚠ **75 drops and recreates `assignable_drivers`.** `create or replace` cannot
+change a function's output columns and it gains two. There is a moment inside
+the transaction where the function does not exist; a push is one transaction, so
+nothing outside it ever sees that.
 
-```sql
-select to_regprocedure('public.notify_on_booking_status()') is not null;
-```
-
-If that is false, 50 has to go on first. Applying it late is safe — nothing in
-51–70 re-creates any function or trigger it owns — but note that it schedules
-three pg_cron jobs, and `sweep_unconfirmed_emails` notifies every account with a
-driver application and an unconfirmed email from the last 30 days. Count them
-before the first run:
+⚠ **Push 76 even where the history claims 50.** That is the case it exists for.
+Afterwards, check the wiring rather than the history:
 
 ```sql
-select count(*) from auth.users u
- where u.email_confirmed_at is null
-   and u.created_at < now() - interval '24 hours'
-   and u.created_at > now() - interval '30 days'
-   and exists (select 1 from public.driver_applications a where a.user_id = u.id);
+select public.notification_spine_live();   -- must be true
+select public.departure_priority_live();   -- must be true
 ```
+
+Both are on the deployment panel in the admin console, so the answer is also one
+screen away without opening the SQL editor.

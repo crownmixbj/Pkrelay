@@ -24,8 +24,11 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { stallTone } from '../src/store/admin';
+import { formatSoon } from '../src/lib/when';
 import {
   attemptsLabel,
+  candidateDepartureLine,
+  departureLine,
   offersGoingUnanswered,
   shiftLabel,
   waitLabel,
@@ -52,6 +55,11 @@ const board = read('src/components/ui/parcels-in-flight.tsx');
 const adminScreen = read('src/app/(tabs)/admin.tsx');
 const drawer = read('src/components/ui/admin-parcel-drawer.tsx');
 const availability = read('supabase/migrations/20250101000070_driver_availability.sql');
+const priority = read('supabase/migrations/20250101000075_departure_priority.sql');
+const triggers = read('supabase/migrations/20250101000050_notification_triggers.sql');
+const spine = read('supabase/migrations/20250101000076_notification_spine_repair.sql');
+const dispatchMode = read('supabase/migrations/20250101000032_dispatch_mode.sql');
+const gaps = read('src/lib/schema-gap.ts');
 const matcher = read('supabase/migrations/20250101000026_departure_time.sql');
 const store = read('src/store/dispatch-mode.ts');
 const panel = read('src/components/ui/drivers-waiting.tsx');
@@ -680,6 +688,22 @@ for (const fn of FUNCTIONS) {
     /recordedByAdmin/.test(drawer) && /never recorded it/.test(drawer),
   );
   check(
+    'a finished parcel is not filed under Dispatch',
+    /finished \? \(detail\.status === 'Cancelled' \? 'Carrier' : 'Delivery'\) : 'Dispatch'/.test(
+      drawer,
+    ),
+    '"Dispatch" on a delivered parcel reads as though the platform is still trying to place it',
+  );
+  check(
+    'and its offer history goes with the heading',
+    /\{!finished && \(/.test(drawer),
+    'how a parcel got matched is not part of how it ended — the attempts stay in app_events',
+  );
+  check(
+    'but who carried it survives, because that is the delivery record',
+    /<SectionLabel>[\s\S]{0,200}<Row label="Driver"/.test(drawer),
+  );
+  check(
     'the drawer opened on one parcel has exactly one way out',
     /backLabel=\{focusId \? null : 'Back to the list'\}/.test(drawer),
     'the sheet already ends with its own Close; a second one stacked two identical buttons',
@@ -688,6 +712,255 @@ for (const fn of FUNCTIONS) {
     'and the detail renders its back control only when it has somewhere to go',
     (drawer.match(/\{!!backLabel && <Button label=\{backLabel\}/g) ?? []).length === 2,
     'both the missing-parcel branch and the normal one',
+  );
+}
+
+// ------------------------------------ 16. the clock decides the order (75) --
+
+{
+  const sql = code(priority);
+
+  check(
+    'the waiting list keeps its signature and all twenty columns',
+    /create or replace function public\.admin_waiting_drivers\(max_rows integer default 50\)/.test(
+      sql,
+    ) &&
+      ['departs_after', 'departs_before', 'departure_time', 'leaves_in_minutes', 'matching_parcels']
+        .every((column) => sql.includes(column)),
+    'create or replace swaps the whole function — a column left out of 75 is a column deleted',
+  );
+
+  /*
+   * ⚠ The assertion that matters: the admin lists and the matcher sort on the
+   *   same expression. If they ever disagree, a human working the queue by hand
+   *   silently undoes the priority dispatch applies automatically.
+   */
+  const expression = 'coalesce(j.departure_time, j.departs_before) asc';
+  check(
+    'the waiting list sorts on the departure',
+    sql.includes(expression),
+    'without it the order is `created_at` — when the shift was declared, not when it leaves',
+  );
+  check(
+    'and it is the same expression the matcher has used since 26',
+    code(matcher).includes('coalesce(journey_departure, journey_departs_before)') &&
+      code(dispatchMode).includes(expression),
+    'two definitions of "leaving soonest" is how the screen and the automation drift apart',
+  );
+
+  check(
+    'the matching count is reduced to a boolean ahead of it',
+    /order by\s*\(\s*exists \(/.test(sql) && !/\)\s*desc,\s*\n\s*j\.created_at asc\s*\n\s*limit/.test(sql),
+    'a count as the leading key put nine parcels leaving tomorrow above one leaving in ten minutes',
+  );
+
+  check(
+    'the candidate list is dropped before it is recreated',
+    /drop function if exists public\.assignable_drivers\(uuid\);/.test(sql) &&
+      /create function public\.assignable_drivers\(parcel uuid\)/.test(sql),
+    'create or replace cannot change a function’s output columns',
+  );
+  check(
+    'and it returns the departure it now sorts on',
+    /next_departure timestamptz/.test(sql) && /journey_mode text/.test(sql),
+  );
+  check(
+    'the candidate sort puts departure above the parcel count',
+    sql.indexOf('c.next_departure asc nulls last') > sql.indexOf('c.route_matches desc') &&
+      sql.indexOf('c.next_departure asc nulls last') < sql.indexOf('c.active_parcels asc'),
+    'a driver leaving within the hour beats one carrying one fewer parcel and leaving tomorrow',
+  );
+  check(
+    'nulls sort last rather than first',
+    /nulls last/.test(sql),
+    'plain asc puts every driver with no live journey at the top of the list',
+  );
+
+  check(
+    'the drivers the function deliberately still returns survived the recreate',
+    /No journey declared/.test(sql) &&
+      /Blocked — a required document has expired/.test(sql) &&
+      /Online, but not going this way/.test(sql) &&
+      /Matches this route/.test(sql),
+    'an operator is on that screen because they know something the matcher does not',
+  );
+
+  check(
+    'both halves are probed by reading the live bodies',
+    /pg_get_functiondef/.test(sql) && /departure_priority_live/.test(sql),
+    'both functions existed before 75 — their presence proves nothing about what they sort on',
+  );
+}
+
+// ------------------------------------------ 17. saying it on screen (75) --
+
+{
+  const now = new Date('2026-10-06T09:00:00.000Z');
+
+  check(
+    'a scheduled departure reads as a departure',
+    departureLine(
+      { mode: 'scheduled', departureTime: '2026-10-06T13:35:00.000Z', departsBefore: null },
+      now,
+    ) === 'Leaves Today, 14:35 WAT',
+    String(
+      departureLine(
+        { mode: 'scheduled', departureTime: '2026-10-06T13:35:00.000Z', departsBefore: null },
+        now,
+      ),
+    ),
+  );
+  check(
+    'tomorrow is named rather than dated',
+    departureLine(
+      { mode: 'scheduled', departureTime: '2026-10-07T05:00:00.000Z', departsBefore: null },
+      now,
+    ) === 'Leaves Tomorrow, 06:00 WAT',
+  );
+  check(
+    'and anything further off carries its date',
+    departureLine(
+      { mode: 'scheduled', departureTime: '2026-10-12T05:00:00.000Z', departsBefore: null },
+      now,
+    ) === 'Leaves 12 Oct, 06:00 WAT',
+  );
+
+  /*
+   * ⚠ A flash shift's `departs_before` is when their availability lapses, not
+   *   when they set off — `declare_journey` sets it to now() + hours. Wording
+   *   it as a departure tells an operator a driver is leaving for somewhere
+   *   when they are going off shift.
+   */
+  check(
+    'a flash shift says when it ends, not when it leaves',
+    departureLine({ mode: 'flash', departsBefore: '2026-10-06T17:00:00.000Z' }, now) ===
+      'On shift until Today, 18:00 WAT',
+    String(departureLine({ mode: 'flash', departsBefore: '2026-10-06T17:00:00.000Z' }, now)),
+  );
+  check(
+    'a journey declared before 26 does not claim a precision it has not got',
+    departureLine(
+      { mode: 'scheduled', departureTime: null, departsBefore: '2026-10-06T17:00:00.000Z' },
+      now,
+    ) === 'Leaves by Today, 18:00 WAT',
+  );
+  check(
+    'and nothing to say renders nothing',
+    departureLine({ mode: 'scheduled', departureTime: null, departsBefore: null }, now) === null &&
+      candidateDepartureLine({ nextDeparture: null, journeyMode: null }, now) === null,
+    'a caller skips the row rather than drawing an empty one',
+  );
+  check(
+    'a candidate row reads the one timestamp it is given',
+    candidateDepartureLine(
+      { nextDeparture: '2026-10-06T13:35:00.000Z', journeyMode: 'scheduled' },
+      now,
+    ) === 'Leaves Today, 14:35 WAT' &&
+      candidateDepartureLine(
+        { nextDeparture: '2026-10-06T17:00:00.000Z', journeyMode: 'flash' },
+        now,
+      ) === 'On shift until Today, 18:00 WAT',
+  );
+
+  /* The year is dropped here and nowhere else — see `formatSoon`. */
+  check(
+    'the relative stamp is in Lagos time and drops the year',
+    formatSoon('2026-10-06T23:30:00.000Z', now) === 'Tomorrow, 00:30 WAT',
+    'the day has to move across midnight, or the word is wrong for an hour every night',
+  );
+  check(
+    'and an unusable value formats as nothing',
+    formatSoon(null) === '' && formatSoon('not a date') === '',
+  );
+
+  check(
+    'the waiting row shows the time beside the countdown, not instead of it',
+    /departureLine\(driver\)/.test(panel) && /Leaves in \$\{waitLabel/.test(panel),
+    'the countdown decides who gets the parcel; the clock time is what gets read out on the phone',
+  );
+  check(
+    'the sheet repeats it, because the row it covers is the one being decided',
+    (panel.match(/departureLine\(driver\)/g) ?? []).length >= 3,
+  );
+  check(
+    'the store maps both new columns off the candidate row',
+    /next_departure/.test(store) && /journey_mode/.test(store),
+  );
+  check(
+    'and the assign-a-driver sheet says it too',
+    /candidateDepartureLine\(candidate\)/.test(control),
+    'that list is the one that used to sort by name',
+  );
+}
+
+// -------------------------- 18. the notification spine, applied for real --
+
+{
+  /*
+   * ⚠ Production carried a migration-history row for 50 while none of that
+   *   file's thirteen objects were in the database. A delivery produced the
+   *   sender's email and no in-app notification at all, for weeks, silently.
+   *   76 is the convergence point; these checks are what keep it one.
+   */
+  const marker = '-- ------------------------------------------------------------- hardening ----';
+  const carried = triggers.slice(triggers.indexOf(marker));
+
+  check('50 still has the marker 76 was generated from', triggers.includes(marker));
+  check(
+    '76 carries 50’s body byte for byte',
+    carried.length > 1000 && spine.includes(carried),
+    'the two files cannot be allowed to drift: 76 is what runs on a database that already claims 50',
+  );
+
+  check(
+    'and it is the sender’s delivery notification that the repair is about',
+    /notify_on_booking_status/.test(spine) &&
+      /on_booking_status_notify/.test(spine) &&
+      /after update of status on public\.bookings/.test(spine),
+  );
+
+  {
+    /* Counted on the code, not the prose — the header above it quotes both. */
+    const statements = code(spine);
+    check(
+      'every statement in it is re-runnable',
+      !/\ncreate function /.test(statements) &&
+        (statements.match(/drop trigger if exists/g) ?? []).length === 8 &&
+        (statements.match(/drop trigger if exists/g) ?? []).length ===
+          (statements.match(/\ncreate trigger /g) ?? []).length,
+      'this file will be applied to databases that already have some of it',
+    );
+  }
+
+  /*
+   * ⚠ The probe asserts the triggers, not the functions. A function nothing is
+   *   wired to is the precise shape of the failure being probed for, and a
+   *   `to_regprocedure` check would have gone green on it.
+   */
+  check(
+    'the probe asks whether a delivery actually reaches the inbox',
+    /notification_spine_live/.test(spine) &&
+      /from pg_trigger/.test(spine) &&
+      /tgname = 'on_booking_status_notify'/.test(spine) &&
+      /tgname = 'notifications_dispatch_push'/.test(spine),
+    'the functions existed on staging and the triggers did not — that is the bug',
+  );
+  check(
+    'it does not settle for the functions being present',
+    !/to_regprocedure\('public\.notify_on_booking_status/.test(spine),
+  );
+
+  check(
+    'the email path is untouched',
+    !/email_on_booking_status/.test(code(spine)),
+    'the delivery email has always been immediate — dispatch_email POSTs it on insert (53)',
+  );
+
+  check(
+    'both new migrations are on the deployment panel',
+    /20250101000075_departure_priority\.sql/.test(gaps) &&
+      /20250101000076_notification_spine_repair\.sql/.test(gaps),
+    'a missing migration whose only symptom is a wrong sort order, or a silent inbox',
   );
 }
 
