@@ -20,6 +20,7 @@ import {
   PackagePlus,
   FileWarning,
   Radar,
+  Route,
   Scale,
   UsersRound,
   ShieldCheck,
@@ -270,22 +271,26 @@ const NAV_LINKS: NavLink[] = [
     href: '/driver-updates',
     icon: (color, size) => <Truck color={color} size={size} />,
     description: 'Apply to drive, track your application, and manage your work',
-    also: ['/driver', '/driver-signup', '/driver-updates', '/driver-guidelines', '/driver-wallet'],
+    also: [
+      '/driver',
+      '/driver-signup',
+      '/driver-updates',
+      '/available-packages',
+      '/driver-guidelines',
+      '/driver-wallet',
+    ],
     /*
-      ⚠ Four entries, and two deliberate omissions.
+      Five entries, in the driver's own arc: apply, plan a trip, work, get
+      paid, look things up.
 
-        Setup Trip (`/available-packages`) and Assigned Trip (`/driver`) used to
-        sit here and no longer do. Both are things a driver does *while
-        working*, and neither means anything to the signed-out visitor this menu
-        is mostly shown to — a public navigation bar advertising a job board you
-        cannot use is a menu that mostly leads to refusals.
+      ⚠ Setup Trip is back in this menu (Oct 2026), on request.
 
-        Neither is orphaned. The Driver Dashboard carries both, it is the second
-        entry below, and the native tab bar still has them. `verify-navigation`
-        asserts every route keeps a way in, which is the check that would have
-        caught this had I got it wrong.
-
-      The order is the driver's own arc: apply, work, get paid, look things up.
+        It was taken out on the reasoning that a public menu should not
+        advertise a working tool to signed-out visitors. In practice that hid
+        the one screen a driver opens most, behind a button on another page.
+        The route guard (`routeAllowed`) still hides it from the sender phone
+        app, and the screen itself handles a visitor who is not a driver.
+        Assigned Trip (`/driver`) stays inside the Driver Dashboard.
     */
     children: [
       {
@@ -293,6 +298,12 @@ const NAV_LINKS: NavLink[] = [
         label: 'Be a Driver / Update',
         href: '/driver-updates',
         icon: (color, size) => <BellRing color={color} size={size} />,
+      },
+      {
+        key: 'setup-trip',
+        label: 'Setup Trip',
+        href: '/available-packages',
+        icon: (color, size) => <Route color={color} size={size} />,
       },
       {
         key: 'dashboard',

@@ -50,6 +50,7 @@ const navSource = readFileSync(join(ROOT, 'src/components/ui/app-nav-bar.tsx'), 
  */
 const DROPDOWN_ROUTES: Record<string, string> = {
   'Be a Driver / Update': 'driver-updates',
+  'Setup Trip': 'available-packages',
   'Driver Dashboard': 'driver',
   'Driver Wallet / Payouts': 'driver-wallet',
   'Driver Guidelines & FAQs': 'driver-guidelines',
@@ -87,11 +88,11 @@ check(
 const driverScreen = readFileSync(join(ROOT, 'src/app/(tabs)/driver.tsx'), 'utf8');
 
 check(
-  'Trip Setup left the menu and is reachable from the dashboard',
+  'Setup Trip is in the Driver menu and still linked from the dashboard',
   !navSource.includes("label: 'Schedule My Journey'") &&
-    !navSource.includes("href: '/available-packages'") &&
+    navSource.includes("href: '/available-packages'") &&
     driverScreen.includes("router.navigate('/available-packages')"),
-  'without the dashboard link, /available-packages would be reachable on web from nothing at all',
+  'Setup Trip must be a Driver menu entry (Oct 2026) and keep its dashboard link',
 );
 /*
  * ⚠ One name, checked in every place a driver can read it.

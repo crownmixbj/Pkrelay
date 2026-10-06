@@ -7,7 +7,7 @@ import {
   TriangleAlert,
   UserRoundCheck,
 } from 'lucide-react-native';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Badge } from '@/components/ui/badge';
@@ -19,6 +19,7 @@ import { DriversWaiting } from '@/components/ui/drivers-waiting';
 import { EmptyState, SectionLabel } from '@/components/ui/screen';
 import { showToast } from '@/components/ui/toast';
 import { FontSize, Radius, Spacing, Typography, font } from '@/constants/theme';
+import { useLiveRefresh } from '@/hooks/use-live-refresh';
 import { useTheme } from '@/hooks/use-theme';
 import { formatNaira } from '@/store/bookings';
 import {
@@ -75,6 +76,16 @@ export function DispatchControl() {
   const [loading, setLoading] = useState(true);
   const [switching, setSwitching] = useState(false);
   const [assigning, setAssigning] = useState<UnassignedParcel | null>(null);
+  /*
+   * Bumped on every reload so the drivers panel below reloads in step with the
+   * parcel queue — one live subscription for the whole screen, not two racing.
+   */
+  const [version, setVersion] = useState(0);
+  /*
+   * Parcels already on screen. Null until the first load, so opening the page
+   * does not announce every parcel already in the queue as "new".
+   */
+  const seen = useRef<Set<string> | null>(null);
 
   const refresh = useCallback(async () => {
     const [nextHealth, nextParcels] = await Promise.all([
@@ -89,13 +100,47 @@ export function DispatchControl() {
       setUnavailable(nextHealth.error);
     }
 
+    if (nextParcels) {
+      const known = seen.current;
+      if (known) {
+        const arrived = nextParcels.filter((parcel) => !known.has(parcel.id));
+        if (arrived.length === 1) {
+          showToast('New parcel waiting', {
+            message: `#${arrived[0].trackingId} · ${arrived[0].originCity} → ${arrived[0].destinationCity}`,
+            tone: 'info',
+          });
+        } else if (arrived.length > 1) {
+          showToast(`${arrived.length} new parcels waiting`, {
+            message: 'They are at the bottom of the queue below.',
+            tone: 'info',
+          });
+        }
+      }
+      seen.current = new Set(nextParcels.map((parcel) => parcel.id));
+    }
+
     setParcels(nextParcels ?? []);
     setLoading(false);
+    setVersion((current) => current + 1);
   }, []);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  /*
+   * ⚠ Live, without a reload.
+   *
+   *   A queue manager that has to be refreshed by hand is a snapshot, and the
+   *   operator ends up acting on a parcel somebody else placed a minute ago.
+   *   Bookings, offers and journeys are the three tables every number on this
+   *   screen is computed from; `20250101000077_dispatch_live.sql` puts them in
+   *   the realtime publication and lets admins receive booking events.
+   */
+  const { lastUpdated, connected } = useLiveRefresh(refresh, {
+    channel: 'admin:dispatch',
+    tables: ['bookings', 'dispatch_offers', 'driver_journeys'],
+  });
 
   const banner = modeBanner(health);
   const bannerColors = {
@@ -166,6 +211,7 @@ export function DispatchControl() {
         <View style={styles.head}>
           <Radio color={theme.primary} size={18} />
           <Text style={[styles.title, { color: theme.text }]}>Dispatch</Text>
+          <LiveIndicator connected={connected} lastUpdated={lastUpdated} />
         </View>
 
         <View style={[styles.segmented, { backgroundColor: theme.surfaceMuted }]}>
@@ -257,6 +303,7 @@ export function DispatchControl() {
       */}
       <DriversWaiting
         mode={unavailable ? null : health.mode}
+        version={version}
         onAssigned={() => void refresh()}
       />
 
@@ -351,6 +398,40 @@ export function DispatchControl() {
           void refresh();
         }}
       />
+    </View>
+  );
+}
+
+/**
+ * "Live" or "Updating every 20s", and when the screen last heard anything.
+ *
+ * Said out loud because a live screen and a frozen one look identical until
+ * something changes — the operator needs to know which one they are trusting.
+ */
+function LiveIndicator({
+  connected,
+  lastUpdated,
+}: {
+  connected: boolean;
+  lastUpdated: Date | null;
+}) {
+  const theme = useTheme();
+  const color = connected ? theme.successOnSoft : theme.textMuted;
+  const time = lastUpdated
+    ? lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    : null;
+
+  return (
+    <View
+      style={styles.live}
+      accessibilityLabel={
+        connected ? 'Live updates on' : 'Live updates reconnecting; refreshing every 20 seconds'
+      }>
+      <View style={[styles.liveDot, { backgroundColor: connected ? theme.success : theme.border }]} />
+      <Text style={[styles.liveText, { color }]}>
+        {connected ? 'Live' : 'Auto-refresh'}
+        {time ? ` · ${time}` : ''}
+      </Text>
     </View>
   );
 }
@@ -585,6 +666,14 @@ const styles = StyleSheet.create({
   card: { gap: Spacing.three - 2 },
   head: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   title: { ...Typography.sectionTitle },
+  live: {
+    marginLeft: 'auto',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+  },
+  liveDot: { width: 8, height: 8, borderRadius: 4 },
+  liveText: { ...Typography.caption, ...font(600) },
   segmented: {
     flexDirection: 'row',
     gap: Spacing.one,

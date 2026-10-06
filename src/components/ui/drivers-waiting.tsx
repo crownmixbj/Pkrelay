@@ -9,7 +9,7 @@ import {
   UserRoundCheck,
   UsersRound,
 } from 'lucide-react-native';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Badge } from '@/components/ui/badge';
@@ -60,10 +60,16 @@ import {
  */
 export function DriversWaiting({
   mode,
+  version = 0,
   onAssigned,
 }: {
   /** Drives the copy only. Null while the dispatch mode is unknown. */
   mode: 'auto' | 'manual' | null;
+  /**
+   * Bumped by the dispatch screen whenever it hears of a change, so this panel
+   * reloads with the parcel queue instead of holding its own subscription.
+   */
+  version?: number;
   /** Called after a successful assignment, so the parcel queue reloads too. */
   onAssigned: () => void;
 }) {
@@ -73,12 +79,31 @@ export function DriversWaiting({
   const [drivers, setDrivers] = useState<WaitingDriver[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [giving, setGiving] = useState<WaitingDriver | null>(null);
+  /* Journeys already listed; null until the first load so opening is quiet. */
+  const seen = useRef<Set<string> | null>(null);
 
   const refresh = useCallback(async () => {
     const [counts, waiting] = await Promise.all([
       fetchDriverAvailability(),
       fetchWaitingDrivers(),
     ]);
+
+    if (waiting) {
+      const known = seen.current;
+      if (known) {
+        const arrived = waiting.filter((driver) => !known.has(driver.journeyId));
+        if (arrived.length === 1) {
+          showToast(`${arrived[0].fullName} is waiting for work`, {
+            message: `${shiftLabel(arrived[0])} · ${arrived[0].capacityKg} kg free`,
+            tone: 'info',
+          });
+        } else if (arrived.length > 1) {
+          showToast(`${arrived.length} drivers are now waiting for work`, { tone: 'info' });
+        }
+      }
+      seen.current = new Set(waiting.map((driver) => driver.journeyId));
+    }
+
     setTiles(counts);
     setDrivers(waiting);
     setLoading(false);
@@ -86,7 +111,7 @@ export function DriversWaiting({
 
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+  }, [refresh, version]);
 
   /*
    * Null means the call failed; an empty array means nobody is waiting. The
