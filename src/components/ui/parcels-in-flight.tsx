@@ -4,6 +4,7 @@ import {
   CircleCheck,
   TriangleAlert,
   UserRound,
+  UserRoundMinus,
 } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
@@ -24,6 +25,7 @@ import {
   EMPTY_IN_FLIGHT,
   fetchParcelsInFlight,
   recordDelivery,
+  releaseParcel,
   stallTone,
   waitedLabel,
   type InFlightTotals,
@@ -60,6 +62,7 @@ export function ParcelsInFlight() {
   const [openId, setOpenId] = useState<string | null>(null);
   /** The parcel an operator is closing by hand, or null. */
   const [closing, setClosing] = useState<ParcelInFlight | null>(null);
+  const [releasing, setReleasing] = useState<ParcelInFlight | null>(null);
 
   const load = useCallback(async () => {
     const result = await fetchParcelsInFlight();
@@ -128,7 +131,12 @@ export function ParcelsInFlight() {
           ) : (
             <View style={styles.list}>
               {awaiting.map((parcel) => (
-                <ParcelRow key={parcel.id} parcel={parcel} onOpen={() => setOpenId(parcel.id)} />
+                <ParcelRow
+                  key={parcel.id}
+                  parcel={parcel}
+                  onOpen={() => setOpenId(parcel.id)}
+                  onRelease={() => setReleasing(parcel)}
+                />
               ))}
             </View>
           )}
@@ -172,6 +180,15 @@ export function ParcelsInFlight() {
         onClose={() => setOpenId(null)}
       />
 
+      <ReleaseParcelSheet
+        parcel={releasing}
+        onClose={() => setReleasing(null)}
+        onReleased={() => {
+          setReleasing(null);
+          void load();
+        }}
+      />
+
       <RecordDeliverySheet
         parcel={closing}
         onClose={() => setClosing(null)}
@@ -195,11 +212,14 @@ function ParcelRow({
   parcel,
   onOpen,
   onRecordDelivery,
+  onRelease,
 }: {
   parcel: ParcelInFlight;
   onOpen: () => void;
   /** Only passed for a collected parcel — there is nothing to close before that. */
   onRecordDelivery?: () => void;
+  /** Only on an uncollected parcel — after that there is nothing to take back. */
+  onRelease?: () => void;
 }) {
   const theme = useTheme();
 
@@ -282,6 +302,20 @@ function ParcelRow({
             size="md"
             onPress={onOpen}
           />
+          {/*
+            Only on an uncollected parcel, and it is the mirror of the one
+            below: before collection the parcel can go back on the board,
+            after it the only way out is recording the delivery.
+          */}
+          {!!onRelease && (
+            <Button
+              label="Take off driver"
+              variant="secondary"
+              size="md"
+              icon={(color, size) => <UserRoundMinus color={color} size={size} />}
+              onPress={onRelease}
+            />
+          )}
           {/* Only on a collected parcel — there is nothing to close before that. */}
           {!!onRecordDelivery && (
             <Button
@@ -405,6 +439,106 @@ function RecordDeliverySheet({
             onPress={() => void submit()}
           />
           <Button label="Cancel" variant="secondary" size="md" onPress={onClose} />
+        </View>
+      </View>
+    </BottomSheet>
+  );
+}
+
+/**
+ * Taking a parcel back off a driver who has not collected it.
+ *
+ * ⚠ The milder sibling of `RecordDeliverySheet`, and the copy says so.
+ *
+ *   Recording a delivery tells a customer their parcel arrived and pays
+ *   somebody; this moves a parcel back to a list. The consequence worth naming
+ *   is the one that is not obvious: this driver stops being offered this parcel
+ *   by the matcher, for good. An operator who expected the automation to retry
+ *   them would otherwise read the parcel sitting unassigned as dispatch being
+ *   broken.
+ */
+function ReleaseParcelSheet({
+  parcel,
+  onClose,
+  onReleased,
+}: {
+  parcel: ParcelInFlight | null;
+  onClose: () => void;
+  onReleased: () => void;
+}) {
+  const theme = useTheme();
+
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!parcel) setReason('');
+  }, [parcel]);
+
+  const submit = async () => {
+    if (!parcel) return;
+
+    setBusy(true);
+    const outcome = await releaseParcel(parcel.id, reason.trim());
+    setBusy(false);
+
+    if (!outcome.ok) {
+      /* Verbatim — the refusal for a collected parcel names the right tool. */
+      showDialog('Could not take that parcel back', outcome.error);
+      return;
+    }
+
+    showToast(`#${parcel.trackingId} is back on the board`, {
+      message: `${parcel.driverName ?? 'The driver'} no longer has it, and will not be offered it again.`,
+    });
+    onReleased();
+  };
+
+  return (
+    <BottomSheet visible={!!parcel} onClose={onClose}>
+      <View style={styles.sheet}>
+        <Text style={[styles.sheetTitle, { color: theme.text }]}>
+          Take #{parcel?.trackingId} off {parcel?.driverName ?? 'the driver'}
+        </Text>
+        <Text style={[styles.route, { color: theme.textSecondary }]}>
+          {parcel?.originCity} → {parcel?.destinationCity} · claimed{' '}
+          {waitedLabel((parcel?.minutesSinceClaim ?? 0) / 60)} ago, never collected
+        </Text>
+
+        <Field
+          label="Why"
+          value={reason}
+          onChangeText={setReason}
+          multiline
+          numberOfLines={3}
+          placeholder="Not answering their phone; sender waiting since this morning."
+          hint="Recorded against your account. The driver is told nothing else, so this is the only record of why."
+        />
+
+        <View style={[styles.consequences, { backgroundColor: theme.warningSoft }]}>
+          <Text style={[styles.consequenceText, { color: theme.warningOnSoft }]}>
+            Taking it off them will:
+          </Text>
+          <Text style={[styles.consequenceText, { color: theme.warningOnSoft }]}>
+            · put the parcel back on the open board for any driver to claim
+          </Text>
+          <Text style={[styles.consequenceText, { color: theme.warningOnSoft }]}>
+            · stop the matcher offering this parcel to {parcel?.driverName ?? 'them'} again
+          </Text>
+          <Text style={[styles.consequenceText, { color: theme.warningOnSoft }]}>
+            · leave the sender&apos;s parcel untouched — nothing is cancelled
+          </Text>
+        </View>
+
+        <View style={styles.sheetActions}>
+          <Button
+            label={busy ? 'Taking it back…' : 'Take off driver'}
+            size="md"
+            disabled={busy || reason.trim().length < 4}
+            icon={(color, size) => <UserRoundMinus color={color} size={size} />}
+            onPress={() => void submit()}
+          />
+          <Button label="Leave it with them" variant="secondary" size="md" onPress={onClose} />
         </View>
       </View>
     </BottomSheet>

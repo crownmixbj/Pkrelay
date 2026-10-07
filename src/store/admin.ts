@@ -738,6 +738,31 @@ export async function recordDelivery(
   return { ok: true };
 }
 
+/**
+ * Takes a parcel back off the driver who claimed it.
+ *
+ * ⚠ Only before collection, and the server is the one that says so. A parcel
+ *   the driver is physically carrying cannot be put back on the open board, and
+ *   `admin_release_parcel` refuses it with a message naming what to do instead.
+ *
+ * ⚠ The driver is not offered this parcel again. 80 records the pair in
+ *   `parcel_releases` and `dispatch_booking` skips it from then on — permanently,
+ *   not for a cooldown, because an administrator taking a job off somebody is a
+ *   stronger signal than a declined offer.
+ */
+export async function releaseParcel(
+  parcelId: string,
+  reason: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { error } = await supabase.rpc('admin_release_parcel', {
+    parcel: parcelId,
+    reason,
+  });
+
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
 /** Who closed a delivery: the carrier, or an operator. */
 export type DeliveryAttribution = {
   deliveredAt: string | null;

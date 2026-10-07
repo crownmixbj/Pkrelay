@@ -1042,15 +1042,36 @@ for (const fn of FUNCTIONS) {
     `found ${atRisk.length} — if this collapsed, the parser above stopped matching`,
   );
 
-  /* The manifest rows, as 79 writes them: ('object','owner','fn','schema','name','marker') */
+  /*
+   * The manifest, read from whichever migration defines `stale_definitions`
+   * last — 79 wrote it, 80 extended it, and the next file to replace a function
+   * will extend it again. Pinning this to 79 would check an obsolete copy and
+   * pass while the live one went stale, which is the failure in miniature.
+   *
+   * Row shape: ('object', 'owner', 'fn', 'schema', 'name', 'marker')
+   */
+  const manifestSource =
+    migrations
+      .filter((migration) =>
+        /create\s+or replace\s+function\s+public\.stale_definitions\s*\(/i.test(migration.sql),
+      )
+      .map((migration) => migration.sql)
+      .pop() ?? '';
+
+  check(
+    'some migration defines the manifest',
+    manifestSource.length > 0,
+    '79 creates `stale_definitions`; a later file may replace it',
+  );
+
   const manifest = new Map<string, string>();
   const row =
     /\(\s*'([^']*(?:''[^']*)*)'\s*,\s*'(\d+)'\s*,\s*'fn'\s*,\s*'(\w+)'\s*,\s*'(\w+)'\s*,\s*'([^']*(?:''[^']*)*)'\s*\)/g;
-  for (let m = row.exec(drift); m !== null; m = row.exec(drift)) {
+  for (let m = row.exec(manifestSource); m !== null; m = row.exec(manifestSource)) {
     manifest.set(`${m[3]}.${m[4]}`, m[5].replace(/''/g, "'"));
   }
 
-  check('the manifest parses', manifest.size >= 39, `parsed ${manifest.size} function rows out of 79`);
+  check('the manifest parses', manifest.size >= 39, `parsed ${manifest.size} function rows out of the newest manifest`);
 
   /*
    * ⚠ This is the check that stops the manifest becoming a snapshot of October
@@ -1064,7 +1085,7 @@ for (const fn of FUNCTIONS) {
     unlisted.length === 0,
     unlisted.length === 0
       ? ''
-      : `missing from 79: ${unlisted.join(', ')}\n` +
+      : `missing from the manifest: ${unlisted.join(', ')}\n` +
         '       a migration replaced one of these — add it with a marker only its newest\n' +
         '       definition contains, or `definitions_current` goes green on a stale database',
   );
@@ -1153,6 +1174,162 @@ for (const fn of FUNCTIONS) {
     'the drift probe is on the deployment panel',
     /20250101000079_definition_drift_repair\.sql/.test(gaps) && /definitions_current/.test(gaps),
     'a history row is not evidence that a migration ran — this is the line that says so',
+  );
+}
+
+// -------------------------------- 20. handing a parcel back (80) ----------
+
+/*
+ * ⚠ The driver's Release button has never worked, on any environment.
+ *
+ *   `cancel_booking` (11) clears `driver_id` to put the parcel back on the
+ *   board; `bookings_guard_immutable` (01) refuses any change to `driver_id`
+ *   once it is set. 01 predates 11 and nothing revisited it, so pressing
+ *   Release produced "a claimed job cannot be reassigned (P0001)" from the day
+ *   the button shipped. The same guard was aborting the erasure of anybody who
+ *   had ever carried a parcel, because `driver_id` is `on delete set null` and
+ *   a referential action fires row triggers.
+ */
+{
+  const release = read('supabase/migrations/20250101000080_parcel_release.sql');
+  const flight = read('src/components/ui/parcels-in-flight.tsx');
+  const driverScreen = read('src/app/(tabs)/driver.tsx');
+  const signedOut = read('src/components/ui/signed-out-state.tsx');
+  const sql = code(release);
+
+  check(
+    'the guard lets a parcel lose its driver',
+    /old\.driver_id is not null\s*and new\.driver_id is not null\s*and new\.driver_id is distinct from old\.driver_id/.test(
+      sql,
+    ),
+    'without the middle condition, a release and an account erasure both raise P0001',
+  );
+  check(
+    'and still refuses one driver becoming another',
+    /handed to another driver/.test(sql),
+    'that is what 01 wrote the guard for, and it is not being given up',
+  );
+  check(
+    'the trigger is recreated, not just the function',
+    /drop trigger if exists bookings_guard_immutable on public\.bookings;/.test(sql) &&
+      /before update on public\.bookings/.test(sql),
+    'a replaced function with no trigger is the failure 76 was written about',
+  );
+
+  check(
+    'a release is recorded against the pair',
+    /create table if not exists public\.parcel_releases/.test(sql) &&
+      /primary key \(booking_id, driver_id\)/.test(sql),
+    'keyed on the pair, so releasing the same parcel twice is one row',
+  );
+  check(
+    'and nobody can write it by hand',
+    /alter table public\.parcel_releases enable row level security/.test(sql) &&
+      !/create policy[^;]*on public\.parcel_releases for (insert|update|delete)/.test(sql),
+    'the only writers are the two security definer functions',
+  );
+
+  /*
+   * ⚠ A release is not a decline, and this is the assertion that keeps them
+   *   apart. 23 made a decline a cooldown and 78 removed the index still
+   *   enforcing the old permanent rule; nothing here may quietly put that back.
+   */
+  check(
+    'the matcher stops offering a parcel to the driver who gave it back',
+    /not exists \(\s*select 1 from public\.parcel_releases r\s*where r\.booking_id = dispatch_booking\.booking_id\s*and r\.driver_id = j\.driver_id\s*\)/.test(
+      sql,
+    ),
+    'no window on it — a release is a stronger answer than a declined offer',
+  );
+  check(
+    'and the decline cooldown is untouched',
+    /o\.status in \('declined', 'expired'\)/.test(sql) && /now\(\) - cooldown/.test(sql),
+    '23 and 78 both exist because a permanent per-pair block was the wrong rule',
+  );
+  check(
+    'the release is written before the parcel is let go',
+    sql.indexOf('insert into public.parcel_releases') <
+      sql.indexOf("set status = 'Booked',"),
+    'redispatch is a cron sweep, so the other order leaves a window to hand it straight back',
+  );
+
+  check(
+    'an admin can take a parcel off a driver',
+    /create or replace function public\.admin_release_parcel\(/.test(sql) &&
+      /if not public\.is_admin\(\) then/.test(sql),
+  );
+  check(
+    'and must say why',
+    /Say why this parcel is being taken off the driver/.test(sql),
+    'the driver is told nothing by the status change, so this string is the only record',
+  );
+  check(
+    'it stops at collection, naming the right tool instead',
+    /the driver already has it\. Reassigning stops at collection/.test(sql),
+    'a parcel in somebody’s bag cannot be put back on the open board',
+  );
+  check(
+    'and it is logged as an override rather than a routine action',
+    /'warning', 'dispatch', 'admin took a parcel off a driver'/.test(sql),
+  );
+
+  check(
+    'the candidate list says so rather than hiding them',
+    /Released this parcel — not offered it again/.test(sql) &&
+      sql.indexOf('c.released_it then') < sql.indexOf('c.route_matches then'),
+    'an operator is the one who knows the driver rang back; the note outranks the route',
+  );
+
+  check(
+    'the probe asks whether a release would actually work',
+    /release_controls_installed/.test(sql) &&
+      /like '%handed to another driver%'/.test(sql),
+    'the table and the function can both exist on a database whose guard is still 01’s',
+  );
+
+  /* ---------------------------------------------------- and on the screen */
+
+  check(
+    'the web driver card has the release control at last',
+    /<CancelAction booking=\{booking\} \/>/.test(driverScreen),
+    'driver-hub has had it since it shipped; the browser screen never did',
+  );
+  check(
+    'the admin board offers it only before collection',
+    /onRelease=\{\(\) => setReleasing\(parcel\)\}/.test(flight) &&
+      /awaiting\.map[\s\S]{0,280}onRelease=/.test(flight) &&
+      !/moving\.map[\s\S]{0,280}onRelease=/.test(flight),
+  );
+  check(
+    'and names the consequence that is not obvious',
+    /stop the matcher offering this parcel to/.test(flight),
+    'an operator expecting a retry reads the unassigned parcel as dispatch being broken',
+  );
+  check(
+    'the reason is required before the button works',
+    /disabled=\{busy \|\| reason\.trim\(\)\.length < 4\}/.test(flight),
+    'the server refuses it anyway; the screen should not offer it',
+  );
+
+  /* ----------------------------------------- and the sign-in page flash --- */
+
+  /*
+   * ⚠ `status` passes through 'loading' on every launch, and during it
+   *   `isAuthenticated` is false. Nine screens branched on `isAuthenticated`
+   *   alone, so on the web — where restoring means reading storage and then
+   *   refreshing the token over the network — every reload painted the sign-in
+   *   card before the real page replaced it. A signed-in person does not read
+   *   that as a loading state.
+   */
+  check(
+    'the sign-in card refuses to render while the session is still restoring',
+    /useSession/.test(signedOut) && /status === 'loading'/.test(signedOut),
+    'put in the component, not the nine callers, so a screen added next year cannot reintroduce it',
+  );
+  check(
+    'and it holds the space rather than collapsing it',
+    /<ActivityIndicator color=\{theme\.primary\} \/>/.test(signedOut),
+    'a card that appears from nothing moves the page under the reader',
   );
 }
 

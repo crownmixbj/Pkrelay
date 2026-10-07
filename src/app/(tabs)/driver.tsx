@@ -24,6 +24,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { formatDay } from '@/lib/when';
 import { Footer } from '@/components/Footer';
+import { CancelAction } from '@/components/ui/cancel-action';
 import { Badge, RoutePill } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -523,6 +524,19 @@ function JobCard({ booking }: { booking: Booking }) {
       {!isDelivered && (
         <Text style={[styles.window, { color: theme.warningOnSoft }]}>{pickupWindow(booking)}</Text>
       )}
+
+      {/*
+        ⚠ The release control, which this card did not have at all.
+
+          `driver-hub.tsx` has rendered it since it shipped; this screen — the
+          one a driver reaches in a browser — never did, so a driver on the web
+          had no way to hand back a job they had changed their mind about. The
+          component decides for itself whether to show a button, a sentence
+          explaining why the window has closed, or nothing: a delivered card
+          gets nothing, and a collected parcel gets the sentence, because
+          releasing stops at pickup.
+      */}
+      <CancelAction booking={booking} />
 
       <View style={[styles.payoutRow, { backgroundColor: theme.surfaceMuted }]}>
         <View style={styles.metric}>

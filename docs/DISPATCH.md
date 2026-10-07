@@ -448,11 +448,123 @@ The pg harness goes further: it applies the chain, replays 32's
 reverted function fails with production's exact error message, then applies 79
 and asserts a parcel can be placed by hand again.
 
+## Handing a parcel back (80)
+
+A claimed parcel that has not been collected can be taken off the driver — by
+them, or by an administrator. Three separate things had to change for that.
+
+### The driver's Release button has never worked
+
+`cancel_booking` (11) clears `driver_id` to put the parcel back on the board.
+`bookings_guard_immutable` (01) refuses *any* change to `driver_id` once it is
+set:
+
+```sql
+if old.driver_id is not null and new.driver_id is distinct from old.driver_id
+  then raise exception 'a claimed job cannot be reassigned';
+```
+
+01 predates 11 by ten migrations and nothing revisited it, so every Release a
+driver has ever pressed came back as **"That did not go through. a claimed job
+cannot be reassigned (P0001)"** — a rule nobody was breaking. The button on the
+mobile driver hub was dead from the day it shipped, and the web driver screen
+never had one at all.
+
+⚠ **The same guard was aborting account erasure.** `bookings.driver_id` is `on
+delete set null`, and a referential action fires row triggers, so deleting the
+auth user of anybody who had ever carried a parcel ran this guard against
+`new.driver_id is null` and raised. That is why 80 relaxes the guard rather than
+special-casing `cancel_booking`.
+
+What the guard still refuses is the thing it was written for: driver A's parcel
+becoming driver B's in one UPDATE. A release goes *through* null — back to the
+open board, where the next claim is a fresh decision by somebody who can see the
+job — so there is no path that moves a parcel between two people silently.
+
+### A release is not a decline
+
+| | what it means | what the matcher does |
+|---|---|---|
+| offer declined or timed out | "not right now" | re-offers after `offer_cooldown()` — 15 minutes |
+| **parcel released** | "I took this and I am giving it back" | **never offers it to them again** |
+
+23 made a decline a cooldown rather than a permanent block, and 78 removed the
+index still enforcing the old rule. None of that changes. But a driver who
+*accepted* and then handed the parcel back has answered a stronger question, and
+offering it to them again fifteen minutes later is the loop the brief asks to
+close. So `parcel_releases` records the pair and `dispatch_booking` skips it from
+then on, with no window on it.
+
+It is skipped for **offers**, not for everything:
+
+- the parcel stays on the open jobs board, and that driver can still claim it by
+  hand if they change their mind back;
+- an administrator can still assign it to them — `assignable_drivers` says
+  *"Released this parcel — not offered it again"* in the row's note, ahead of the
+  route, rather than hiding them. That is the call that function has made since
+  32: an operator is on that screen because they know something the matcher does
+  not.
+
+### Both releases stop at collection
+
+'Assigned' is the whole window, for the driver and for the administrator. Once
+the parcel is 'Picked Up' somebody is holding another person's property, and
+marking it unassigned would leave a parcel on the open board that is physically
+in a bag in Ibadan. The refusal names the right tool instead:
+
+> That parcel is Picked Up — the driver already has it. Reassigning stops at
+> collection; record the delivery or cancel it instead
+
+### The admin action
+
+Admin → In transit → *Awaiting collection* → **Take off driver**. A reason is
+required, because the driver is told nothing by the status change itself — their
+parcel simply leaves their list — so that string in `app_events` is the only
+record of why somebody's accepted job was taken away. Logged at `warning`, like
+`admin_record_delivery`: one is an operator doing their job, a run of them is
+dispatch handing parcels to drivers who do not collect them.
+
+⚠ **`delete`-then-`insert`, not `on conflict do update`.** `cancel_booking`'s
+parameters are named `booking_id` and `reason`; `parcel_releases`' columns are
+named `booking_id` and `reason`. Inside `on conflict (booking_id, …) do update
+set reason = …` plpgsql cannot tell which is meant and raises before writing
+anything — the same trap 69 is about, one table along, and it cost a harness run
+to find.
+
+## The sign-in page flashed on every reload
+
+`SessionStatus` passes through `'loading'` on every launch while the stored
+session is restored, and during that moment `isAuthenticated` is false —
+truthfully, because nobody is signed in *as far as the client knows*. Nine
+screens branched on `!isAuthenticated` alone:
+
+```
+app/(tabs)/index.tsx      app/(tabs)/driver.tsx        app/parcel/[id].tsx
+app/(tabs)/profile.tsx    app/(tabs)/driver-wallet.tsx app/capture/[id].tsx
+app/(tabs)/my-packages.tsx app/(tabs)/notifications.tsx app/(tabs)/admin.tsx
+```
+
+Only `AdminShell` and `driver-updates.tsx` checked `status` as well. On native
+the restore is fast and the splash covers it; on the web it means reading
+storage and then refreshing the token over the network, so every reload painted
+the sign-in card for a few hundred milliseconds before the real page replaced
+it. A signed-in person watching their own app flash the sign-in screen does not
+read it as a loading state — they read it as having been signed out.
+
+The check now lives in `SignedOutState` itself, which renders a spinner in the
+same slot while `status === 'loading'`. Same decision `AdminShell` made for the
+same three states: one place to get it right, and a screen added next year
+cannot reintroduce it.
+
+⚠ One thing deliberately left: the nav bar still swaps its avatar for a sign-in
+affordance during that window. It is one element rather than a full-page card,
+and gating it means threading session status through a 1,300-line component.
+
 ## Tests
 
 ```bash
-npm run verify:availability      # source assertions, including 75, 76 and 79
-npm run verify:pg-availability   # 69-79 against real Postgres under RLS
+npm run verify:availability      # source assertions, including 75, 76, 79 and 80
+npm run verify:pg-availability   # 69-80 against real Postgres under RLS
 ```
 
 The pg harness pins the retry loop as well: a lapsed offer is not re-offered
@@ -472,6 +584,11 @@ Three assertions in it are worth knowing about:
   exception is listed by name: `notify_dispatch_offer` is owned by 24, which the
   harness skips because pg_net cannot be installed in PGlite. A second
   unexpected row fails the run.
+- **The release test presses the button that has never worked.** A driver
+  accepts a parcel, releases it, and the harness asserts the parcel goes back on
+  the board, that the matcher offers it to somebody else, and that it is still
+  not offered to them long after any cooldown would have lapsed — while a driver
+  whose offer merely timed out *is* tried again.
 
 ## Deploy
 
@@ -494,13 +611,14 @@ That is the case both exist for. Afterwards, check the database rather than the
 history:
 
 ```sql
-select public.definitions_current();       -- must be true
-select public.notification_spine_live();   -- must be true
-select public.departure_priority_live();   -- must be true
+select public.definitions_current();         -- must be true
+select public.notification_spine_live();     -- must be true
+select public.departure_priority_live();     -- must be true
+select public.release_controls_installed();  -- must be true
 select * from public.stale_definitions() where state <> 'current';   -- must be empty
 ```
 
-All three are on the deployment panel in the admin console, so the answer is one
+All four are on the deployment panel in the admin console, so the answer is one
 screen away without opening the SQL editor.
 
 ⚠ **Never `supabase db push --include-all` against a live project**, and never

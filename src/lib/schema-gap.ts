@@ -418,6 +418,20 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
     migration: '20250101000079_definition_drift_repair.sql',
   },
   /*
+   * ⚠ Without 80 the Release button on a driver's job is dead — it has been
+   *   since the day it shipped, because `bookings_guard_immutable` (01) refuses
+   *   to let `driver_id` go back to null and `cancel_booking` (11) needs it to.
+   *   The symptom is "a claimed job cannot be reassigned (P0001)" in a dialog,
+   *   which names a rule nobody is breaking. The admin's "Take off driver"
+   *   fails the same way, and so does erasing an account that ever carried a
+   *   parcel.
+   */
+  {
+    label: 'Release a claimed parcel (driver and admin)',
+    fn: 'release_controls_installed',
+    migration: '20250101000080_parcel_release.sql',
+  },
+  /*
    * Without 62 nothing breaks on screen — new accounts are simply never sent
    * the welcome email — which is exactly why it needs a line here.
    */

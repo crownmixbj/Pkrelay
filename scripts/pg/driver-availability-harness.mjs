@@ -1500,6 +1500,311 @@ const CLOCK_DRIVERS = [
   );
 }
 
+// -------------------------------- 13. handing a parcel back (80) ----------
+
+/*
+ * ⚠ What is proved here is a button that has never worked.
+ *
+ *   `cancel_booking` (11) clears `driver_id`; `bookings_guard_immutable` (01)
+ *   refuses any change to it once set. Every Release a driver has ever pressed
+ *   returned "a claimed job cannot be reassigned (P0001)". No harness caught it
+ *   because none of them had ever pressed the button.
+ */
+{
+  await asUser(ADMIN);
+  await db.query('select public.set_dispatch_mode($1)', ['manual']);
+
+  /* LATEST is free and going Ibadan → Lagos; give SOON the same route. */
+  await asOwner();
+  await db.query(`update public.driver_journeys set status = 'completed' where driver_id = $1`, [SOON]);
+  await journey(SOON, { origin: 'Ibadan', destination: 'Lagos', hours: 3, ageMinutes: 5 });
+
+  const handed = await parcel({ origin: 'Ibadan', destination: 'Lagos', weight: 2 });
+
+  await asUser(ADMIN);
+  await db.query('select public.admin_assign_parcel($1, $2)', [handed.id, LATEST]);
+
+  await asOwner();
+  const claimed = await db.query(
+    'select status, driver_id, driver, accepted_at from public.bookings where id = $1',
+    [handed.id],
+  );
+  check(
+    'the parcel is with the driver before they change their mind',
+    claimed.rows[0].status === 'Assigned' && claimed.rows[0].driver_id === LATEST,
+    JSON.stringify(claimed.rows[0]),
+  );
+
+  /* ------------------------------------------------ the release itself --- */
+
+  await asUser(LATEST);
+  const released = await db.query('select public.cancel_booking($1, $2) as outcome', [
+    handed.id,
+    'Bike trouble, cannot make the pickup',
+  ]);
+  check(
+    'a driver can hand back a parcel they have not collected',
+    released.rows[0].outcome === 'Booked',
+    'this is the call that has raised P0001 on every environment since 11 shipped',
+  );
+
+  await asOwner();
+  const back = await db.query(
+    'select status, driver_id, driver, accepted_at from public.bookings where id = $1',
+    [handed.id],
+  );
+  check(
+    'and it goes back on the board carrying nobody',
+    back.rows[0].status === 'Booked' &&
+      back.rows[0].driver_id === null &&
+      back.rows[0].driver === null &&
+      back.rows[0].accepted_at === null,
+    JSON.stringify(back.rows[0]),
+  );
+  check(
+    'the shipment survives — this is not a cancellation',
+    back.rows[0].status !== 'Cancelled',
+    'the sender keeps their parcel; only the assignment ended',
+  );
+
+  const recorded = await db.query(
+    'select released_by, reason from public.parcel_releases where booking_id = $1 and driver_id = $2',
+    [handed.id, LATEST],
+  );
+  check(
+    'the pair is recorded',
+    recorded.rows.length === 1 && recorded.rows[0].released_by === 'driver',
+    JSON.stringify(recorded.rows[0]),
+  );
+  check(
+    'with the reason they gave',
+    /Bike trouble/.test(String(recorded.rows[0]?.reason ?? '')),
+  );
+
+  const settled = await db.query(
+    `select status from public.dispatch_offers where booking_id = $1 and driver_id = $2`,
+    [handed.id, LATEST],
+  );
+  check(
+    'and any offer they held is settled rather than left at accepted',
+    settled.rows.every((row) => row.status !== 'accepted'),
+    JSON.stringify(settled.rows),
+  );
+
+  /* --------------------------------- and the matcher stops offering it --- */
+
+  await asUser(ADMIN);
+  await db.query('select public.set_dispatch_mode($1)', ['auto']);
+  await asOwner();
+  await db.query('select public.dispatch_booking($1)', [handed.id]);
+
+  const offers = await db.query(
+    'select driver_id, status from public.dispatch_offers where booking_id = $1',
+    [handed.id],
+  );
+  check(
+    'the parcel is offered to somebody else',
+    offers.rows.some((row) => row.driver_id === SOON && row.status === 'offered'),
+    JSON.stringify(offers.rows),
+  );
+  check(
+    'and never again to the driver who gave it back',
+    !offers.rows.some((row) => row.driver_id === LATEST && row.status === 'offered'),
+    'a release has no cooldown — that is the difference between it and a decline',
+  );
+
+  /*
+   * ⚠ And it stays that way past the cooldown, which is the whole ask. Settle
+   *   SOON's offer into the past and run the matcher again: the only two
+   *   candidates are SOON (eligible again) and LATEST (released).
+   */
+  await db.query(
+    `update public.dispatch_offers
+        set status = 'expired',
+            expires_at = now() - public.offer_cooldown() - interval '10 minutes',
+            responded_at = now() - public.offer_cooldown() - interval '10 minutes'
+      where booking_id = $1`,
+    [handed.id],
+  );
+  await db.query('select public.dispatch_booking($1)', [handed.id]);
+
+  /*
+   * Once more, so every other matching driver has also been tried and timed
+   * out. From here the only way the matcher can make another offer at all is by
+   * going back to somebody whose earlier offer lapsed — which is exactly the
+   * rule 23 introduced and 78 defended.
+   */
+  await db.query(
+    `update public.dispatch_offers
+        set status = 'expired',
+            expires_at = now() - public.offer_cooldown() - interval '10 minutes',
+            responded_at = now() - public.offer_cooldown() - interval '10 minutes'
+      where booking_id = $1`,
+    [handed.id],
+  );
+  await db.query('select public.dispatch_booking($1)', [handed.id]);
+
+  const later = await db.query(
+    'select driver_id from public.dispatch_offers where booking_id = $1',
+    [handed.id],
+  );
+  check(
+    'long after any cooldown would have lapsed, still not them',
+    later.rows.every((row) => row.driver_id !== LATEST),
+    JSON.stringify(later.rows.map((row) => row.driver_id)),
+  );
+  check(
+    'while a driver who merely timed out is tried again',
+    later.rows.length > new Set(later.rows.map((row) => row.driver_id)).size,
+    `${JSON.stringify(later.rows.map((row) => row.driver_id))} — a repeat offer to somebody is\n` +
+      '       the point: 23 and 78 both exist because a permanent block on a decline was the\n' +
+      '       wrong rule, and nothing in 80 may quietly put one back',
+  );
+
+  /* --------------------------------------- the operator is told about it -- */
+
+  await asUser(ADMIN);
+  const candidates = (await db.query('select * from public.assignable_drivers($1)', [handed.id]))
+    .rows;
+  const gaveBack = candidates.find((row) => row.driver_id === LATEST);
+  check(
+    'the driver who released it is still listed, and still assignable',
+    !!gaveBack && gaveBack.eligible === true,
+    'an operator is the one who knows they rang back to say they are free after all',
+  );
+  check(
+    'with the note saying what happened, ahead of the route',
+    /Released this parcel/.test(String(gaveBack?.note ?? '')),
+    String(gaveBack?.note),
+  );
+
+  /* ------------------------------------------ the admin takes one back --- */
+
+  await asUser(ADMIN);
+  await db.query('select public.set_dispatch_mode($1)', ['manual']);
+  const taken = await parcel({ origin: 'Ibadan', destination: 'Lagos', weight: 2 });
+  /* `parcel()` leaves the connection as the owner, where `is_admin()` is false. */
+  await asUser(ADMIN);
+  await db.query('select public.admin_assign_parcel($1, $2)', [taken.id, LATEST]);
+
+  const noReason = await refusal(() =>
+    db.query('select public.admin_release_parcel($1, $2)', [taken.id, 'no']),
+  );
+  check(
+    'an admin must say why',
+    noReason !== null && /Say why/.test(noReason),
+    'the driver is told nothing else, so the reason is the only record',
+  );
+
+  const ok = await refusal(() =>
+    db.query('select public.admin_release_parcel($1, $2)', [
+      taken.id,
+      'Not answering their phone, sender waiting since morning',
+    ]),
+  );
+  check('and then it goes through', ok === null, String(ok));
+
+  await asOwner();
+  const freed = await db.query(
+    'select status, driver_id from public.bookings where id = $1',
+    [taken.id],
+  );
+  check(
+    'the parcel is back on the board',
+    freed.rows[0].status === 'Booked' && freed.rows[0].driver_id === null,
+    JSON.stringify(freed.rows[0]),
+  );
+
+  const adminRelease = await db.query(
+    'select released_by from public.parcel_releases where booking_id = $1 and driver_id = $2',
+    [taken.id, LATEST],
+  );
+  check(
+    'recorded as the admin doing it, not the driver',
+    adminRelease.rows[0]?.released_by === 'admin',
+    JSON.stringify(adminRelease.rows[0]),
+  );
+
+  const logged = await db.query(
+    `select level, actor_id, context from public.app_events
+      where message = 'admin took a parcel off a driver'`,
+  );
+  check('the override is logged', logged.rows.length === 1);
+  check('as a warning, because a run of these is a matching problem', logged.rows[0].level === 'warning');
+  check('naming the admin', logged.rows[0].actor_id === ADMIN);
+
+  await asUser(ADMIN);
+  const emptyHanded = await refusal(() =>
+    db.query('select public.admin_release_parcel($1, $2)', [taken.id, 'again, for no reason']),
+  );
+  check(
+    'a parcel with no driver is refused rather than silently doing nothing',
+    emptyHanded !== null && /no driver/.test(emptyHanded),
+  );
+
+  /* ------------------------------------------------- it stops at pickup -- */
+
+  await asUser(ADMIN);
+  await db.query('select public.admin_assign_parcel($1, $2)', [taken.id, SOON]);
+  await asUser(SOON);
+  await db.query('select public.advance_booking($1)', [taken.id]); // Picked Up
+
+  await asUser(ADMIN);
+  const collected = await refusal(() =>
+    db.query('select public.admin_release_parcel($1, $2)', [
+      taken.id,
+      'driver has gone quiet since collecting it',
+    ]),
+  );
+  check(
+    'a collected parcel cannot be taken off the driver',
+    collected !== null && /Reassigning stops at collection/.test(collected),
+    'it is physically in their bag; the board is the wrong place for it',
+  );
+  check(
+    'and the refusal names the right tool instead',
+    collected !== null && /record the delivery or cancel it/.test(collected),
+    String(collected),
+  );
+
+  await asUser(SOON);
+  const driverToo = await refusal(() =>
+    db.query('select public.cancel_booking($1, $2)', [taken.id, 'changed my mind']),
+  );
+  check(
+    'and neither can the driver, for the same reason',
+    driverToo !== null && /already collected this parcel/.test(driverToo),
+    String(driverToo),
+  );
+
+  /* ------------------------------------------ the guard still guards ----- */
+
+  await asOwner();
+  const swapped = await refusal(() =>
+    db.query('update public.bookings set driver_id = $1 where id = $2', [LATEST, taken.id]),
+  );
+  check(
+    'a parcel still cannot be handed straight from one driver to another',
+    swapped !== null && /handed to another driver/.test(swapped),
+    'that is what 01 wrote the guard for, and 80 does not give it up',
+  );
+
+  /*
+   * ⚠ The erasure half. `bookings.driver_id` is `on delete set null`, and a
+   *   referential action fires row triggers — so 01's guard was aborting the
+   *   erasure of anybody who had ever carried a parcel. The write below is the
+   *   same shape the foreign key performs.
+   */
+  const letGo = await refusal(() =>
+    db.query('update public.bookings set driver_id = null where id = $1', [taken.id]),
+  );
+  check(
+    'but a parcel may lose its driver, which is what erasure does to it',
+    letGo === null,
+    String(letGo),
+  );
+}
+
 await db.close();
 
 if (failures > 0) {
