@@ -194,6 +194,29 @@ export type SessionContextValue = {
   isApprovedDriver: boolean;
   /** Whether this account can open the review dashboard. */
   isAdmin: boolean;
+  /**
+   * Whether what this person may see is actually known yet.
+   *
+   * ⚠ The flag every "you cannot see this" screen must wait for, and the reason
+   *   it is derived here rather than assembled per screen.
+   *
+   *   `status` leaves 'loading' as soon as the stored session is restored, but
+   *   `isAdmin` and `isApprovedDriver` come from a *second* round trip that has
+   *   not been made yet at that moment — and both default to false. So there is
+   *   a window, every single load, in which the app knows exactly who somebody
+   *   is and believes they are allowed nothing. A screen that renders its
+   *   refusal from `isAdmin` alone paints "This area isn't available on your
+   *   account" at an administrator on every refresh.
+   *
+   *   `status === 'loading'` does not cover it: that was the sign-in flash, and
+   *   this is the one after it. One flag that means "both answers are in" is
+   *   the only version of this that a screen cannot get subtly wrong.
+   *
+   * A signed-out visitor is known immediately — there is no second lookup to
+   * wait for, and holding the whole app on one would make every public page
+   * slower for everybody.
+   */
+  permissionsKnown: boolean;
   /** Re-reads the application and admin flag, e.g. after submitting. */
   refreshDriverStatus: () => Promise<void>;
   signUp: (params: SignUpParams) => Promise<AuthResult>;
@@ -1098,6 +1121,11 @@ export function SessionProvider({
       driverStatusLoaded,
       isApprovedDriver: application?.status === 'approved',
       isAdmin,
+      /*
+        Signed out: known at once. Signed in: not until the admin and driver
+        lookups have come back, because both default to false until they do.
+      */
+      permissionsKnown: status !== 'loading' && (!user || driverStatusLoaded),
       refreshDriverStatus,
       signUp,
       signIn,
@@ -1118,6 +1146,13 @@ export function SessionProvider({
       driver,
       registerDriver,
       application,
+      /*
+        ⚠ In the dependency list, which it was not. `driverStatusLoaded` was
+          read by the memo and absent from here, so the context object did not
+          change identity when the lookup landed — a consumer could hold a value
+          saying "not asked yet" after it had been asked.
+      */
+      driverStatusLoaded,
       isAdmin,
       refreshDriverStatus,
       signUp,

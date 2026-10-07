@@ -11,11 +11,11 @@ import { useSession } from '@/store/session';
  * of the same state that can lag behind the first.
  */
 export function useExperience(): Experience | null {
-  const { status, isAuthenticated, isApprovedDriver, role } = useSession();
+  const { permissionsKnown, isAuthenticated, isApprovedDriver, role } = useSession();
 
   return resolveExperience({
     platform: Platform.OS,
-    authLoading: status === 'loading',
+    accessLoading: !permissionsKnown,
     isAuthenticated,
     isApprovedDriver,
     role,

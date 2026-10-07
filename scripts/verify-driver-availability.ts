@@ -47,6 +47,15 @@ function check(name: string, condition: boolean, detail?: string) {
 const ROOT = process.cwd();
 const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');
 
+/** Every .ts/.tsx under a directory, as repo-relative paths. */
+function listSourceFiles(dir: string): string[] {
+  return readdirSync(join(ROOT, dir), { withFileTypes: true }).flatMap((entry) => {
+    const path = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) return listSourceFiles(path);
+    return /\.tsx?$/.test(entry.name) ? [path] : [];
+  });
+}
+
 const repair = read('supabase/migrations/20250101000069_assign_parcel_repair.sql');
 const counts = read('supabase/migrations/20250101000071_offer_attempt_counts.sql');
 const inFlight = read('supabase/migrations/20250101000073_parcels_in_flight.sql');
@@ -1330,6 +1339,180 @@ for (const fn of FUNCTIONS) {
     'and it holds the space rather than collapsing it',
     /<ActivityIndicator color=\{theme\.primary\} \/>/.test(signedOut),
     'a card that appears from nothing moves the page under the reader',
+  );
+}
+
+// ------------------ 21. nothing is refused before it is known (session) ----
+
+/*
+ * ⚠ The same bug three times, on three different flags, and this section is
+ *   the rule that ends it.
+ *
+ *     status === 'loading'   the sign-in card flashed on every web reload
+ *     isAdmin                "This area isn't available on your account"
+ *                            flashed at an administrator on every admin reload
+ *     isApprovedDriver       the wallet and the journey planner told an
+ *                            approved driver they were not approved
+ *
+ *   Every one is a screen rendering a *refusal* from a flag that has an
+ *   "unknown" phase and defaults to false during it. `status` leaves 'loading'
+ *   when the stored session is restored; `isAdmin` and `isApprovedDriver`
+ *   arrive on a second round trip after that. `permissionsKnown` is the one
+ *   flag that means "both answers are in", and the checks below require every
+ *   refusal in the app to wait for it.
+ */
+{
+  const sessionStore = read('src/store/session.tsx');
+  const experience = read('src/lib/experience.ts');
+  const useExperienceHook = read('src/hooks/use-experience.ts');
+  const shell = read('src/components/ui/admin-shell.tsx');
+  const signedOut = read('src/components/ui/signed-out-state.tsx');
+  const adminScreen2 = read('src/app/(tabs)/admin.tsx');
+
+  /** The two modules allowed to render a refusal, because they do the waiting. */
+  const GATES = ['src/components/ui/admin-shell.tsx', 'src/components/ui/signed-out-state.tsx'];
+
+  check(
+    'the session says when it knows what somebody may see',
+    /permissionsKnown: boolean;/.test(sessionStore) &&
+      /permissionsKnown: status !== 'loading' && \(!user \|\| driverStatusLoaded\)/.test(
+        sessionStore,
+      ),
+    'signed out is known at once; signed in waits for the admin and driver lookups',
+  );
+  check(
+    'and the lookup flag is in the memo it is read from',
+    /driverStatusLoaded,\n\s*isAdmin,\n\s*refreshDriverStatus,/.test(code(sessionStore)),
+    'omitted, the context does not change identity when the answer lands',
+  );
+
+  /*
+   * ⚠ The routing rule has the same hole and it is easy to miss, because it
+   *   already guarded against the *first* version of this bug.
+   */
+  check(
+    'the experience router waits for the same flag',
+    /accessLoading: !permissionsKnown/.test(useExperienceHook) &&
+      /accessLoading: boolean;/.test(experience),
+    'keyed on the session alone, an approved driver on a phone resolved to the sender\n' +
+      '       app for a moment and then flicked to the driver one',
+  );
+
+  check(
+    'both gates wait on it',
+    /permissionsKnown/.test(shell) && /permissionsKnown/.test(signedOut),
+  );
+  check(
+    'and render a spinner rather than the refusal while they do',
+    /if \(!permissionsKnown\) \{[\s\S]{0,400}ActivityIndicator/.test(shell) &&
+      /if \(!permissionsKnown\) \{[\s\S]{0,400}ActivityIndicator/.test(signedOut),
+  );
+
+  /* There is one of the refusal card, not two. */
+  const deniedCopy = listSourceFiles('src').filter((path) =>
+    code(read(path)).includes("This area isn't available on your account"),
+  );
+  check(
+    'the not-available card exists in exactly one module',
+    deniedCopy.length === 1 && deniedCopy[0] === 'src/components/ui/admin-shell.tsx',
+    `found in: ${deniedCopy.join(', ')} — the admin screen used to carry a second copy,\n` +
+      '       with its own copy of the missing readiness check',
+  );
+  check(
+    'and the admin dashboard reaches it through the shared gate',
+    /const gate = useAdminGate\(\);/.test(adminScreen2) &&
+      /gate === 'loading'/.test(adminScreen2) &&
+      /<AdminDenied \/>/.test(adminScreen2),
+  );
+
+  /*
+   * ⚠ The sweep. This is the part that has to keep working on a screen written
+   *   next year by somebody who has never read any of the above.
+   *
+   *   A render branch is `if (!flag) { … return ( …` — a refusal the reader
+   *   sees. Two things are deliberately not matched:
+   *
+   *     `if (!isApprovedDriver) return;`   inside a callback. It claims nothing
+   *                                        to anybody, so it needs no waiting.
+   *     a `}` before the `return (`        the branch has closed and the
+   *                                        `return (` belongs to the component,
+   *                                        not to the refusal. `[^}]` is what
+   *                                        enforces that, and without it this
+   *                                        sweep reports every admin screen
+   *                                        whose effect guards on `isAdmin`.
+   */
+  const REFUSING_FLAGS = ['isAdmin', 'isApprovedDriver'];
+
+  /** `if (!flag) {` … `return (`, with no closing brace in between. */
+  const refusalBranch = (flag: string) => new RegExp(`if \\(!${flag}\\)\\s*\\{[^}]{0,400}?return \\(`);
+
+  /*
+   * ⚠ The sweep checks itself first.
+   *
+   *   A regex that matches nothing passes silently and for ever. These two
+   *   strings are the shape the bug had and the shape the effect guards have;
+   *   if a later edit makes the pattern stop telling them apart, this fails
+   *   before the sweep gets a chance to be uselessly green.
+   */
+  check(
+    'the sweep still recognises a refusal branch',
+    refusalBranch('isAdmin').test('if (!isAdmin) { return ( <Denied /> ); }'),
+    'the pattern below has stopped matching the bug it is for',
+  );
+  check(
+    'and still ignores an effect guard',
+    !refusalBranch('isAdmin').test(
+      'if (!isAdmin) { setLoading(false); return; } void load(); }, [isAdmin]); return (',
+    ),
+    'every admin screen guards its loader this way; matching those is just noise',
+  );
+
+  const unguarded: string[] = [];
+
+  for (const path of listSourceFiles('src')) {
+    if (GATES.includes(path)) continue;
+    const source = code(read(path));
+
+    for (const flag of REFUSING_FLAGS) {
+      if (!refusalBranch(flag).test(source)) continue;
+      if (/permissionsKnown/.test(source) || /useAdminGate\(\)/.test(source)) continue;
+      unguarded.push(`${path} (!${flag})`);
+    }
+  }
+
+  check(
+    'no screen renders a refusal from a flag that is still unknown',
+    unguarded.length === 0,
+    unguarded.length === 0
+      ? ''
+      : `${unguarded.join(', ')}\n` +
+        '       `isAdmin` and `isApprovedDriver` are false until a second round trip lands, so\n' +
+        '       this renders "you cannot see this" at somebody who can. Wait for\n' +
+        '       `permissionsKnown` from useSession, or use `useAdminGate`.',
+  );
+
+  /*
+   * And the authentication half: a screen may branch on `isAuthenticated`
+   * freely, provided what it renders is the card that does its own waiting.
+   */
+  const wrongRefusal: string[] = [];
+  for (const path of listSourceFiles('src')) {
+    if (GATES.includes(path)) continue;
+    const source = code(read(path));
+    /* Same shape, same reason for `[^}]`: stop at the end of the branch. */
+    const branch = /if \(!isAuthenticated[^)]*\)\s*\{([^}]{0,600}?return \([\s\S]{0,400})/g;
+
+    for (let m = branch.exec(source); m !== null; m = branch.exec(source)) {
+      if (/SignedOutState/.test(m[1])) continue;
+      if (/permissionsKnown|useAdminGate\(\)/.test(source)) continue;
+      wrongRefusal.push(path);
+    }
+  }
+  check(
+    'and a signed-out screen renders the card that waits, not its own',
+    wrongRefusal.length === 0,
+    `${wrongRefusal.join(', ')} — SignedOutState holds the readiness check; a hand-rolled\n` +
+      '       sign-in panel would not',
   );
 }
 

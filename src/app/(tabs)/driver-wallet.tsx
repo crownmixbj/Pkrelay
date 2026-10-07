@@ -10,7 +10,7 @@ import {
   X,
 } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { formatStamp } from '@/lib/when';
 import { Footer } from '@/components/Footer';
@@ -64,7 +64,7 @@ import {
 export default function DriverWalletScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const { viewerId, application, isApprovedDriver } = useSession();
+  const { viewerId, application, isApprovedDriver, permissionsKnown } = useSession();
 
   const [balance, setBalance] = useState<Balance>(EMPTY_BALANCE);
   const [open, setOpen] = useState<OpenPayout | null>(null);
@@ -132,6 +132,24 @@ export default function DriverWalletScreen() {
    * have not earned yet", it is "you cannot earn yet". Those are different
    * sentences and the second one has a next step.
    */
+  /*
+   * ⚠ Nothing is claimed until it is known.
+   *
+   *   `isApprovedDriver` comes from a second round trip and is false until it
+   *   lands, so without this an approved driver refreshing the page is told
+   *   they are not approved for a moment and then shown their own data. Same
+   *   shape as the sign-in flash and the admin one: a refusal rendered from a
+   *   flag that has an "unknown" phase. `permissionsKnown` is that phase being
+   *   over.
+   */
+  if (!permissionsKnown) {
+    return (
+      <View style={[gateStyles.loading, { backgroundColor: theme.background }]}>
+        <ActivityIndicator color={theme.primary} />
+      </View>
+    );
+  }
+
   if (!isApprovedDriver) {
     return (
       <ScrollView
@@ -622,5 +640,15 @@ const styles = StyleSheet.create({
     flex: 1,
     ...Typography.caption,
     lineHeight: 18,
+  },
+});
+
+/** The slot the readiness spinner sits in. See the note beside it. */
+const gateStyles = StyleSheet.create({
+  loading: {
+    flex: 1,
+    minHeight: 220,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

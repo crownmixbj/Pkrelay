@@ -38,7 +38,7 @@ const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8');
 const at = (over: Partial<Parameters<typeof resolveExperience>[0]>) =>
   resolveExperience({
     platform: 'ios',
-    authLoading: false,
+    accessLoading: false,
     isAuthenticated: true,
     isApprovedDriver: false,
     role: 'sender',
@@ -81,7 +81,7 @@ check(
 
 check(
   'nothing is decided while auth is restoring',
-  at({ authLoading: true }) === null && at({ authLoading: true, platform: 'web' }) === null,
+  at({ accessLoading: true }) === null && at({ accessLoading: true, platform: 'web' }) === null,
   'guessing sender flicks an approved driver through the wrong home on every launch',
 );
 

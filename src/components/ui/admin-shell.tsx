@@ -35,10 +35,19 @@ export function AdminShell({
   children: React.ReactNode;
 }) {
   const theme = useTheme();
-  const router = useRouter();
-  const { status, isAuthenticated, isAdmin } = useSession();
+  const { permissionsKnown, isAuthenticated, isAdmin } = useSession();
 
-  if (status === 'loading') {
+  /*
+   * ⚠ `permissionsKnown`, not `status === 'loading'`, and the difference is a
+   *   bug somebody reported.
+   *
+   *   `status` leaves 'loading' when the stored session is restored. `isAdmin`
+   *   arrives on a *second* round trip and is false until it does. So this used
+   *   to fall straight through to the refusal below and tell an administrator,
+   *   on every refresh of every admin page, that the area is not available on
+   *   their account — before replacing it with the page a moment later.
+   */
+  if (!permissionsKnown) {
     return (
       <View style={[styles.loading, { backgroundColor: theme.background }]}>
         <ActivityIndicator color={theme.primary} />
@@ -68,14 +77,7 @@ export function AdminShell({
   if (!isAdmin) {
     return (
       <Frame title={title} subtitle={subtitle}>
-        <Card style={styles.deniedCard}>
-          <EmptyState
-            icon={(color, size) => <ShieldAlert color={color} size={size} />}
-            title="Not available"
-            message="This area isn't available on your account."
-          />
-          <Button label="Back to Package Relay" size="md" onPress={() => router.replace('/')} />
-        </Card>
+        <AdminDenied />
       </Frame>
     );
   }
@@ -84,6 +86,63 @@ export function AdminShell({
     <Frame title={title} subtitle={subtitle}>
       {children}
     </Frame>
+  );
+}
+
+/**
+ * The refusal itself, exported so there is exactly one of it.
+ *
+ * ⚠ The admin dashboard screen had its own copy of this card, word for word,
+ *   wrapped in its own copy of the three-state gate — and therefore its own
+ *   copy of the missing readiness check. Two places to fix a bug is how one of
+ *   them stays broken.
+ *
+ * Anything rendering this must already have waited for `permissionsKnown`;
+ * `useAdminGate` below is the supported way to do that.
+ */
+export function AdminDenied() {
+  const router = useRouter();
+
+  return (
+    <Card style={styles.deniedCard}>
+      <EmptyState
+        icon={(color, size) => <ShieldAlert color={color} size={size} />}
+        title="Not available"
+        message="This area isn't available on your account."
+      />
+      <Button label="Back to Package Relay" size="md" onPress={() => router.replace('/')} />
+    </Card>
+  );
+}
+
+/**
+ * The three states an admin screen has, decided once.
+ *
+ * For the one screen that cannot use `AdminShell` because it draws its own
+ * frame. Everything else should use the shell.
+ *
+ *   'loading'   nothing is known yet — render a spinner, never a refusal
+ *   'signedOut' nobody is signed in
+ *   'denied'    signed in, and this is not their area
+ *   'ready'     show the page
+ */
+export function useAdminGate(): 'loading' | 'signedOut' | 'denied' | 'ready' {
+  const { permissionsKnown, isAuthenticated, isAdmin } = useSession();
+
+  if (!permissionsKnown) return 'loading';
+  if (!isAuthenticated) return 'signedOut';
+  if (!isAdmin) return 'denied';
+  return 'ready';
+}
+
+/** The spinner the gate shows while nothing is known. */
+export function AdminGateLoading() {
+  const theme = useTheme();
+
+  return (
+    <View style={[styles.loading, { backgroundColor: theme.background }]}>
+      <ActivityIndicator color={theme.primary} />
+    </View>
   );
 }
 

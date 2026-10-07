@@ -12,7 +12,6 @@ import {
   MailWarning,
   MapPin,
   PhoneCall,
-  ShieldAlert,
   ShieldCheck,
   Truck,
   UserRound,
@@ -39,6 +38,7 @@ import { ChipGroup } from '@/components/ui/chip';
 import { showDialog } from '@/components/ui/dialog';
 import { Field } from '@/components/ui/field';
 import { ConfirmCheckbox } from '@/components/ui/form-wizard';
+import { AdminDenied, AdminGateLoading, useAdminGate } from '@/components/ui/admin-shell';
 import { EmptyState, screenPadding, ScreenHeader, SectionLabel } from '@/components/ui/screen';
 import { SignedOutState } from '@/components/ui/signed-out-state';
 import { showToast } from '@/components/ui/toast';
@@ -179,7 +179,8 @@ export default function AdminScreen() {
   const theme = useTheme();
   const router = useRouter();
   const params = useLocalSearchParams<{ section?: string }>();
-  const { user, isAdmin, isAuthenticated } = useSession();
+  const { user, isAdmin } = useSession();
+  const gate = useAdminGate();
 
   const [section, setSection] = useState<Section>(() => parseAdminSection(params.section));
 
@@ -316,7 +317,22 @@ export default function AdminScreen() {
     }
   };
 
-  if (!isAuthenticated) {
+  /*
+   * ⚠ One gate, shared with every other admin screen.
+   *
+   *   This screen used to ask `isAuthenticated` and then `isAdmin` directly,
+   *   with its own copy of the refusal card. Both flags are false during the
+   *   window before the admin lookup lands, so refreshing any admin page
+   *   flashed "This area isn't available on your account" at an administrator
+   *   and then replaced it with the dashboard. `useAdminGate` waits for
+   *   `permissionsKnown` — which is "both answers are in", not "the session is
+   *   restored" — and nothing here may branch on the raw flags again.
+   */
+  if (gate === 'loading') {
+    return <AdminGateLoading />;
+  }
+
+  if (gate === 'signedOut') {
     return (
       <ScrollView contentContainerStyle={[styles.container, screenPadding]}>
         <View style={styles.content}>
@@ -333,20 +349,13 @@ export default function AdminScreen() {
   /*
    * Deliberately vague. Telling a signed-in non-admin "you are not an admin"
    * confirms the dashboard exists and that admin accounts are a thing worth
-   * hunting for.
+   * hunting for. The card itself lives in `admin-shell` so there is one of it.
    */
-  if (!isAdmin) {
+  if (gate === 'denied') {
     return (
       <ScrollView contentContainerStyle={[styles.container, screenPadding]}>
         <View style={styles.content}>
-          <Card style={styles.emptyCard}>
-            <EmptyState
-              icon={(color, size) => <ShieldAlert color={color} size={size} />}
-              title="Not available"
-              message="This area isn't available on your account."
-            />
-            <Button label="Back to Package Relay" size="md" onPress={() => router.replace('/')} />
-          </Card>
+          <AdminDenied />
         </View>
       </ScrollView>
     );

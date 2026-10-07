@@ -531,34 +531,96 @@ set reason = …` plpgsql cannot tell which is meant and raises before writing
 anything — the same trap 69 is about, one table along, and it cost a harness run
 to find.
 
-## The sign-in page flashed on every reload
+## Nothing is refused before it is known
 
-`SessionStatus` passes through `'loading'` on every launch while the stored
-session is restored, and during that moment `isAuthenticated` is false —
-truthfully, because nobody is signed in *as far as the client knows*. Nine
-screens branched on `!isAuthenticated` alone:
+The same bug happened three times, on three different flags, and the third one
+is the reason the fix is now a rule the build enforces.
+
+| flag | what flashed | where |
+|---|---|---|
+| `status === 'loading'` | the sign-in card | nine screens, on every web reload |
+| `isAdmin` | *"This area isn't available on your account"* | every admin page, at an administrator |
+| `isApprovedDriver` | *"Nothing to pay out yet"*, *"Scheduling unlocks when you are approved"* | the driver wallet and the journey planner |
+
+Every one is a screen rendering a **refusal** from a flag that has an "unknown"
+phase and defaults to `false` during it.
+
+### Why fixing the first one did not fix the second
+
+`SessionStatus` leaves `'loading'` as soon as the stored session is restored.
+But `isAdmin` and `isApprovedDriver` come from a **second** round trip —
+`refreshDriverStatus`, which runs after the session resolves — and both are
+`false` until it lands. So there is a window, on every load, in which the app
+knows exactly who somebody is and believes they are allowed nothing:
 
 ```
-app/(tabs)/index.tsx      app/(tabs)/driver.tsx        app/parcel/[id].tsx
-app/(tabs)/profile.tsx    app/(tabs)/driver-wallet.tsx app/capture/[id].tsx
-app/(tabs)/my-packages.tsx app/(tabs)/notifications.tsx app/(tabs)/admin.tsx
+t0  status: 'loading'      isAdmin: false   → sign-in card        (fixed first)
+t1  status: 'signedIn'     isAdmin: false   → "not available"     (this one)
+t2  status: 'signedIn'     isAdmin: true    → the page
 ```
 
-Only `AdminShell` and `driver-updates.tsx` checked `status` as well. On native
-the restore is fast and the splash covers it; on the web it means reading
-storage and then refreshing the token over the network, so every reload painted
-the sign-in card for a few hundred milliseconds before the real page replaced
-it. A signed-in person watching their own app flash the sign-in screen does not
-read it as a loading state — they read it as having been signed out.
+Gating on `status === 'loading'` closes t0 and leaves t1 wide open. That is
+exactly what `AdminShell` did, correctly as far as it went, and it is why the
+admin flash survived the first fix.
 
-The check now lives in `SignedOutState` itself, which renders a spinner in the
-same slot while `status === 'loading'`. Same decision `AdminShell` made for the
-same three states: one place to get it right, and a screen added next year
-cannot reintroduce it.
+### One flag
+
+`permissionsKnown` in `src/store/session.tsx`:
+
+```ts
+permissionsKnown: status !== 'loading' && (!user || driverStatusLoaded)
+```
+
+A signed-out visitor is known at once — there is no second lookup pending, and
+holding every public page on one would make the site slower for everybody. A
+signed-in person waits for the admin and driver answers.
+
+Everything that decides what a person may see now waits on it: `SignedOutState`,
+`AdminShell`, the admin dashboard, the driver wallet, the journey planner, and
+`resolveExperience` — whose input was renamed from `authLoading` to
+`accessLoading`, because keying it on the session alone meant an approved driver
+on a phone resolved to the *sender* app for a moment and then flicked to the
+driver one. That file's own comment already said that flick was the thing it
+existed to prevent; it was only guarding half of it.
+
+⚠ **`driverStatusLoaded` was read by the session memo and missing from its
+dependency list**, so the context object did not change identity when the lookup
+landed. Fixed in the same change.
+
+### One refusal card
+
+The admin dashboard carried its own copy of the not-available card, word for
+word, inside its own copy of the three-state gate — and therefore its own copy
+of the missing check. Two places to fix a bug is how one of them stays broken.
+`AdminDenied` and `useAdminGate` are now exported from `admin-shell.tsx`, and a
+test asserts the copy exists in exactly one module.
+
+### The build refuses a new one
+
+The part that matters for "not on any page, ever again" is a sweep in
+`verify:availability` over every `.ts`/`.tsx` under `src/`:
+
+- a render branch `if (!isAdmin)` or `if (!isApprovedDriver)` that returns JSX
+  must be in a file that also consults `permissionsKnown` or `useAdminGate`;
+- a branch on `!isAuthenticated` may render only `SignedOutState`, which does
+  its own waiting;
+- the not-available copy may exist in one file.
+
+Two details stop it being decorative:
+
+- **`[^}]` in the pattern.** Without it the sweep matched every admin screen's
+  `if (!isAdmin) { setLoading(false); return; }` effect guard and then found the
+  component's own `return (` a few characters later. A sweep that reports four
+  false positives gets switched off.
+- **It tests itself first.** Two literal strings — the shape of the bug and the
+  shape of an effect guard — are run through the pattern before the sweep uses
+  it. A regex that quietly stops matching passes for ever otherwise.
+
+Verified by reverting one of the three fixes and watching the build go red.
 
 ⚠ One thing deliberately left: the nav bar still swaps its avatar for a sign-in
 affordance during that window. It is one element rather than a full-page card,
-and gating it means threading session status through a 1,300-line component.
+and gating it means threading session state through a 1,300-line component.
 
 ## Tests
 

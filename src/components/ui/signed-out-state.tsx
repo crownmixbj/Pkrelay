@@ -43,13 +43,18 @@ export function SignedOutState({
 }) {
   const theme = useTheme();
   const router = useRouter();
-  const { status } = useSession();
+  const { permissionsKnown } = useSession();
 
   /*
-    Still restoring. A spinner in the same slot, so the page does not resize
-    under the reader when the answer arrives.
+    Still working out who this is. A spinner in the same slot, so the page does
+    not resize under the reader when the answer arrives.
+
+    ⚠ `permissionsKnown` rather than `status === 'loading'`, so that every
+      refusal in the app waits on the same one flag. It costs a signed-out
+      visitor nothing — nobody signed out has a second lookup pending — and it
+      means the rule is one sentence rather than two with an exception.
   */
-  if (status === 'loading') {
+  if (!permissionsKnown) {
     return (
       <Card style={styles.card}>
         <ActivityIndicator color={theme.primary} />

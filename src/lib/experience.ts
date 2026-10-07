@@ -27,8 +27,19 @@ export type Experience = (typeof EXPERIENCES)[number];
 export type ExperienceInput = {
   /** `Platform.OS`. Anything other than 'web' is a native build. */
   platform: string;
-  /** Still restoring a stored session. Nothing is decided yet. */
-  authLoading: boolean;
+  /**
+   * What this person may see is not known yet. Nothing is decided.
+   *
+   * ⚠ Wider than "restoring the session", and it has to be.
+   *
+   *   `isApprovedDriver` below comes from a second round trip and is false
+   *   until it lands. Keying this on the session alone meant an approved driver
+   *   on a phone resolved to 'sender' for the moment in between and then
+   *   flicked to 'driver' — the exact flick the null below exists to prevent,
+   *   arriving through the other door. `permissionsKnown` in the session store
+   *   is the one flag that covers both.
+   */
+  accessLoading: boolean;
   isAuthenticated: boolean;
   /**
    * An approved driver application — the same server-checked fact that gates
@@ -50,13 +61,14 @@ export type ExperienceInput = {
 
 export function resolveExperience(input: ExperienceInput): Experience | null {
   /*
-   * Null while the session is restoring, rather than guessing.
+   * Null while anything about this person is still unknown, rather than
+   * guessing.
    *
    * Guessing 'sender' here would put an approved driver through a visible
    * flick from the sender home to the driver home on every cold start, which
    * reads as the app being unsure who they are.
    */
-  if (input.authLoading) return null;
+  if (input.accessLoading) return null;
 
   // The desktop dashboard is the same for everyone; what it *contains* still
   // depends on the account, which is what the RLS policies decide.

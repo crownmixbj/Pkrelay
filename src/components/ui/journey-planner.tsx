@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { MapPin, Pause, Pencil, Play, Radio, Route, Trash2, Weight } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -43,7 +43,7 @@ import { useSession } from '@/store/session';
 export function JourneyPlanner() {
   const theme = useTheme();
   const router = useRouter();
-  const { application, isApprovedDriver } = useSession();
+  const { application, isApprovedDriver, permissionsKnown } = useSession();
 
   const [journeys, setJourneys] = useState<Journey[]>([]);
   const [busy, setBusy] = useState(false);
@@ -233,6 +233,24 @@ export function JourneyPlanner() {
       ],
     );
   };
+
+  /*
+   * ⚠ Nothing is claimed until it is known.
+   *
+   *   `isApprovedDriver` comes from a second round trip and is false until it
+   *   lands, so without this an approved driver refreshing the page is told
+   *   they are not approved for a moment and then shown their own data. Same
+   *   shape as the sign-in flash and the admin one: a refusal rendered from a
+   *   flag that has an "unknown" phase. `permissionsKnown` is that phase being
+   *   over.
+   */
+  if (!permissionsKnown) {
+    return (
+      <View style={[gateStyles.loading, { backgroundColor: theme.background }]}>
+        <ActivityIndicator color={theme.primary} />
+      </View>
+    );
+  }
 
   if (!isApprovedDriver) {
     return (
@@ -569,4 +587,14 @@ const styles = StyleSheet.create({
   gateTitle: { ...Typography.sectionTitle },
   gateBody: { ...Typography.meta, lineHeight: 20 },
   pressed: { opacity: 0.6 },
+});
+
+/** The slot the readiness spinner sits in. See the note beside it. */
+const gateStyles = StyleSheet.create({
+  loading: {
+    flex: 1,
+    minHeight: 220,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });
