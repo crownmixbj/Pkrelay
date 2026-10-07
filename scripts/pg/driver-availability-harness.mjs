@@ -1358,6 +1358,148 @@ const CLOCK_DRIVERS = [
   check('the driver gets exactly one as well', driverSide.rows[0].n === 1);
 }
 
+// ------------------- 12. an older migration cannot win quietly (78, 79) --
+
+/*
+ * ⚠ What this section reproduces is not a bug in any one file. It is what
+ *   happens when the chain is replayed out of order.
+ *
+ *   `create or replace function` going backwards is silent, legal, and
+ *   invisible to the migration history. Production ran 32 after 69 and spent a
+ *   day refusing every hand assignment with `column reference "driver" is
+ *   ambiguous`, on a history that recorded 69 as applied. The same replay put
+ *   back an index 23 had dropped, and 38's `dispatch_email` over 53's — which
+ *   is why every email was going out five minutes late, measured, with nobody
+ *   reporting it because five minutes looks like email.
+ *
+ *   So the test is not "is the current definition right". It is "if somebody
+ *   does that again, does anything say so".
+ */
+{
+  await asOwner();
+
+  const report = async () => (await db.query('select * from public.stale_definitions()')).rows;
+
+  /*
+   * ⚠ One expected exception, and it is the harness's own doing.
+   *
+   *   `SKIP` leaves out 24 because pg_net cannot be installed in PGlite, so
+   *   `notify_dispatch_offer` here is still 19's. Listing it by name rather
+   *   than filtering anything that fails keeps this test honest: a second
+   *   unexpected row fails the run.
+   */
+  const SKIPPED_OWNERS = new Set(['024']);
+
+  const first = await report();
+  const unexpected = first.filter(
+    (row) => row.state !== 'current' && !SKIPPED_OWNERS.has(row.owner_migration),
+  );
+  check(
+    'the chain, applied in order, leaves every definition current',
+    unexpected.length === 0,
+    JSON.stringify(unexpected),
+  );
+  check(
+    'and the manifest is actually checking something',
+    first.length >= 40,
+    `${first.length} rows — 79 lists every object the repo defines in two migrations`,
+  );
+
+  const probe = async () =>
+    (await db.query('select public.definitions_current() as ok')).rows[0].ok;
+
+  /*
+   * The probe is false in this harness for the skipped-24 reason above, which
+   * is itself worth asserting: `definitions_current` does not get to be
+   * green while `stale_definitions` is reporting a row.
+   */
+  check(
+    'the panel probe agrees with the report rather than having its own opinion',
+    (await probe()) === (first.every((row) => row.state === 'current')),
+  );
+
+  /* ------------------ now do to this database what was done to production --- */
+
+  const dispatchMode = readFileSync(
+    join(ROOT, 'supabase/migrations/20250101000032_dispatch_mode.sql'),
+    'utf8',
+  );
+  const head = dispatchMode.indexOf('create or replace function public.admin_assign_parcel');
+  const tail = dispatchMode.indexOf('\n$$;', head);
+  check('32 still defines admin_assign_parcel', head !== -1 && tail !== -1);
+
+  await db.exec(dispatchMode.slice(head, tail + 4));
+
+  const afterReplay = await report();
+  const assign = afterReplay.find((row) => row.object === 'admin_assign_parcel');
+  check(
+    'replaying 32 over 69 is reported, not swallowed',
+    assign?.state === 'STALE',
+    `got ${assign?.state} — this is the exact state production was in`,
+  );
+  check('and the panel probe goes red with it', (await probe()) === false);
+
+  /*
+   * ⚠ And the part that matters most: the reverted function really is broken,
+   *   so the probe is reporting a real failure rather than a cosmetic one.
+   */
+  const parcelToPlace = await parcel({ origin: 'Abuja', destination: 'Kaduna' });
+  await asUser(ADMIN);
+  const ambiguous = await refusal(() =>
+    db.query('select public.admin_assign_parcel($1, $2)', [parcelToPlace.id, LATER]),
+  );
+  check(
+    'the reverted function fails exactly the way production did',
+    ambiguous !== null && /column reference "driver" is ambiguous/.test(ambiguous),
+    String(ambiguous),
+  );
+
+  /* ---------------------------------------------- and 79 puts it back ------ */
+
+  await asOwner();
+  const repair = readFileSync(
+    join(ROOT, 'supabase/migrations/20250101000079_definition_drift_repair.sql'),
+    'utf8',
+  );
+  await db.exec(repair);
+
+  const afterRepair = await report();
+  check(
+    '79 restores it',
+    afterRepair.find((row) => row.object === 'admin_assign_parcel')?.state === 'current',
+  );
+  check(
+    'and 79 is re-runnable over a database that already has it',
+    afterRepair.filter(
+      (row) => row.state !== 'current' && !SKIPPED_OWNERS.has(row.owner_migration),
+    ).length === 0,
+    JSON.stringify(afterRepair.filter((row) => row.state !== 'current')),
+  );
+
+  await asUser(ADMIN);
+  const placed = await refusal(() =>
+    db.query('select public.admin_assign_parcel($1, $2)', [parcelToPlace.id, LATER]),
+  );
+  check(
+    'and the parcel can be placed by hand again',
+    placed === null,
+    String(placed),
+  );
+
+  await asOwner();
+  const carried = await db.query(
+    'select status, driver_id, driver from public.bookings where id = $1',
+    [parcelToPlace.id],
+  );
+  check(
+    'with the carrier name and the status move 69 added',
+    carried.rows[0].status === 'Assigned' &&
+      carried.rows[0].driver_id === LATER &&
+      String(carried.rows[0].driver ?? '').length > 0,
+    JSON.stringify(carried.rows[0]),
+  );
+}
+
 await db.close();
 
 if (failures > 0) {

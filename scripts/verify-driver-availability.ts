@@ -20,7 +20,7 @@
  *
  * Run with `npm run verify:availability`.
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { stallTone } from '../src/store/admin';
@@ -60,6 +60,7 @@ const triggers = read('supabase/migrations/20250101000050_notification_triggers.
 const spine = read('supabase/migrations/20250101000076_notification_spine_repair.sql');
 const dispatchMode = read('supabase/migrations/20250101000032_dispatch_mode.sql');
 const gaps = read('src/lib/schema-gap.ts');
+const drift = read('supabase/migrations/20250101000079_definition_drift_repair.sql');
 const matcher = read('supabase/migrations/20250101000026_departure_time.sql');
 const store = read('src/store/dispatch-mode.ts');
 const panel = read('src/components/ui/drivers-waiting.tsx');
@@ -961,6 +962,197 @@ for (const fn of FUNCTIONS) {
     /20250101000075_departure_priority\.sql/.test(gaps) &&
       /20250101000076_notification_spine_repair\.sql/.test(gaps),
     'a missing migration whose only symptom is a wrong sort order, or a silent inbox',
+  );
+}
+
+// ------------------------- 19. an older migration cannot win quietly (79) --
+
+/*
+ * ⚠ Three production defects, one cause: an early range of migrations was
+ *   replayed over a database that already had the later ones, and `create or
+ *   replace function` went backwards without complaining. Hand assignment
+ *   raised `column reference "driver" is ambiguous`, every email waited five
+ *   minutes for the sweep instead of going out on the trigger, and a driver
+ *   could not decline the same parcel twice — all on a migration history that
+ *   looked perfect.
+ *
+ * The checks below are about the manifest in 79, and they are the reason it can
+ * be trusted: one proves it covers everything the chain puts at risk, the other
+ * proves every marker in it actually discriminates.
+ */
+{
+  /** Every migration file, newest last. */
+  const migrations = readdirSync(join(ROOT, 'supabase/migrations'))
+    .filter((name) => /^\d+_.*\.sql$/.test(name))
+    .sort()
+    .map((name) => ({ version: name.slice(0, 14), sql: read(`supabase/migrations/${name}`) }));
+
+  /**
+   * Every `create [or replace] function` in one file, as (name, body).
+   *
+   * The body runs to the closing dollar-quote, found from the opening tag
+   * rather than assumed to be `$$` — 53 and others use `$fn$`.
+   */
+  const definitions = (sql: string): { name: string; body: string }[] => {
+    const found: { name: string; body: string }[] = [];
+    const head = /create\s+(?:or replace\s+)?function\s+((?:public|private)\.\w+)\s*\(/gi;
+
+    for (let m = head.exec(sql); m !== null; m = head.exec(sql)) {
+      const tag = /as\s+(\$\w*\$)/i.exec(sql.slice(m.index, m.index + 4000));
+      if (!tag) continue;
+      const opens = m.index + tag.index + tag[0].length;
+      const closes = sql.indexOf(tag[1], opens);
+      if (closes === -1) continue;
+      found.push({ name: m[1], body: sql.slice(m.index, closes + tag[1].length) });
+    }
+
+    return found;
+  };
+
+  /** Comments out, whitespace flattened — two definitions differ or they do not. */
+  const normalise = (body: string) =>
+    body
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*--.*$/gm, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const history = new Map<string, { version: string; body: string }[]>();
+  for (const migration of migrations) {
+    for (const found of definitions(migration.sql)) {
+      const seen = history.get(found.name) ?? [];
+      seen.push({ version: migration.version, body: normalise(found.body) });
+      history.set(found.name, seen);
+    }
+  }
+
+  /*
+   * At risk = defined in more than one migration, with at least one of the
+   * older definitions textually different from the newest. 76 re-applying 50's
+   * own functions verbatim is not at risk: replaying 50 over it changes nothing.
+   */
+  const atRisk = [...history.entries()].filter(([, seen]) => {
+    const newest = seen[seen.length - 1].body;
+    return seen.slice(0, -1).some((earlier) => earlier.body !== newest);
+  });
+
+  check(
+    'the chain still has objects that an older migration could overwrite',
+    atRisk.length > 30,
+    `found ${atRisk.length} — if this collapsed, the parser above stopped matching`,
+  );
+
+  /* The manifest rows, as 79 writes them: ('object','owner','fn','schema','name','marker') */
+  const manifest = new Map<string, string>();
+  const row =
+    /\(\s*'([^']*(?:''[^']*)*)'\s*,\s*'(\d+)'\s*,\s*'fn'\s*,\s*'(\w+)'\s*,\s*'(\w+)'\s*,\s*'([^']*(?:''[^']*)*)'\s*\)/g;
+  for (let m = row.exec(drift); m !== null; m = row.exec(drift)) {
+    manifest.set(`${m[3]}.${m[4]}`, m[5].replace(/''/g, "'"));
+  }
+
+  check('the manifest parses', manifest.size >= 39, `parsed ${manifest.size} function rows out of 79`);
+
+  /*
+   * ⚠ This is the check that stops the manifest becoming a snapshot of October
+   *   2026. A future migration that replaces an old function has to be listed,
+   *   or the build goes red — which is the only way a drift probe stays honest
+   *   as the chain grows.
+   */
+  const unlisted = atRisk.map(([name]) => name).filter((name) => !manifest.has(name));
+  check(
+    'every object the chain puts at risk is in the manifest',
+    unlisted.length === 0,
+    unlisted.length === 0
+      ? ''
+      : `missing from 79: ${unlisted.join(', ')}\n` +
+        '       a migration replaced one of these — add it with a marker only its newest\n' +
+        '       definition contains, or `definitions_current` goes green on a stale database',
+  );
+
+  /*
+   * ⚠ And this is the check that stops a marker lying.
+   *
+   *   A marker that also appears in an older definition reports a reverted
+   *   function as current; one that appears in no definition at all reports a
+   *   healthy function as stale. Both are worse than having no probe. An early
+   *   draft of 79 used a function's own name as its marker, which
+   *   `pg_get_functiondef` always contains — it would have gone green on
+   *   anything. This check is what caught it.
+   */
+  const wrong: string[] = [];
+  for (const [name, seen] of history) {
+    const marker = manifest.get(name);
+    if (!marker) continue;
+
+    const newest = seen[seen.length - 1].body;
+    if (!newest.includes(marker)) {
+      wrong.push(`${name}: marker "${marker}" is not in its newest definition`);
+      continue;
+    }
+
+    const leaked = seen
+      .slice(0, -1)
+      .filter((earlier) => earlier.body !== newest && earlier.body.includes(marker));
+    if (leaked.length > 0) {
+      wrong.push(
+        `${name}: marker "${marker}" is also in ${leaked.map((e) => e.version.slice(-3)).join(', ')}`,
+      );
+    }
+  }
+  check(
+    'every marker is in the newest definition and in none of the older ones',
+    wrong.length === 0,
+    wrong.join('\n       '),
+  );
+
+  /* The repair half: the seven bodies are their owning migrations', verbatim. */
+  const carried: [string, string, string][] = [
+    ['admin_assign_parcel', '20250101000069_assign_parcel_repair.sql', 'public.admin_assign_parcel'],
+    ['dispatch_email', '20250101000053_email_dispatch_repair.sql', 'public.dispatch_email'],
+    [
+      'email_on_booking_status',
+      '20250101000064_status_email_driver_name.sql',
+      'public.email_on_booking_status',
+    ],
+    [
+      'record_identity_result',
+      '20250101000041_sender_identity_review.sql',
+      'public.record_identity_result',
+    ],
+    [
+      'begin_identity_check',
+      '20250101000041_sender_identity_review.sql',
+      'public.begin_identity_check',
+    ],
+    ['handle_new_user', '20250101000045_google_identities.sql', 'public.handle_new_user'],
+    [
+      'pg_net_calls_are_resolvable',
+      '20250101000068_pg_net_probe_self_match.sql',
+      'public.pg_net_calls_are_resolvable',
+    ],
+  ];
+
+  for (const [label, file, name] of carried) {
+    const source = definitions(read(`supabase/migrations/${file}`)).find((d) => d.name === name);
+    const repaired = definitions(drift).find((d) => d.name === name);
+    check(
+      `79 carries ${label} exactly as ${file.slice(11, 14)} wrote it`,
+      !!source && !!repaired && source.body === repaired.body,
+      'generated from that file rather than retyped — a hand copy is how the two drift apart',
+    );
+  }
+
+  check(
+    'the trigger that makes the email immediate comes with it',
+    /drop trigger if exists on_email_queued on public\.email_outbox;/.test(drift) &&
+      /after insert on public\.email_outbox/.test(drift),
+    '53 is the file that moved the POST off app.settings.* and onto private.app_settings',
+  );
+
+  check(
+    'the drift probe is on the deployment panel',
+    /20250101000079_definition_drift_repair\.sql/.test(gaps) && /definitions_current/.test(gaps),
+    'a history row is not evidence that a migration ran — this is the line that says so',
   );
 }
 

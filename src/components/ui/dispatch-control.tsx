@@ -21,6 +21,7 @@ import { showToast } from '@/components/ui/toast';
 import { FontSize, Radius, Spacing, Typography, font } from '@/constants/theme';
 import { useLiveRefresh } from '@/hooks/use-live-refresh';
 import { useTheme } from '@/hooks/use-theme';
+import { formatClock } from '@/lib/when';
 import { formatNaira } from '@/store/bookings';
 import {
   assignParcel,
@@ -417,9 +418,16 @@ function LiveIndicator({
 }) {
   const theme = useTheme();
   const color = connected ? theme.successOnSoft : theme.textMuted;
-  const time = lastUpdated
-    ? lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-    : null;
+  /*
+    ⚠ WAT, like every other time on this screen.
+
+      `toLocaleTimeString` renders in the reader's own zone, which `verify:
+      timestamps` forbids across `src/` — and the reason is this screen in
+      particular. "Updated 14:03" beside "Leaves Today, 09:45 WAT" is two clocks
+      in one card, and the operator has no way to tell which is which. Minute
+      precision is enough for a line that refreshes every twenty seconds.
+  */
+  const time = lastUpdated ? formatClock(lastUpdated.toISOString()) : null;
 
   return (
     <View

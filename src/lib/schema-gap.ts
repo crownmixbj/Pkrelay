@@ -398,6 +398,26 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
     migration: '20250101000076_notification_spine_repair.sql',
   },
   /*
+   * ⚠ The only entry here that is not about a feature.
+   *
+   *   Every other line answers "has this migration been applied". This one
+   *   answers "is the database still what the chain says it should be", which
+   *   is what three separate production defects turned out to be: an early
+   *   range was replayed over a database that already had the later
+   *   migrations, and `create or replace` went backwards without complaint.
+   *   Hand assignment raised, every email waited five minutes for the sweep,
+   *   and a driver could not decline twice — all on a history that looked
+   *   perfect.
+   *
+   *   `definitions_current` is false while any object in 79's manifest has
+   *   lost its newest definition. `stale_definitions()` names which.
+   */
+  {
+    label: 'Definitions match the migration chain',
+    fn: 'definitions_current',
+    migration: '20250101000079_definition_drift_repair.sql',
+  },
+  /*
    * Without 62 nothing breaks on screen — new accounts are simply never sent
    * the welcome email — which is exactly why it needs a line here.
    */

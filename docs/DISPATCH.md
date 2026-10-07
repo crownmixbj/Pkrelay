@@ -216,19 +216,25 @@ got matched is not part of how it ended. Who carried it stays, because that is
 the delivery record. The attempts themselves are not lost — every offer writes an
 `app_events` row, which the System Logs screen reads.
 
-## The delivery email already exists
+## The delivery email
 
-`email_on_booking_status` (38) queues a `delivery_completed` email to the
-**sender** on the move to Delivered, carrying the tracking id, the fare, who
-received it and a flag that proof exists — never the storage path. The
+`email_on_booking_status` (38, replaced by 64) queues a `delivery_completed`
+email to the **sender** on the move to Delivered, carrying the tracking id, the
+fare, who received it and a flag that proof exists — never the storage path. The
 `notify-events` edge function has the template, and both are live on production.
 
-It has never fired there because the only delivered parcel predates the
-migration. `scripts/pg/driver-availability-harness.mjs` now proves the whole
-chain against the real schema — collect, move, deliver, assert the outbox row is
-addressed to the sender — because `emails-harness.mjs` proves it over a schema
-it builds itself, which is the arrangement that hid `admin_assign_parcel` being
-broken for eight migrations.
+`scripts/pg/driver-availability-harness.mjs` proves the whole chain against the
+real schema — collect, move, deliver, assert the outbox row is addressed to the
+sender — because `emails-harness.mjs` proves it over a schema it builds itself,
+which is the arrangement that hid `admin_assign_parcel` being broken for eight
+migrations.
+
+⚠ **"Queued immediately" and "sent immediately" are different claims, and only
+the first was ever true on production.** `dispatch_email` (53) is what POSTs the
+row to `notify-events` the moment it is queued, and production was running 38's
+version of it, which reads settings this project stopped using in 24. Every
+email was therefore going out on the five-minute sweep instead. See *The chain
+was replayed* below; 79 is the fix.
 
 ⚠ One stale row on production: a `password_changed` email failed with *No
 template for kind "password_changed"* against an older deployment of
@@ -351,17 +357,108 @@ select count(*) from public.bookings b
 Both returned **0**. Worth re-running before applying 76 to any environment that
 has been live longer.
 
+## The chain was replayed, and three things went backwards (79)
+
+`create or replace function` does not care that it is going backwards. Replay an
+early range of migrations over a database that already has the later ones and
+the older definitions win — silently, legally, and without touching
+`supabase_migrations.schema_migrations`. That happened to production, and it
+produced three separate bug reports before anyone saw the pattern:
+
+| reported as | actually |
+|---|---|
+| "column reference \"driver\" is ambiguous" on hand assignment | 32's `admin_assign_parcel` over 69's |
+| a driver cannot decline the same parcel twice | 20's unique index over 23's drop (fixed in 78) |
+| *nobody reported this one* | 38's `dispatch_email` over 53's — every email five minutes late |
+
+Checking all forty-two objects this repo defines in more than one migration
+against production on 2026-10-07 found **seven** stale:
+
+| object | overwritten | cost |
+|---|---|---|
+| `admin_assign_parcel` | 32 over 69 | hand assignment raises |
+| `dispatch_email` | 38 over 53 | every email waits for the sweep |
+| `email_on_booking_status` | 38 over 64 | no driver first name in status emails |
+| `begin_identity_check` | 28 over 41 | identity review columns never set |
+| `record_identity_result` | 28 over 41 | the same, from the verifier's side |
+| `handle_new_user` | 02 over 45 | Google sign-ups get a blank name |
+| `pg_net_calls_are_resolvable` | 67 over 68 | the probe matches itself, so it is always false |
+
+⚠ **Reading that list by eye got it wrong in both directions.** A first pass
+"found" `guarantor_invitation_window` stale — it is not; 54 only changes a
+number, and the marker used to test it was wrong — and missed four of the seven.
+That is why the manifest below exists rather than a shorter fix for the one bug
+that was reported.
+
+### The two nobody reported
+
+`dispatch_email` is the expensive one. 53 exists because 38's version reads
+`app.settings.functions_url` and `app.settings.service_role_key`, which this
+project does not set — it moved to `private.app_settings` in 24. 38's version
+therefore finds no endpoint, returns silently, and the row sits unsent until
+`loci-unsent-emails` picks it up. Every email on production was going out **301
+to 302 seconds** after it was queued:
+
+```sql
+select kind, round(extract(epoch from (sent_at - created_at))) as seconds
+  from public.email_outbox order by created_at desc limit 10;
+```
+
+Five minutes looks like email, which is why it was invisible. It is also why a
+delivery confirmation was reaching the sender up to five minutes after the
+driver tapped the button, on a database where the trigger that makes it
+immediate was sitting right there in the history.
+
+`handle_new_user` is the quiet one. A Google sign-up puts the person's name in
+`raw_user_meta_data ->> 'full_name'`; a password sign-up puts it in `'name'`. 45
+reads both, 02 reads only the second. Every Google account created since the
+replay has a blank `profiles.full_name` — which renders as "Unnamed driver" on
+the waiting list and as nothing beside a parcel.
+
+### Seeing it next time
+
+`stale_definitions()` carries a manifest of every object the repo defines in more
+than one migration, each with a marker string that only its newest definition
+contains, and reports `current`, `STALE` or `MISSING` for each:
+
+```sql
+select * from public.stale_definitions() where state <> 'current';
+select public.definitions_current();   -- the deployment panel reads this
+```
+
+Three decisions in it are worth knowing:
+
+- **A marker, not a whole-body comparison.** `pg_get_functiondef` reformats what
+  it returns, so a byte comparison against the .sql file fails on functions that
+  are perfectly current. A short string that only the newest definition contains
+  is weaker and reliable.
+- **Looked up by name, with `bool_or` across overloads.** Writing signatures
+  into the manifest would make it report MISSING the first time a migration
+  changed one — a worse lie than the one it catches. `journey_matches` is the
+  live example: 15 declared it with eight arguments and 26 with ten.
+- **The manifest cannot fall behind.** `verify:availability` parses every
+  migration, computes the at-risk set itself, and fails if one is missing from
+  79 — and separately checks that every marker is present in the newest
+  definition and absent from all the older ones. An early draft used a
+  function's own name as its marker, which `pg_get_functiondef` always contains;
+  that check is what caught it.
+
+The pg harness goes further: it applies the chain, replays 32's
+`admin_assign_parcel` over it, asserts the report flips to STALE, asserts the
+reverted function fails with production's exact error message, then applies 79
+and asserts a parcel can be placed by hand again.
+
 ## Tests
 
 ```bash
-npm run verify:availability      # source assertions, including 75 and 76
-npm run verify:pg-availability   # 69–76 against real Postgres under RLS
+npm run verify:availability      # source assertions, including 75, 76 and 79
+npm run verify:pg-availability   # 69-79 against real Postgres under RLS
 ```
 
 The pg harness pins the retry loop as well: a lapsed offer is not re-offered
 inside the cooldown, and *is* re-offered to the same driver once it has passed.
 
-Two assertions in it are worth knowing about:
+Three assertions in it are worth knowing about:
 
 - **Declaration order is the reverse of departure order.** The three drivers
   seeded for 75 declare their shifts last-leaving-first, so the old ordering
@@ -370,8 +467,11 @@ Two assertions in it are worth knowing about:
 - **"Immediately" is measured, not asserted in prose.** The sender's delivery
   notification is written by an `after update` trigger inside the same
   transaction as the status change, so the harness compares its `created_at`
-  against `delivered_at` and requires them within a second. Nothing is waiting
-  for a sweep.
+  against `delivered_at` and requires them within a second.
+- **The drift test breaks the database on purpose.** See above. One expected
+  exception is listed by name: `notify_dispatch_offer` is owned by 24, which the
+  harness skips because pg_net cannot be installed in PGlite. A second
+  unexpected row fails the run.
 
 ## Deploy
 
@@ -379,9 +479,9 @@ Two assertions in it are worth knowing about:
 supabase link --project-ref <ref> && supabase db push
 ```
 
-Every migration here is re-runnable. 70 and 75 create or replace read-only
-functions and touch no table; 69 replaces one function and changes no signature;
-76 is `create or replace` throughout with `drop trigger if exists` before every
+Every migration here is re-runnable. 70, 75 and 79 create or replace functions
+and touch no data; 69 replaces one function and changes no signature; 76 is
+`create or replace` throughout with `drop trigger if exists` before every
 trigger.
 
 ⚠ **75 drops and recreates `assignable_drivers`.** `create or replace` cannot
@@ -389,13 +489,21 @@ change a function's output columns and it gains two. There is a moment inside
 the transaction where the function does not exist; a push is one transaction, so
 nothing outside it ever sees that.
 
-⚠ **Push 76 even where the history claims 50.** That is the case it exists for.
-Afterwards, check the wiring rather than the history:
+⚠ **Push 76 and 79 even where the history claims the migrations they repair.**
+That is the case both exist for. Afterwards, check the database rather than the
+history:
 
 ```sql
+select public.definitions_current();       -- must be true
 select public.notification_spine_live();   -- must be true
 select public.departure_priority_live();   -- must be true
+select * from public.stale_definitions() where state <> 'current';   -- must be empty
 ```
 
-Both are on the deployment panel in the admin console, so the answer is also one
+All three are on the deployment panel in the admin console, so the answer is one
 screen away without opening the SQL editor.
+
+⚠ **Never `supabase db push --include-all` against a live project**, and never
+re-run an early migration by hand to "make sure it is there". That is what
+caused all of this. If the history is wrong, fix the history row; do not replay
+the file.
