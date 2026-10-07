@@ -38,7 +38,7 @@ const LEVEL_LABELS: Record<Filter, string> = {
  */
 export default function AdminLogsScreen() {
   const theme = useTheme();
-  const { isAdmin } = useSession();
+  const { isAdmin, permissionsKnown } = useSession();
 
   const [events, setEvents] = useState<AppEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,12 +58,25 @@ export default function AdminLogsScreen() {
   }, [filter]);
 
   useEffect(() => {
+    /*
+     * ⚠ Nothing is known yet, so nothing is decided — including whether the
+     *   load is over.
+     *
+     *   `isAdmin` is false until a second round trip lands, so without this the
+     *   effect ran once as a non-admin, set `loading` to false, and the screen
+     *   painted its *empty* state — every counter at zero, "Nothing waiting" —
+     *   before the fetch had even started. Then the flag flipped, the data
+     *   arrived, and the numbers appeared. That is the flash in the recording,
+     *   and it is the same mistake as the refusals: a decision taken from a
+     *   value that has an "unknown" phase.
+     */
+    if (!permissionsKnown) return;
     if (!isAdmin) {
       setLoading(false);
       return;
     }
     void load();
-  }, [isAdmin, load]);
+  }, [permissionsKnown, isAdmin, load]);
 
   return (
     <AdminShell

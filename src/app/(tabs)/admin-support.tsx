@@ -89,7 +89,7 @@ import {
  */
 export default function AdminSupportScreen() {
   const theme = useTheme();
-  const { isAdmin } = useSession();
+  const { isAdmin, permissionsKnown } = useSession();
 
   const [counts, setCounts] = useState<TicketCounts>(EMPTY_COUNTS);
   const [rows, setRows] = useState<TicketRow[]>([]);
@@ -134,13 +134,26 @@ export default function AdminSupportScreen() {
    * against a function that joins three tables is a screen that feels broken.
    */
   useEffect(() => {
+    /*
+     * ⚠ Nothing is known yet, so nothing is decided — including whether the
+     *   load is over.
+     *
+     *   `isAdmin` is false until a second round trip lands, so without this the
+     *   effect ran once as a non-admin, set `loading` to false, and the screen
+     *   painted its *empty* state — every counter at zero, "Nothing waiting" —
+     *   before the fetch had even started. Then the flag flipped, the data
+     *   arrived, and the numbers appeared. That is the flash in the recording,
+     *   and it is the same mistake as the refusals: a decision taken from a
+     *   value that has an "unknown" phase.
+     */
+    if (!permissionsKnown) return;
     if (!isAdmin) {
       setLoading(false);
       return;
     }
     const timer = setTimeout(() => void load(), query ? 300 : 0);
     return () => clearTimeout(timer);
-  }, [isAdmin, load, query]);
+  }, [permissionsKnown, isAdmin, load, query]);
 
   return (
     <AdminShell

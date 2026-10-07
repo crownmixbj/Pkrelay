@@ -541,9 +541,12 @@ is the reason the fix is now a rule the build enforces.
 | `status === 'loading'` | the sign-in card | nine screens, on every web reload |
 | `isAdmin` | *"This area isn't available on your account"* | every admin page, at an administrator |
 | `isApprovedDriver` | *"Nothing to pay out yet"*, *"Scheduling unlocks when you are approved"* | the driver wallet and the journey planner |
+| `isAdmin`, again | **every counter at zero and *"Nothing waiting"*** | five admin screens, on every reload |
 
-Every one is a screen rendering a **refusal** from a flag that has an "unknown"
-phase and defaults to `false` during it.
+The first three are a screen rendering a **refusal** from a flag that has an
+"unknown" phase and defaults to `false` during it. The fourth is the same
+mistake producing something worse than a refusal — see *The empty dashboard*
+below.
 
 ### Why fixing the first one did not fix the second
 
@@ -595,6 +598,48 @@ of the missing check. Two places to fix a bug is how one of them stays broken.
 `AdminDenied` and `useAdminGate` are now exported from `admin-shell.tsx`, and a
 test asserts the copy exists in exactly one module.
 
+### The empty dashboard
+
+The flash that survived all of the above, caught on a screen recording. Every
+admin screen's loader guards on `isAdmin`:
+
+```ts
+useEffect(() => {
+  if (!isAdmin) {
+    setLoading(false);     // ← on mount, isAdmin is false
+    return;
+  }
+  void load();
+}, [isAdmin, load]);
+```
+
+On mount `isAdmin` is false, so that branch ran, **declared the load finished**,
+and the screen painted its *empty* state — every counter at zero, "Nothing
+waiting. Every application has been looked at." — before the fetch had started.
+The flag then flipped, `load()` ran, and the real numbers appeared.
+
+It is the same mistake as the refusals and it reads worse, because an empty
+dashboard is a claim about *the business* rather than about the reader. For a
+second, Package Relay had no applications, no parcels and nothing waiting.
+
+The fix is one line above the guard, in all five screens:
+
+```ts
+if (!permissionsKnown) return;   // nothing known — stay loading
+```
+
+`loading` then stays true from mount until the fetch resolves, which is what it
+was always supposed to mean.
+
+### The wait must not blank the page
+
+The readiness gate itself was a flash: it returned a bare spinner on an empty
+background, so the brand, title and subtitle blinked out and back on every
+reload. A blank screen between two painted ones reads as a flash whatever is
+drawn in the middle of it. `AdminShell` now renders its spinner *inside* the
+page frame, and the dashboard keeps its header, so only the content region
+changes.
+
 ### The build refuses a new one
 
 The part that matters for "not on any page, ever again" is a sweep in
@@ -604,6 +649,10 @@ The part that matters for "not on any page, ever again" is a sweep in
   must be in a file that also consults `permissionsKnown` or `useAdminGate`;
 - a branch on `!isAuthenticated` may render only `SignedOutState`, which does
   its own waiting;
+- an effect that calls `setLoading(false)` under an `isAdmin` guard must return
+  on `!permissionsKnown` **first** — checked by source position, not just
+  presence, because the order is the whole bug;
+- the gate must hold the page frame rather than replace it;
 - the not-available copy may exist in one file.
 
 Two details stop it being decorative:
@@ -616,7 +665,9 @@ Two details stop it being decorative:
   shape of an effect guard — are run through the pattern before the sweep uses
   it. A regex that quietly stops matching passes for ever otherwise.
 
-Verified by reverting one of the three fixes and watching the build go red.
+Verified by reverting fixes one at a time and watching the build go red for each
+— the refusal sweep against the journey planner, the loader sweep against the
+system-logs screen.
 
 ⚠ One thing deliberately left: the nav bar still swaps its avatar for a sign-in
 affordance during that window. It is one element rather than a full-page card,

@@ -34,7 +34,6 @@ export function AdminShell({
   next: string;
   children: React.ReactNode;
 }) {
-  const theme = useTheme();
   const { permissionsKnown, isAuthenticated, isAdmin } = useSession();
 
   /*
@@ -48,10 +47,19 @@ export function AdminShell({
    *   their account — before replacing it with the page a moment later.
    */
   if (!permissionsKnown) {
+    /*
+      ⚠ Inside the frame, not instead of it.
+
+        This used to return a bare spinner on an empty background, so the whole
+        page — brand, title, subtitle — blinked out and back on every reload.
+        A blank screen between two painted ones reads as a flash whatever is
+        drawn in the middle of it. Holding the chrome means only the content
+        region changes, which reads as loading.
+    */
     return (
-      <View style={[styles.loading, { backgroundColor: theme.background }]}>
-        <ActivityIndicator color={theme.primary} />
-      </View>
+      <Frame title={title} subtitle={subtitle}>
+        <AdminGateLoading />
+      </Frame>
     );
   }
 
@@ -135,12 +143,17 @@ export function useAdminGate(): 'loading' | 'signedOut' | 'denied' | 'ready' {
   return 'ready';
 }
 
-/** The spinner the gate shows while nothing is known. */
+/**
+ * The spinner the gate shows while nothing is known.
+ *
+ * Sized to sit inside a page frame rather than replace one — see the note in
+ * `AdminShell`. It fills the content region and leaves the header alone.
+ */
 export function AdminGateLoading() {
   const theme = useTheme();
 
   return (
-    <View style={[styles.loading, { backgroundColor: theme.background }]}>
+    <View style={styles.loading}>
       <ActivityIndicator color={theme.primary} />
     </View>
   );
@@ -263,7 +276,8 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   loading: {
-    flex: 1,
+    /* A content-region slot, not a page. See `AdminGateLoading`. */
+    minHeight: 220,
     alignItems: 'center',
     justifyContent: 'center',
   },

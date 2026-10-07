@@ -179,7 +179,7 @@ export default function AdminScreen() {
   const theme = useTheme();
   const router = useRouter();
   const params = useLocalSearchParams<{ section?: string }>();
-  const { user, isAdmin } = useSession();
+  const { user, isAdmin, permissionsKnown } = useSession();
   const gate = useAdminGate();
 
   const [section, setSection] = useState<Section>(() => parseAdminSection(params.section));
@@ -210,12 +210,25 @@ export default function AdminScreen() {
   }, []);
 
   useEffect(() => {
+    /*
+     * ⚠ Nothing is known yet, so nothing is decided — including whether the
+     *   load is over.
+     *
+     *   `isAdmin` is false until a second round trip lands, so without this the
+     *   effect ran once as a non-admin, set `loading` to false, and the screen
+     *   painted its *empty* state — every counter at zero, "Nothing waiting" —
+     *   before the fetch had even started. Then the flag flipped, the data
+     *   arrived, and the numbers appeared. That is the flash in the recording,
+     *   and it is the same mistake as the refusals: a decision taken from a
+     *   value that has an "unknown" phase.
+     */
+    if (!permissionsKnown) return;
     if (!isAdmin) {
       setLoading(false);
       return;
     }
     void load();
-  }, [isAdmin, load]);
+  }, [permissionsKnown, isAdmin, load]);
 
   /*
    * ⚠ The queue keeps up with things nobody here did.
@@ -329,7 +342,22 @@ export default function AdminScreen() {
    *   restored" — and nothing here may branch on the raw flags again.
    */
   if (gate === 'loading') {
-    return <AdminGateLoading />;
+    /*
+      The header stays up while the answer is on its way. A bare spinner on an
+      empty background makes the whole page blink; see the note in `AdminShell`.
+    */
+    return (
+      <ScrollView contentContainerStyle={[styles.container, screenPadding]}>
+        <View style={styles.content}>
+          <ScreenHeader
+            brand={false}
+            title={SCREEN_TITLES[section]}
+            subtitle="One moment."
+          />
+          <AdminGateLoading />
+        </View>
+      </ScrollView>
+    );
   }
 
   if (gate === 'signedOut') {

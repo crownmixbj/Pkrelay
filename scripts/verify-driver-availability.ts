@@ -1404,8 +1404,13 @@ for (const fn of FUNCTIONS) {
   );
   check(
     'and render a spinner rather than the refusal while they do',
-    /if \(!permissionsKnown\) \{[\s\S]{0,400}ActivityIndicator/.test(shell) &&
+    /if \(!permissionsKnown\) \{[\s\S]{0,600}<AdminGateLoading \/>/.test(shell) &&
       /if \(!permissionsKnown\) \{[\s\S]{0,400}ActivityIndicator/.test(signedOut),
+    'the shell draws its spinner through AdminGateLoading, inside the page frame',
+  );
+  check(
+    'and that spinner really is one',
+    /export function AdminGateLoading\(\)[\s\S]{0,400}ActivityIndicator/.test(shell),
   );
 
   /* There is one of the refusal card, not two. */
@@ -1489,6 +1494,76 @@ for (const fn of FUNCTIONS) {
         '       `isAdmin` and `isApprovedDriver` are false until a second round trip lands, so\n' +
         '       this renders "you cannot see this" at somebody who can. Wait for\n' +
         '       `permissionsKnown` from useSession, or use `useAdminGate`.',
+  );
+
+  /*
+   * ⚠ And the third version of it, which is not a refusal at all.
+   *
+   *   Every admin screen's loader guards on `isAdmin`:
+   *
+   *     if (!isAdmin) { setLoading(false); return; }
+   *
+   *   On mount `isAdmin` is false, so that ran, declared the load finished, and
+   *   the screen painted its *empty* state — every counter zero, "Nothing
+   *   waiting" — before the fetch had started. The flag then flipped, the data
+   *   arrived, and the numbers appeared. It is the same mistake as a refusal
+   *   and it looks worse, because an empty dashboard is a claim about the
+   *   business rather than about the reader.
+   *
+   *   The rule: an effect that decides anything from `isAdmin` must return
+   *   first on `!permissionsKnown`, and the check must come *before* it.
+   */
+  const decidedTooEarly: string[] = [];
+
+  for (const path of listSourceFiles('src')) {
+    if (GATES.includes(path)) continue;
+    const source = code(read(path));
+
+    const guard = /if \(!isAdmin\)\s*\{[^}]*setLoading\(false\)/.exec(source);
+    if (!guard) continue;
+
+    const waits = source.indexOf('if (!permissionsKnown) return;');
+    if (waits !== -1 && waits < guard.index) continue;
+    decidedTooEarly.push(path);
+  }
+
+  check(
+    'no loader calls itself finished before it knows whether to start',
+    decidedTooEarly.length === 0,
+    decidedTooEarly.length === 0
+      ? ''
+      : `${decidedTooEarly.join(', ')}\n` +
+        '       `isAdmin` is false until the second round trip lands, so this marks the load\n' +
+        '       done and paints an empty dashboard first. Put `if (!permissionsKnown) return;`\n' +
+        '       above the guard.',
+  );
+
+  /* The same self-test discipline as the sweep above. */
+  check(
+    'that check can tell the two orders apart',
+    /if \(!isAdmin\)\s*\{[^}]*setLoading\(false\)/.test('if (!isAdmin) { setLoading(false); return; }') &&
+      'if (!permissionsKnown) return; if (!isAdmin) { setLoading(false); }'.indexOf(
+        'if (!permissionsKnown) return;',
+      ) <
+        (/if \(!isAdmin\)\s*\{[^}]*setLoading\(false\)/.exec(
+          'if (!permissionsKnown) return; if (!isAdmin) { setLoading(false); }',
+        )?.index ?? -1),
+    'the ordering comparison is the whole check',
+  );
+
+  /* The wait must not blank the page it is waiting on. */
+  check(
+    'the gate holds the page frame rather than replacing it',
+    /if \(!permissionsKnown\) \{[\s\S]{0,600}?<Frame title=\{title\} subtitle=\{subtitle\}>[\s\S]{0,200}?<AdminGateLoading \/>/.test(
+      shell,
+    ),
+    'a blank screen between two painted ones reads as a flash whatever is drawn on it',
+  );
+  check(
+    'and the dashboard keeps its header too',
+    /gate === 'loading'[\s\S]{0,700}?<ScreenHeader[\s\S]{0,300}?<AdminGateLoading \/>/.test(
+      adminScreen2,
+    ),
   );
 
   /*
