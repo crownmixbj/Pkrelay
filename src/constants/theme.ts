@@ -272,6 +272,32 @@ export const Spacing = {
 } as const;
 
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
+
+/**
+ * The two measures this site lines up on, and the difference between them.
+ *
+ * ⚠ `PageMeasure` is the one everything *chrome* and *marketing* shares.
+ *
+ *   The navigation capsule, the live ticker, the home hero's copy and every
+ *   band below it all cap here and centre. Before this existed they did not:
+ *   on a 2560px window the ticker ran edge to edge at x=0, the nav and the hero
+ *   sat at x=24, and the content below was a 1232px column centred at x=664 —
+ *   four different left edges, so the wordmark, the headline and the body text
+ *   never lined up with each other. Nothing about that is visible on a laptop,
+ *   because below about 1328px the cap never engages and all four collapse onto
+ *   the same edge. It is only wrong on the machines people demo on.
+ *
+ *   Full-bleed *media* may still break out of it — the hero photograph does,
+ *   deliberately — but no text does.
+ *
+ * ⚠ `MaxContentWidth` is narrower on purpose, and is not a competing opinion.
+ *
+ *   It is the reading measure for app routes: forms, lists, a parcel's detail.
+ *   A booking form 1280px wide is a worse form, so those screens centre at 800
+ *   inside a header that caps at 1280. That is the normal arrangement — chrome
+ *   wider than content — rather than a second system.
+ */
+export const PageMeasure = 1280;
 export const MaxContentWidth = 800;
 
 /** Corner radii. `pill` is deliberately huge so it always fully rounds. */
@@ -415,9 +441,48 @@ export const Typography = {
   wordmark: { fontSize: 20, ...font(800), letterSpacing: 1.6 },
 } as const;
 
-/** text-4xl on phones, text-5xl from the md breakpoint up. */
+/**
+ * text-4xl on phones, text-5xl from the md breakpoint, text-6xl once the page
+ * has hit its measure.
+ *
+ * ⚠ The third step is the one that was missing.
+ *
+ *   This stopped at 48 and never grew again, so a 48px headline sat inside a
+ *   2512px hero — the size of a section title on a billboard. The step is tied
+ *   to `PageMeasure` rather than to a new breakpoint because that is the point
+ *   where the copy stops growing with the window: past it the column is fixed,
+ *   so the type is the only thing left that can hold the hero's scale.
+ *
+ *   60 rather than 64: "Delivering with" sets to roughly 470px at 60/800, and
+ *   the hero's copy column caps at 560.
+ */
 export function heroTitleSize(width: number): number {
+  if (width >= PageMeasure) return 60;
   return width >= 768 ? 48 : 36;
+}
+
+/**
+ * Section headers, which step up once there is desktop room for them.
+ *
+ * ⚠ Returns the line height as well, and that is not a convenience.
+ *
+ *   Spreading `Typography.sectionHeading` and overriding only `fontSize` keeps
+ *   the 22px line height underneath a 32px glyph, which clips descenders on web
+ *   and looks like a font-loading bug rather than a spacing one. The two have to
+ *   move together, so they are returned together.
+ */
+export function sectionHeadingType(width: number): { fontSize: number; lineHeight: number } {
+  const fontSize = width >= 1024 ? FontSize.display : FontSize.heading;
+  return { fontSize, lineHeight: lineHeightFor(fontSize) };
+}
+
+/**
+ * The gap between top-level sections. Wider once the page is wide, because a
+ * 48px gap that separates two bands on a laptop reads as one continuous block
+ * when those bands are 1280px across and the hero above them is 620px tall.
+ */
+export function sectionGap(width: number): number {
+  return width >= 1024 ? 72 : 48;
 }
 
 /**

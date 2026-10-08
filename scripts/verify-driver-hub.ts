@@ -207,6 +207,7 @@ const base: DriverApplication = {
   phone: '+2348030000000',
   email: 'chinedu@example.com',
   nin: '12345678901',
+  ninLast4: '8901',
   address: '1 Somewhere',
   state: 'Oyo',
   baseCity: 'Ibadan',

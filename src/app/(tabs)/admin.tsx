@@ -52,6 +52,7 @@ import {
   isOverdue,
   isWaitingOnGuarantor,
   subscribeToApplications,
+  revealApplicationNin,
   reviewApplication,
   REVIEW_WORKING_DAYS,
   STATUS_LABELS,
@@ -551,6 +552,15 @@ function ApplicationCard({
   const [expanded, setExpanded] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState('');
+  /*
+    The full numbers, which only an audited reveal returns. Null until asked
+    for, and cleared with the card below so one applicant's NIN can never sit on
+    screen under another's name.
+  */
+  const [nins, setNins] = useState<{ applicant: string | null; guarantor: string | null } | null>(
+    null,
+  );
+  const [revealingNin, setRevealingNin] = useState(false);
 
   /**
    * ⚠ Keyed on the application, so a tick cannot outlive the card it was made on.
@@ -571,7 +581,26 @@ function ApplicationCard({
     setAttested(false);
     setRejecting(false);
     setReason('');
+    /* A revealed number must not outlive the card it was revealed on. */
+    setNins(null);
   }, [application.id]);
+
+  const revealNins = async () => {
+    setRevealingNin(true);
+    try {
+      const outcome = await revealApplicationNin(
+        application.id,
+        'Driver application review — checking the number against the uploaded document',
+      );
+      if (!outcome.ok) {
+        showDialog('Could not open the NIN', outcome.error);
+        return;
+      }
+      setNins({ applicant: outcome.applicantNin, guarantor: outcome.guarantorNin });
+    } finally {
+      setRevealingNin(false);
+    }
+  };
 
   const waiting = workingDaysSince(application.submittedAt);
   const overdue = isOverdue(application);
@@ -661,9 +690,38 @@ function ApplicationCard({
       {expanded && (
         <View style={styles.details}>
           <SectionLabel>Identity</SectionLabel>
+          {/*
+            ⚠ Four digits until somebody asks for the rest, and the asking is
+              recorded.
+
+              This row rendered the whole number, straight off `select('*')`,
+              with nothing anywhere saying who had looked at whose national ID.
+              The console no longer fetches it at all — `fetchAllApplications`
+              reads a view without the column — so the button below is the only
+              way to it, and it writes a 'privacy' line naming the reviewer.
+
+              The number is selectable once revealed: the next thing a reviewer
+              does with one that does not match the document is paste it into
+              the enquiry that settles it.
+          */}
           <Row icon={<IdCard color={theme.textMuted} size={15} />} label="NIN">
-            {application.nin}
+            {nins?.applicant ?? `•••• •••• ${application.ninLast4 || '????'}`}
           </Row>
+          {nins === null && (
+            <Button
+              label={revealingNin ? 'Opening…' : 'Show full NIN'}
+              variant="secondary"
+              size="md"
+              icon={(color, size) => <IdCard color={color} size={size} />}
+              disabled={revealingNin}
+              onPress={() => void revealNins()}
+            />
+          )}
+          {!!nins?.guarantor && (
+            <Row icon={<IdCard color={theme.textMuted} size={15} />} label="Guarantor NIN">
+              {nins.guarantor}
+            </Row>
+          )}
           <Row icon={<UserRound color={theme.textMuted} size={15} />} label="Address">
             {application.address}
           </Row>

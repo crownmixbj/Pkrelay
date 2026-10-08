@@ -1591,6 +1591,165 @@ for (const fn of FUNCTIONS) {
   );
 }
 
+// -------------------- 22. the reviewer sees the number they check (81) ----
+
+/*
+ * ⚠ The review screens handed over a photograph of a national ID card and
+ *   withheld the number typed off it.
+ *
+ *   `admin_reveal_sender_identity` returned `slip_path` — the scan, with the
+ *   NIN printed on it in full — and four digits. So a reviewer could catch a
+ *   wrong number only if the error happened to land in the last four, which is
+ *   not where a transposed digit usually lands. Masking the typed copy of a
+ *   number that is legible in the image beside it protects nobody; it only
+ *   stops the comparison the review exists to make.
+ *
+ *   The opposite mistake was live at the same time: driver applications put
+ *   every applicant's full NIN in the list, fetched with `select('*')`, with no
+ *   record of who looked. One number, one console, two opposite rules.
+ */
+{
+  const ninSql = code(read('supabase/migrations/20250101000081_nin_visibility.sql'));
+  const applicationsStore = read('src/store/driver-applications.ts');
+  const photos = read('src/store/parcel-photos.ts');
+  const reviewPanel = read('src/components/ui/identity-review-panel.tsx');
+  const adminScreen3 = read('src/app/(tabs)/admin.tsx');
+
+  /* ------------------------------------------------- the reveals return it */
+
+  for (const fn of ['admin_reveal_identity_for_user', 'admin_reveal_sender_identity']) {
+    check(
+      `${fn} returns the whole number`,
+      new RegExp(`create function public\\.${fn}\\(`).test(ninSql) &&
+        new RegExp(`drop function if exists public\\.${fn}\\(`).test(ninSql),
+      'the return type gains a column, so it is dropped and recreated — create or replace cannot',
+    );
+  }
+  check(
+    'both keep the last four as well',
+    (ninSql.match(/nin_last4 text,/g) ?? []).length === 2,
+    'a caller that only wants the tail should not have to carry the whole number to get it',
+  );
+  check(
+    'and both still write the privacy line before reading',
+    (ninSql.match(/'privacy',\s*'admin revealed sender identity'/g) ?? []).length === 2,
+    'logged in the same transaction as the read: if the insert fails, nothing is returned',
+  );
+
+  /* ------------------------------------- the list stops carrying the number */
+
+  check(
+    'the console reads a view, not the table',
+    /create or replace view public\.driver_applications_admin/.test(ninSql) &&
+      /from\('driver_applications_admin'\)/.test(applicationsStore),
+    'masking in the component would leave the number in the network response',
+  );
+  /*
+   * Scoped to the view's own select list. `admin_reveal_application_nin`
+   * selects `a.nin` further down the same file, legitimately — that is the
+   * audited door this check exists to push people towards.
+   */
+  const viewBody = ninSql.slice(
+    ninSql.indexOf('create or replace view public.driver_applications_admin'),
+    ninSql.indexOf('from public.driver_applications a;'),
+  );
+  check(
+    'and that view leaves both NINs out',
+    viewBody.length > 100 &&
+      /right\(a\.nin, 4\) as nin_last4/.test(viewBody) &&
+      /* A bare select-list entry. `right(a.nin, 4)` contains "a.nin," too. */
+      !/^\s*a\.nin,\s*$/m.test(viewBody) &&
+      !/guarantor_nin/.test(viewBody),
+    'the applicant\u2019s and the guarantor\u2019s',
+  );
+  check(
+    'the view does not become a way around the row policies',
+    /with \(security_invoker = on\)/.test(ninSql),
+    'without it a view runs with its owner’s rights and hands every application to anybody',
+  );
+  check(
+    'the applicant can still read their own, because it is theirs',
+    /from\('driver_applications'\)\s*\.select\('\*'\)\s*\.eq\('user_id', userId\)/.test(
+      code(applicationsStore),
+    ),
+    'their edit form has to prefill',
+  );
+
+  /* ------------------------------------------- one audited door per screen */
+
+  check(
+    'an application reveal exists, covering both numbers',
+    /create or replace function public\.admin_reveal_application_nin\(/.test(ninSql) &&
+      /applicant_nin text,/.test(ninSql) &&
+      /guarantor_nin text/.test(ninSql),
+    'reviewing an application is one act of looking, so it is one call and one log line',
+  );
+  check(
+    'it refuses a non-admin and records the one who is',
+    /if not public\.is_admin\(\) then/.test(ninSql) &&
+      /'admin revealed application identity numbers'/.test(ninSql),
+  );
+
+  /* --------------------------------------------------------- on the screen */
+
+  check(
+    'the review panel shows the number beside the document',
+    /revealed\.nin/.test(reviewPanel) && /NIN as entered/.test(reviewPanel),
+    'the slip is already open above it; that is what makes the comparison possible',
+  );
+  check(
+    'and it is selectable, because a mismatch gets pasted into an enquiry',
+    /<Text selectable style=\{\[styles\.ninValue/.test(reviewPanel),
+  );
+  check(
+    'a revealed number is cleared when the card becomes another person',
+    /setNins\(null\);/.test(adminScreen3) && /\}, \[application\.id\]\);/.test(adminScreen3),
+    'the same rule the selfie reveal already follows',
+  );
+  check(
+    'the application list is masked until somebody asks',
+    /•••• •••• \$\{application\.ninLast4/.test(adminScreen3) &&
+      /label=\{revealingNin \? 'Opening…' : 'Show full NIN'\}/.test(adminScreen3),
+  );
+
+  /* ---------------------------------------- and nothing else gained a NIN */
+
+  /*
+   * ⚠ The sweep that keeps this honest. A full NIN may be rendered only from a
+   *   reveal's result — never from a list row, a profile or an application
+   *   fetched for a queue.
+   */
+  const leaked: string[] = [];
+  for (const path of listSourceFiles('src')) {
+    const source = code(read(path));
+    /* `{application.nin}` or `{identity.nin}` straight into JSX. */
+    const bare = /\{\s*(?:application|review|row|item|record)\.nin\s*\}/.exec(source);
+    if (bare) leaked.push(`${path}: ${bare[0]}`);
+  }
+  check(
+    'no screen renders a NIN it did not reveal',
+    leaked.length === 0,
+    `${leaked.join(', ')}\n` +
+      '       a full NIN belongs to a reveal result, which is audited. A list row is not one.',
+  );
+
+  check(
+    'the probe asks whether the column really left the console',
+    /nin_reveal_installed/.test(ninSql) &&
+      /column_name in \('nin', 'guarantor_nin'\)/.test(ninSql),
+    'a list looks identical whether the number was left out of the response or merely undrawn',
+  );
+  check(
+    'and it is on the deployment panel',
+    /20250101000081_nin_visibility\.sql/.test(gaps) && /nin_reveal_installed/.test(gaps),
+  );
+
+  check(
+    'the reveal helper carries the number through to its caller',
+    /nin: string \| null;/.test(photos) && /nin: row\.nin \?\? null,/.test(photos),
+  );
+}
+
 if (failures > 0) {
   console.error(`\n${failures} check(s) failed.\n`);
   process.exit(1);

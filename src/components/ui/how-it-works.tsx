@@ -14,7 +14,7 @@ import {
 
 import { PROCESS_STEPS, type ProcessStep } from '@/constants/how-it-works-steps';
 import { STEP_ILLUSTRATIONS, STEP_ILLUSTRATION_HEIGHT } from '@/constants/step-illustrations';
-import { FontSize, Radius, Spacing, Typography, font } from '@/constants/theme';
+import { FontSize, Radius, Spacing, Typography, font, sectionHeadingType } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
@@ -50,7 +50,8 @@ export function HowItWorks() {
 
   return (
     <View style={styles.section}>
-      <Text style={styles.heading}>
+      {/* One step larger once there is desktop room — see `sectionHeadingType`. */}
+      <Text style={[styles.heading, sectionHeadingType(width)]} accessibilityRole="header">
         How <Text style={{ color: theme.primary }}>Package Relay</Text> Works
       </Text>
       <Text style={[styles.subheading, { color: theme.textSecondary }]}>

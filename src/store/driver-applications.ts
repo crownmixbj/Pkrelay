@@ -101,7 +101,23 @@ export type DriverApplication = {
   fullName: string;
   phone: string;
   email: string;
+  /**
+   * The applicant's own NIN, in full.
+   *
+   * ⚠ Empty on anything the review console fetched, and that is deliberate.
+   *
+   *   `fetchAllApplications` reads `driver_applications_admin`, a view that
+   *   leaves the column out — so the number does not arrive in the browser at
+   *   all on a screen an operator leaves open all day. An admin who needs it
+   *   presses the reveal, which is audited. `fetchMyApplication` still returns
+   *   it, because it is the applicant's own and their edit form has to prefill.
+   *
+   *   Treat an empty string here as "not fetched", never as "not provided":
+   *   `ninLast4` is the field that answers whether one is on file.
+   */
   nin: string;
+  /** `4747` — what the console shows, and all it is given. New in 81. */
+  ninLast4: string;
   address: string;
   state: string;
   baseCity: string | null;
@@ -180,6 +196,7 @@ export function rowToApplication(row: Row): DriverApplication {
     phone: str(row.phone),
     email: str(row.email),
     nin: str(row.nin),
+    ninLast4: str(row.nin_last4) || str(row.nin).slice(-4),
     address: str(row.address),
     state: str(row.state),
     baseCity: nullableStr(row.base_city),
@@ -240,6 +257,8 @@ export type NewApplication = Omit<
   | 'guarantorRelationship'
   | 'guarantorAddress'
   | 'guarantorNin'
+  /* Read back from the row, never sent — the database derives it from `nin`. */
+  | 'ninLast4'
 >;
 
 export async function submitApplication(application: NewApplication): Promise<DriverApplication> {
@@ -299,13 +318,55 @@ export async function fetchMyApplication(userId: string): Promise<DriverApplicat
  * promised a 3–7 day turnaround.
  */
 export async function fetchAllApplications(): Promise<DriverApplication[]> {
+  /*
+   * ⚠ The view, not the table — see `DriverApplication.nin`.
+   *
+   *   `driver_applications_admin` (81) is `driver_applications` with the
+   *   applicant's NIN and the guarantor's reduced to four digits. Selecting
+   *   from the table put both numbers in the network response of every review
+   *   screen, whether or not anything drew them; masking in the component would
+   *   have been a label over data already on the machine.
+   *
+   *   The view is `security_invoker`, so the row policies decide who may read
+   *   it exactly as they do for the table. This changes which columns come
+   *   back, not who may ask.
+   */
   const { data, error } = await supabase
-    .from('driver_applications')
+    .from('driver_applications_admin')
     .select('*')
     .order('submitted_at', { ascending: true });
 
   if (error) throw error;
   return (data ?? []).map(rowToApplication);
+}
+
+/**
+ * The applicant's NIN and their guarantor's, in full, on the record.
+ *
+ * ⚠ The same shape as the sender reveal, for the same reason: the reviewer is
+ *   looking at a scan of the slip and the guarantor's government ID, and four
+ *   digits cannot be compared against either. One call for both numbers,
+ *   because reviewing an application is one act of looking — and one
+ *   'privacy' line in `app_events` naming who looked and why.
+ */
+export async function revealApplicationNin(
+  applicationId: string,
+  reason: string,
+): Promise<{ ok: true; applicantNin: string | null; guarantorNin: string | null } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc('admin_reveal_application_nin', {
+    application: applicationId,
+    reason,
+  });
+
+  if (error) return { ok: false, error: error.message };
+
+  const row = (data as { applicant_nin: string | null; guarantor_nin: string | null }[] | null)?.[0];
+
+  return {
+    ok: true,
+    applicantNin: row?.applicant_nin ?? null,
+    guarantorNin: row?.guarantor_nin ?? null,
+  };
 }
 
 /**

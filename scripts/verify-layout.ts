@@ -6,8 +6,10 @@
  * under the dynamic island is not a crash and produces no warning — it just
  * looks broken, and only on hardware.
  */
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+
+import { Colors } from '../src/constants/theme';
 
 let failures = 0;
 
@@ -892,6 +894,378 @@ check(
     '       checkout sheet opening behind a screen nobody asked for',
 );
 
+// --------------------------------------------------- one page measure ------
+
+/*
+ * ⚠ Four left edges, and only on a monitor wide enough to show them.
+ *
+ *   Measured on the running page at 2560: the live ticker ran edge to edge from
+ *   x=0, the nav capsule and the hero sat at x=24, the hero's copy at x=48, and
+ *   every band below the hero was a 1232px column centred at x=664. The
+ *   wordmark, the headline and the body text therefore never shared an edge,
+ *   which is the loudest "this is not a commercial site" signal a layout can
+ *   send — and it is invisible below about 1328px, where the cap never engages
+ *   and all four collapse onto the same edge. It was wrong only on the machines
+ *   people demo on.
+ *
+ *   The rule now: everything that holds *text* caps at `PageMeasure` and
+ *   centres; only media breaks out. Asserted as one shape repeated, because
+ *   three places spelled three different ways is exactly how this happened.
+ */
+const navSource = code(read('src/components/ui/app-nav-bar.tsx'));
+const tickerSource = code(read('src/components/ui/top-status-bar.tsx'));
+
+const measured = (source: string, name: string) => {
+  const at = source.indexOf(`${name}: {`);
+  if (at === -1) return '';
+  return source.slice(at, source.indexOf('},', at));
+};
+
+for (const [label, source, name] of [
+  ['the page content', homeScreen, 'contentWrap'],
+  ['the hero copy', homeScreen, 'heroInner'],
+  ['the nav capsule', navSource, 'wrapper'],
+  ['the live ticker', tickerSource, 'band'],
+] as const) {
+  const block = measured(source, name);
+  check(
+    `${label} caps at the measure`,
+    block.includes('maxWidth: PageMeasure') &&
+      block.includes("alignSelf: 'center'") &&
+      block.includes('paddingHorizontal: Spacing.four'),
+    'cap, centre, then gutter as padding — all three, or the edges do not line up',
+  );
+}
+
+check(
+  'the measure is named rather than typed out',
+  !/maxWidth: 1280/.test(homeScreen) && !/maxWidth: 1280/.test(navSource),
+  'a literal here is a number that drifts from the one the other two use',
+);
+
+/*
+ * ⚠ And the hero box itself is deliberately *not* capped.
+ *
+ *   Containing the photograph too would turn the banner into a card floating in
+ *   the middle of a wide window. The picture breaks out; the words do not. That
+ *   split is the whole arrangement, so it is stated rather than left to be
+ *   inferred from the absence of a maxWidth.
+ */
+check(
+  'the hero photograph still runs full-bleed',
+  !measured(homeScreen, 'hero').includes('maxWidth'),
+  'a contained hero is a card, not a banner',
+);
+check(
+  'and the hero carries no gutter of its own',
+  !measured(homeScreen, 'hero').includes('paddingHorizontal'),
+  'the gutter belongs to heroInner — on the hero it would offset the copy from the content below',
+);
+
+// ------------------------------------------- the page does not open empty ---
+
+/*
+ * ⚠ The first sentence on the page was an empty state.
+ *
+ *   The live ticker rendered a 44px full-bleed bar reading "No parcels moving
+ *   right now", directly under the navigation and above the hero. A signed-out
+ *   visitor has no parcels by definition, so for the people the landing page
+ *   exists for it could never say anything else.
+ */
+check(
+  'the ticker renders nothing when nothing is moving',
+  /if \(movements\.length === 0\) return null;/.test(tickerSource),
+  'a marketing page does not open on an empty state',
+);
+check(
+  'and the idle copy is gone rather than merely unreachable',
+  !read('src/components/ui/top-status-bar.tsx').includes('No parcels moving right now\n'),
+  'a dead branch is a branch somebody re-enables',
+);
+/*
+ * It owns its own spacing for the same reason: a parent's margin outlives a
+ * child that returns null, holding an empty band open above the hero.
+ */
+check(
+  'the header reserves no space for it',
+  !code(read('src/components/ui/sticky-header.tsx')).includes('ticker:'),
+  'a wrapper with marginTop around a null child is 8px of nothing',
+);
+
+// ------------------------------------------------- a desktop type scale ----
+
+/*
+ * ⚠ The headline stopped growing at 768 and the section headers never started.
+ *
+ *   `heroTitleSize` stepped 36 → 48 and then held, so a 48px headline sat in a
+ *   2512px hero. Worse, the landing page's section header was
+ *   `Typography.cardTitle` — 17px, the same style as the cards underneath it —
+ *   at every width, so there was no visible step between a section and the
+ *   things inside it. `AppDownload` and `HowItWorks` were already on
+ *   `sectionHeading`; this one had been missed, which is what a scale costs
+ *   when it is applied by hand.
+ */
+const themeSource = code(read('src/constants/theme.ts'));
+
+check(
+  'the hero headline takes a third step at the measure',
+  /width >= PageMeasure\) return 60;/.test(themeSource),
+  'past the measure the column stops growing, so type is the only thing left that can',
+);
+check(
+  'section headers return their line height with their size',
+  /export function sectionHeadingType/.test(themeSource) &&
+    /lineHeight: lineHeightFor\(fontSize\)/.test(themeSource),
+  'a 32px glyph on a 22px line height clips descenders and reads as a font bug',
+);
+check(
+  'and the landing section header is a section header',
+  measured(homeScreen, 'straplineTitle').includes('Typography.sectionHeading'),
+  'cardTitle here put the section and its cards at the same size',
+);
+for (const [label, path] of [
+  ['the download band', 'src/components/ui/app-download.tsx'],
+  ['how it works', 'src/components/ui/how-it-works.tsx'],
+] as const) {
+  check(
+    `${label} steps up on a desktop too`,
+    code(read(path)).includes('sectionHeadingType(width)'),
+    'one section header growing and the others not is worse than none growing',
+  );
+}
+
+/*
+ * The gap between sections grows with them. 48px separates two bands on a
+ * laptop; under a 620px hero, with 1280px bands, it reads as one block.
+ */
+check(
+  'section spacing steps up as well',
+  /export function sectionGap/.test(themeSource) && homeScreen.includes('sectionGap(width)'),
+  'bigger type inside the same gaps is a page that got denser, not clearer',
+);
+
+
+// ---------------------------------------- the hero, and the picture in it ---
+
+/*
+ * ⚠ The copy used to be centred, and the photograph is why it is not.
+ *
+ *   `New-hero-bg.jpeg` is a composed picture, not a texture: the handover is
+ *   in its right half and the left 45% is a deliberately empty blue-to-cream
+ *   gradient. Centred, the headline ran across the two men and needed a scrim
+ *   over the only part of the image worth looking at. Against the left edge it
+ *   sits in the band the photograph leaves for it and needs almost nothing.
+ *
+ *   Everything below is a property of that arrangement. Each one, dropped,
+ *   leaves a hero that still renders — which is exactly why they are asserted
+ *   rather than left to review.
+ */
+const heroBackground = read('src/constants/hero-background.ts');
+
+const HERO_ASSET = 'assets/images/New-hero-bg.jpeg';
+
+check(
+  'the hero requires the composed photograph',
+  heroBackground.includes(HERO_ASSET.replace('assets/images/', '')),
+  'the layout below is measured against this picture, not against any picture',
+);
+check(
+  'and the file is on disk',
+  existsSync(join(ROOT, HERO_ASSET)),
+  'Metro resolves this require at build time — a missing file fails the build, not the layout',
+);
+check(
+  'and is a real JPEG',
+  (() => {
+    try {
+      /* latin1 rather than a Buffer: this project's node types want an encoding. */
+      const head = readFileSync(join(ROOT, HERO_ASSET), 'latin1').slice(0, 3);
+      return head.charCodeAt(0) === 0xff && head.charCodeAt(1) === 0xd8 && head.charCodeAt(2) === 0xff;
+    } catch {
+      return false;
+    }
+  })(),
+  'an image renamed rather than re-encoded loads on web and fails on device',
+);
+
+/* The style blocks, read whole rather than sampled by character budget. */
+const styleBlock = (source: string, name: string) => {
+  const at = source.indexOf(`${name}: {`);
+  return at === -1 ? '' : source.slice(at, source.indexOf('},', at));
+};
+
+check(
+  'the copy is a left-hand column',
+  styleBlock(homeScreen, 'heroCopy').includes("alignItems: 'flex-start'"),
+  'centred, it crosses the two people the picture is of',
+);
+check(
+  'and nothing centred survives from the old arrangement',
+  !/heroCenter|heroHeadlineCentered|heroSubtitleCentered/.test(homeScreen),
+  'a leftover centred style is a hero that half moved',
+);
+
+for (const name of ['heroEyebrow', 'heroHeadlineLeft', 'heroSubtitleLeft']) {
+  check(
+    `${name} aligns left`,
+    styleBlock(homeScreen, name).includes("textAlign: 'left'"),
+    'react-native-web inherits no alignment here — each block states its own',
+  );
+}
+
+/*
+ * ⚠ Half of the measure, not half of the window — this assertion pinned the
+ *   wrong half.
+ *
+ *   The copy is contained even though the photograph is not, so the room it has
+ *   is whatever `PageMeasure` leaves, not whatever the monitor does. Measured
+ *   against the window, a 2560px display gave the hero a 560px column at x=48
+ *   while the content below it started at x=664.
+ */
+check(
+  'the column is capped against the measure',
+  homeScreen.includes('Math.min(Hero.copyMaxWidth, Math.round(heroContentWidth / 2))') &&
+    homeScreen.includes('Math.min(heroBoxWidth, PageMeasure) - Spacing.four * 2'),
+  'a column sized to the viewport leaves the headline 600px adrift of the content below it',
+);
+/*
+ * ⚠ The height floor is a crop guard.
+ *
+ *   The hero is as tall as its copy needs, so on a very wide window the box
+ *   approaches 10:1 and `cover` keeps a tenth of the picture — two pairs of
+ *   hands and no faces. Nothing about that looks like a bug in a review.
+ */
+check(
+  'and the box is held to an aspect that keeps faces in frame',
+  homeScreen.includes('Math.round(heroBoxWidth / Hero.maxAspect)'),
+  'without a floor, a 2560px window crops the picture to a strip of hands',
+);
+
+// ------------------------------------------------------------- the wash ---
+
+const heroIsAt = homeScreen.indexOf('source={HERO_BACKGROUND}');
+const washIsAt = homeScreen.indexOf('<LinearGradient', heroIsAt);
+const copyIsAt = homeScreen.indexOf('styles.heroCopy');
+
+check(
+  'the wash sits between the photograph and the copy',
+  heroIsAt !== -1 && washIsAt > heroIsAt && copyIsAt > washIsAt,
+  'under the photo it does nothing; over the copy it greys the type',
+);
+check(
+  'it runs left to right',
+  flat(homeScreen).includes('start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}'),
+  'a vertical wash would dim the headline and leave the far edge bare — on web these set the angle, which is all this needs',
+);
+
+/*
+ * The wash has to be the page surface. A grey or white veil over a blue-cream
+ * photograph reads as a rendering fault rather than as the page coming forward.
+ */
+const pageSurface = (Colors.light.background.match(/[\da-f]{2}/gi) ?? [])
+  .map((pair) => parseInt(pair, 16))
+  .join(',');
+
+/*
+ * ⚠ Every stop, not "the string appears somewhere".
+ *
+ *   My first version asked whether the file contained `rgba(248,250,252,` at
+ *   all. Six stops share that prefix, so changing one of them to white left the
+ *   other five answering for it and the check passed on a gradient that now ran
+ *   from white to the page colour.
+ */
+const scrimBlockAt = homeScreen.indexOf('const HeroScrim');
+const scrimBlock =
+  scrimBlockAt === -1 ? '' : homeScreen.slice(scrimBlockAt, homeScreen.indexOf('} as const;', scrimBlockAt));
+const scrimStops = [...scrimBlock.matchAll(/rgba\(([\d,\s]+),\s*([\d.]+)\)/g)];
+
+check('the wash parsed', scrimStops.length >= 4, 'the HeroScrim slice found no colour stops');
+check(
+  'every stop is the page surface',
+  pageSurface.length > 0 &&
+    scrimStops.every((stop) => stop[1].replace(/\s/g, '') === pageSurface),
+  `expected every stop to be rgba(${pageSurface}, …) — a white or grey veil over a ` +
+    'blue-cream photograph reads as a rendering fault, not as the page coming forward',
+);
+
+const scrimAlphas = (name: string) => {
+  const from = scrimBlock.indexOf(`${name}: {`);
+  if (from === -1) return [];
+  const block = scrimBlock.slice(from, scrimBlock.indexOf('},', from));
+  return [...block.matchAll(/rgba\([\d,\s]+,\s*([\d.]+)\)/g)].map((m) => Number(m[1]));
+};
+
+const wideWash = scrimAlphas('wide');
+const narrowWash = scrimAlphas('narrow');
+
+check('both washes parsed', wideWash.length >= 2 && narrowWash.length >= 2, 'the HeroScrim slice missed');
+check(
+  'the wide wash clears the scene entirely',
+  wideWash[wideWash.length - 1] === 0,
+  'above the breakpoint the copy has its own band — washing the faces buys nothing',
+);
+/*
+ * ⚠ And the narrow one deliberately does not.
+ *
+ *   Below the breakpoint the copy spans the frame, so a wash that reaches zero
+ *   leaves the end of the subtitle on bare photograph. Measured there, the
+ *   worst pixel is 1.0:1 — black on black.
+ */
+check(
+  'the narrow wash never reaches transparent',
+  narrowWash[narrowWash.length - 1] > 0,
+  'the subtitle runs to the far edge on a phone; the wash has to still be there when it arrives',
+);
+check(
+  'both fade rather than step',
+  [wideWash, narrowWash].every((stops) => stops.every((a, i) => i === 0 || a <= stops[i - 1])),
+  'an alpha that rises mid-gradient draws a visible band across the picture',
+);
+
+/*
+ * ⚠ The crop anchor is the narrow-screen strategy, not a detail.
+ *
+ *   A box narrower than the picture's 1.79:1 crops horizontally, and a centred
+ *   crop hands a phone the middle of the image — a navy polo and a cardboard
+ *   box — directly under the text. Anchoring left leads with the empty band
+ *   instead, which is what lets the wash stay light enough to see through.
+ */
+check(
+  'the narrow crop leads with the empty band',
+  /narrow: \{ top: '\d+%', left: '0%' \}/.test(homeScreen),
+  'a centred crop on a phone puts the busiest part of the picture under every line',
+);
+check(
+  'and the two crops are chosen by the same breakpoint as the wash',
+  homeScreen.includes('heroHasRoomBeside ? Hero.crop.wide : Hero.crop.narrow') &&
+    homeScreen.includes('heroHasRoomBeside ? HeroScrim.wide : HeroScrim.narrow'),
+  'a wash tuned for one crop applied over the other is how this stops being measured',
+);
+
+// ---------------------------------------------------- the accent word ------
+
+/*
+ * ⚠ `primaryPressed`, not `primary` — the second photograph in a row to decide
+ *   this, and the first time it has been asserted.
+ *
+ *   #0077B6 over this picture measures 4.14:1 median in the copy column with
+ *   100% of its area under AA, and on a phone 34% stays under 4.5:1 even
+ *   through the wash. #005E92 is the same blue a shade deeper: 5.9:1 unwashed,
+ *   6.5:1 washed, 0% under AA at every width measured. It is an easy line to
+ *   "tidy" back to the brand token.
+ */
+const accentAt = homeScreen.indexOf('>Excellence<');
+const accentTag =
+  accentAt === -1 ? '' : homeScreen.slice(homeScreen.lastIndexOf('<Text', accentAt), accentAt);
+
+check('the accent word parsed', accentTag.length > 0, 'the headline no longer says Excellence');
+check(
+  'the accent word uses the deeper blue',
+  accentTag.includes('theme.primaryPressed'),
+  'theme.primary is #0077B6 — 4.14:1 over this photograph, every pixel of it under AA',
+);
+
+
 // --------------------------------- every back control has somewhere to go ---
 
 /*
@@ -975,6 +1349,9 @@ console.log(
     '       its content across a desktop viewport, the top header stays a plain block in\n' +
     '       normal flow — no scroll listener, no animated layout, nothing to stutter — and the\n' +
     '       app download is one band under the hero rather than two badges beside the ticker,\n' +
-    '       no button is nested inside another, and every back control has somewhere to go when\n' +
-    '       the route was opened directly.',
+    '       no button is nested inside another, the nav, the ticker, the hero copy and\n' +
+    '       every band below it share one measure and one left edge while the photograph\n' +
+    '       alone runs full-bleed, the hero copy sits in the band that photograph leaves\n' +
+    '       empty with a wash sized to the crop, the page never opens on an empty state,\n' +
+    '       and every back control has somewhere to go when the route was opened directly.',
 );

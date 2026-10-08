@@ -100,6 +100,20 @@ export type SenderIdentity = {
   slipIsPdf: boolean;
   /** `•••• •••• 8901`, or null when no NIN is on file. */
   ninMasked: string | null;
+  /**
+   * The whole number, new in 81.
+   *
+   * ⚠ Only ever populated by a reveal, which is the point.
+   *
+   *   The reviewer is already looking at a scan of the slip with this number
+   *   printed on it, so masking the typed copy stopped them doing the one thing
+   *   the review is for — noticing that the two disagree. A transposed digit is
+   *   invisible in four characters unless it happens to land in them.
+   *
+   *   Null where the reveal found no identity row, and never present anywhere a
+   *   list is drawn from.
+   */
+  nin: string | null;
   status: string | null;
 };
 
@@ -108,6 +122,7 @@ export type RevealOutcome = { ok: true; identity: SenderIdentity } | { ok: false
 type RevealRow = {
   selfie_path: string | null;
   slip_path: string | null;
+  nin: string | null;
   nin_last4: string | null;
   identity_status: string | null;
 };
@@ -183,7 +198,14 @@ async function signRevealed(rows: RevealRow[] | null): Promise<RevealOutcome> {
   if (!row) {
     return {
       ok: true,
-      identity: { selfieUrl: null, slipUrl: null, slipIsPdf: false, ninMasked: null, status: null },
+      identity: {
+        selfieUrl: null,
+        slipUrl: null,
+        slipIsPdf: false,
+        ninMasked: null,
+        nin: null,
+        status: null,
+      },
     };
   }
 
@@ -199,6 +221,7 @@ async function signRevealed(rows: RevealRow[] | null): Promise<RevealOutcome> {
       slipUrl,
       slipIsPdf: extensionOf(row.slip_path ?? '') === 'pdf',
       ninMasked: row.nin_last4 ? maskNin(row.nin_last4) : null,
+      nin: row.nin ?? null,
       status: row.identity_status,
     },
   };

@@ -432,6 +432,21 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
     migration: '20250101000080_parcel_release.sql',
   },
   /*
+   * ⚠ Without 81 the review queues still work, and still cannot do their job.
+   *
+   *   The reveals return four digits while handing over a scan of the document
+   *   the number is printed on, so a reviewer can catch a wrong NIN only if the
+   *   error happens to land in the last four. And the driver application list
+   *   keeps reading `driver_applications` directly — which means every
+   *   applicant's full NIN in the network response of a screen that is open all
+   *   day, with no record of who looked.
+   */
+  {
+    label: 'Full NIN behind an audited reveal',
+    fn: 'nin_reveal_installed',
+    migration: '20250101000081_nin_visibility.sql',
+  },
+  /*
    * Without 62 nothing breaks on screen — new accounts are simply never sent
    * the welcome email — which is exactly why it needs a line here.
    */

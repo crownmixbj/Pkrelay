@@ -3,7 +3,7 @@ import { MapPin, Truck, UserRound } from 'lucide-react-native';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Marquee, PulsingDot } from '@/components/ui/marquee';
-import { FontSize, Radius, Spacing, Typography, font } from '@/constants/theme';
+import { FontSize, PageMeasure, Radius, Spacing, Typography, font } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { ActiveMovement } from '@/store/bookings';
 import type { SessionRole } from '@/store/session';
@@ -24,15 +24,29 @@ export type TopStatusBarProps = {
 export function TopStatusBar({ movements, role, onPressTicker }: TopStatusBarProps) {
   const theme = useTheme();
 
+  /*
+   * ⚠ Nothing at all when nothing is moving, where this used to say so.
+   *
+   *   The idle state was a 44px bar running the full width of the window
+   *   reading "No parcels moving right now" — directly under the navigation and
+   *   above the hero, so it was the first sentence on the page and the first
+   *   thing a visitor who had never sent a parcel was told. A marketing page
+   *   does not open on an empty state, and a signed-out visitor has no parcels
+   *   by definition, so for them it could never say anything else.
+   *
+   *   The bar still appears the moment there is something live to say, which is
+   *   the only time it was ever carrying information.
+   */
+  if (movements.length === 0) return null;
+
   return (
-    <View style={styles.wrapper}>
-      <LinearGradient
-        colors={[theme.primarySoft, theme.surface]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={[styles.bar, { borderColor: theme.border }]}>
-        {/* Middle — live ticker */}
-        {movements.length > 0 ? (
+    <View style={styles.band}>
+      <View style={styles.wrapper}>
+        <LinearGradient
+          colors={[theme.primarySoft, theme.surface]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={[styles.bar, { borderColor: theme.border }]}>
           <Pressable
             onPress={onPressTicker}
             accessibilityRole="button"
@@ -49,14 +63,8 @@ export function TopStatusBar({ movements, role, onPressTicker }: TopStatusBarPro
               <TickerContent movements={movements} role={role} />
             </Marquee>
           </Pressable>
-        ) : (
-          <View style={styles.tickerArea}>
-            <Text style={[styles.idleText, { color: theme.textMuted }]} numberOfLines={1}>
-              No parcels moving right now
-            </Text>
-          </View>
-        )}
-      </LinearGradient>
+        </LinearGradient>
+      </View>
     </View>
   );
 }
@@ -128,6 +136,28 @@ function TickerContent({ movements, role }: { movements: ActiveMovement[]; role:
 }
 
 const styles = StyleSheet.create({
+  /**
+   * The measure, the gutter and the gap to the navbar above.
+   *
+   * Owned here rather than by `StickyHeader`, which is where it used to live:
+   * this component renders nothing at all when no parcel is moving, and a
+   * parent's `marginTop` would hold a band open above a component that is not
+   * there. Shaped exactly like the nav capsule's wrapper — cap, centre, then
+   * gutter as padding — so the pill's edge and the capsule's edge land on the
+   * same pixel at every width.
+   *
+   * `zIndex: 1` keeps it explicitly *below* the navbar: the two are siblings,
+   * so without it they stack in document order and the ticker — being second —
+   * covers any open nav dropdown.
+   */
+  band: {
+    width: '100%',
+    maxWidth: PageMeasure,
+    alignSelf: 'center',
+    paddingHorizontal: Spacing.four,
+    marginTop: Spacing.two,
+    zIndex: 1,
+  },
   wrapper: {
     borderRadius: Radius.pill,
     ...Platform.select({
@@ -171,9 +201,6 @@ const styles = StyleSheet.create({
     fontSize: FontSize.micro,
     ...font(800),
     letterSpacing: 0.6,
-  },
-  idleText: {
-    ...Typography.meta,
   },
   item: {
     flexDirection: 'row',

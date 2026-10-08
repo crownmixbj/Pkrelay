@@ -56,12 +56,15 @@ import { HERO_BACKGROUND } from '@/constants/hero-background';
 import {
   FontSize,
   HeroSurface,
+  PageMeasure,
   Radius,
   Spacing,
   PageCanvas,
   Typography,
   font,
   heroTitleSize,
+  sectionGap,
+  sectionHeadingType,
   type ServiceToneName,
 } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -112,6 +115,106 @@ const GlassSection = {
 
 /** py-12 — the vertical rhythm between major sections. */
 const SectionGap = 48;
+
+/**
+ * The hero photograph, and the band of it the copy lives in.
+ *
+ * ⚠ The picture is composed, not just cropped — its left 45% is empty on
+ *   purpose.
+ *
+ *   `New-hero-bg.jpeg` is 1024×572 and puts the handover on the right; the
+ *   left is a blue-to-cream gradient with nothing in it. That band is the copy
+ *   column, which is why the headline is no longer centred. Centred, it ran
+ *   straight across the two men. Measured over the unwashed photo at a 1280
+ *   window the left-hand column reads 15.2:1 for the headline (#0F172A) and
+ *   8.8:1 for the eyebrow and subtitle (#334155), with nothing under 4.5:1 —
+ *   so on a desktop the composition does the work and no scrim is needed.
+ *
+ * ⚠ Below `breakpoint` the copy spans the frame and those numbers invert.
+ *
+ *   `cover` on a portrait-ish box crops horizontally, so a phone sees the
+ *   middle of the picture — a navy polo and a cardboard box — under the whole
+ *   text block. Unwashed, 18% of the headline's area falls under 4.5:1 and the
+ *   worst pixel is 1.0:1, which is black on black. `HeroScrim.narrow` is what
+ *   answers that.
+ */
+const Hero = {
+  /** Above this the copy fits beside the scene; below it, it covers the scene. */
+  breakpoint: 900,
+  /** Any wider and the last line of the headline reaches the first man. */
+  copyMaxWidth: 560,
+  /**
+   * ⚠ A height floor that is really a crop guard.
+   *
+   *   The hero is as tall as its copy needs, so on a 2560px window the box is
+   *   nearly 10:1 and `cover` keeps a tenth of the picture: two pairs of hands
+   *   and no faces. Holding the box at 3:1 or squarer keeps the heads and the
+   *   parcel in frame. Capped, because past a point a hero is just a wall.
+   */
+  maxAspect: 3,
+  minHeightCap: 620,
+  /**
+   * Where `cover` crops from.
+   *
+   * `top: 38%` on both: the faces sit in the picture's top third, so a centred
+   * vertical crop takes the tops of their heads first.
+   *
+   * ⚠ The horizontal anchor is the whole narrow-screen strategy.
+   *
+   *   A box narrower than 1.79:1 crops horizontally, and `50%` hands a phone
+   *   the middle of the picture — a navy polo and a cardboard box — directly
+   *   under the text. `0%` leads with the empty band the photograph was built
+   *   with instead, so the copy keeps its clean ground and the handover comes
+   *   back into frame as the viewport widens. It is the same composition
+   *   decision as the copy column, applied to the part of the picture a narrow
+   *   screen can afford to show.
+   */
+  crop: {
+    wide: { top: '38%', left: '50%' },
+    narrow: { top: '38%', left: '0%' },
+  },
+  /**
+   * The subtitle is the one line that reaches the far edge — the longest run
+   * of the lightest colour. Capping its measure is what lets the wash below
+   * stay light enough to see the photograph through.
+   */
+  subtitleMaxWidth: 460,
+} as const;
+
+/**
+ * The wash over the photograph, in `Colors.light.background` so it reads as
+ * the page coming forward rather than as a grey veil.
+ *
+ * ⚠ `wide` was 0.55 → 0.30 and that was measured too narrowly.
+
+ * The numbers were taken at a 1232px box, where the copy sits over the very
+ * lightest part of the gradient and anything down to no wash at all passes.
+ * Swept across 320–3440px afterwards, the subtitle — the longest line in the
+ * lightest colour — dropped to 1.5:1 at 900px and 2.95:1 at 1024px, where the
+ * hero is narrow enough that a 400px column already reaches the first man.
+ * 0.80 → 0.56 is the lightest pair that holds every element at 0% under 4.5:1
+ * at every width in that sweep, with the narrow pair below.
+ *
+ * `narrow` never reaches zero, because below the breakpoint the text does reach
+ * the far edge. Paired with the left-anchored crop and the capped subtitle
+ * measure, these are the lightest alphas that hold 0% under 4.5:1 for every
+ * element across the same sweep. The tail went 0.55 → 0.62 for the 500–700px
+ * band, where the crop is wide enough to show the blurred figures behind the
+ * handover and the end of the subtitle lands on them. A wash heavy enough to
+ * work without the crop and the measure (0.94 → 0.70 flat across a centred
+ * crop) also leaves the photograph a ghost, which is the version this
+ * replaced.
+ */
+const HeroScrim = {
+  wide: {
+    colors: ['rgba(248,250,252,0.8)', 'rgba(248,250,252,0.56)', 'rgba(248,250,252,0)'],
+    locations: [0, 0.5, 0.78],
+  },
+  narrow: {
+    colors: ['rgba(248,250,252,0.93)', 'rgba(248,250,252,0.82)', 'rgba(248,250,252,0.62)'],
+    locations: [0, 0.5, 1],
+  },
+} as const;
 
 const STAGE_ICONS: Record<BookingStage, typeof Truck> = {
   Booked: ClipboardList,
@@ -235,6 +338,33 @@ export default function HomeScreen() {
   /** text-4xl on phones, text-5xl from md up. */
   const headlineSize = heroTitleSize(width);
   const heroArtSize = width >= 1100 ? 220 : width >= 700 ? 180 : 120;
+
+  /*
+   * The hero box is the page minus its gutter — the hero is full-bleed and
+   * carries its own padding inside that. See the `Hero` constant for why each
+   * of these exists.
+   */
+  const heroBoxWidth = width - Spacing.four * 2;
+  /*
+   * ⚠ Half of the *measure*, not half of the window.
+   *
+   *   The copy is contained even though the photograph is not, so its room is
+   *   whatever the measure leaves, not whatever the monitor does. Taking half
+   *   the window put a 560px column in a 2512px band with the content below it
+   *   starting 600px further right.
+   */
+  const heroContentWidth = Math.min(heroBoxWidth, PageMeasure) - Spacing.four * 2;
+  const heroHasRoomBeside = width >= Hero.breakpoint;
+  const heroCopyMax = heroHasRoomBeside
+    ? Math.min(Hero.copyMaxWidth, Math.round(heroContentWidth / 2))
+    : undefined;
+  const heroMinHeight = heroHasRoomBeside
+    ? Math.min(Hero.minHeightCap, Math.round(heroBoxWidth / Hero.maxAspect))
+    : undefined;
+  const heroScrim = heroHasRoomBeside ? HeroScrim.wide : HeroScrim.narrow;
+  const heroCrop = heroHasRoomBeside ? Hero.crop.wide : Hero.crop.narrow;
+  const gap = sectionGap(width);
+  const headingType = sectionHeadingType(width);
   // Two cards side by side need room; below this they stack.
   const twoUpCards = width >= 560;
 
@@ -292,20 +422,49 @@ export default function HomeScreen() {
 
           {/* ---------- Hero ---------- */}
           {/* The cream fill only applies when there's no photo behind it. */}
-          <View style={[styles.hero, !HERO_BACKGROUND && styles.heroFallbackSurface]}>
+          <View
+            style={[
+              styles.hero,
+              !HERO_BACKGROUND && styles.heroFallbackSurface,
+              !!heroMinHeight && { minHeight: heroMinHeight },
+              { marginBottom: gap },
+            ]}>
             {HERO_BACKGROUND ? (
-              /*
-                No overlay, no scrim, no text shadow: the illustration is light
-                enough to carry the navy type on its own. `cover` / `center`
-                crops rather than squashing. See the note on `heroHeadline`.
-              */
-              <Image
-                source={HERO_BACKGROUND}
-                style={styles.heroPhoto}
-                contentFit="cover"
-                contentPosition="center"
-                accessibilityIgnoresInvertColors
-              />
+              <>
+                {/*
+                  `cover` crops rather than squashing; `Hero.crop` says where it
+                  crops from, and why.
+                */}
+                <Image
+                  source={HERO_BACKGROUND}
+                  style={styles.heroPhoto}
+                  contentFit="cover"
+                  contentPosition={heroCrop}
+                  accessibilityIgnoresInvertColors
+                />
+                {/*
+                  ⚠ There was deliberately no scrim here, and the photograph is
+                    why there is one now.
+
+                    The old illustration was pale everywhere, so navy type sat
+                    on it unaided. This picture has a navy polo shirt and a grey
+                    pavement in the middle of the frame, and on a phone that
+                    middle is the entire background. The wash is sized to the
+                    column rather than painted over the whole image — on a
+                    desktop it has faded out before it reaches anybody's face.
+
+                    On web `start`/`end` only set the gradient's angle, which is
+                    all this needs: left to right.
+                */}
+                <LinearGradient
+                  pointerEvents="none"
+                  colors={heroScrim.colors}
+                  locations={heroScrim.locations}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.heroScrim}
+                />
+              </>
             ) : (
               // No photo supplied yet — see HERO_BACKGROUND.
               <View style={styles.heroArt} pointerEvents="none">
@@ -313,98 +472,114 @@ export default function HomeScreen() {
               </View>
             )}
 
-            <View style={styles.heroCenter}>
-              <Text style={[styles.heroEyebrow, { color: theme.textSecondary }]}>
-                Welcome to Package Relay
-              </Text>
-              <Text
-                style={[
-                  styles.heroHeadline,
-                  styles.heroHeadlineCentered,
-                  { color: theme.text, fontSize: headlineSize },
-                ]}>
-                Delivering with{'\n'}
+            {/*
+              ⚠ The photograph breaks out of the measure; the words never do.
+
+                This wrapper is `contentWrap` by another name — same cap, same
+                centring, same gutter — so the headline starts on exactly the
+                pixel the download band below it starts on. The hero box itself
+                stays full-bleed, which is what keeps the picture a banner on a
+                wide monitor instead of a card floating in the middle of one.
+            */}
+            <View style={styles.heroInner}>
+              <View style={[styles.heroCopy, !!heroCopyMax && { maxWidth: heroCopyMax }]}>
+                <Text style={[styles.heroEyebrow, { color: theme.textSecondary }]}>
+                  Welcome to Package Relay
+                </Text>
+                <Text
+                  style={[
+                    styles.heroHeadline,
+                    styles.heroHeadlineLeft,
+                    { color: theme.text, fontSize: headlineSize },
+                  ]}>
+                  Delivering with{'\n'}
+                  {/*
+                    ⚠ primaryPressed, not primary — the second photograph in a row
+                      to decide this.
+
+                      #0077B6 over this one measures 4.14:1 median in the copy
+                      column with 100% of its area under AA, and on a phone 34% of
+                      it stays under 4.5:1 even through the wash. #005E92 is the
+                      same blue a shade deeper: 5.9:1 unwashed, 6.5:1 through the
+                      wash, and 0% under AA at every width measured.
+                  */}
+                  <Text style={{ color: theme.primaryPressed }}>Excellence</Text>
+                </Text>
+
+                <Text
+                  style={[
+                    styles.heroSubtitle,
+                    styles.heroSubtitleLeft,
+                    { color: theme.textSecondary },
+                  ]}>
+                  Reliable local and inter-state delivery services across Nigeria. Fast. Affordable.
+                  Insured.
+                </Text>
+
                 {/*
-                  #0077B6 measures 4.39:1 median over this illustration — 97% of
-                  the area is under AA. theme.primaryPressed (#005E92) takes it
-                  to 6.28:1 if you'd rather not lose the accent.
+                  One action card, not two.
+
+                  The second was "Available packages" — a city box and a Schedule
+                  a journey button. It went because declaring a journey already
+                  lives under Jobs & Drivers, and a second door to the same screen
+                  on the landing page split the hero between a customer action and
+                  a driver one. The people who arrive here are overwhelmingly
+                  senders; drivers know where their tab is.
+
+                  `heroCards` is left-aligned by `heroCopy` and its max width
+                  drops from 620 to 340 — see the style. The card itself is
+                  `flex: 1`, so without that it would have stretched to fill the
+                  pair's width.
                 */}
-                <Text style={{ color: theme.primary }}>Excellence</Text>
-              </Text>
+                <View style={[styles.heroCards, !twoUpCards && styles.heroCardsStacked]}>
+                  <GlassCard>
+                    <View style={styles.heroCardHeader}>
+                      <Radar color={theme.primary} size={16} />
+                      <Text style={[styles.heroCardTitle, { color: theme.text }]}>
+                        Track a parcel
+                      </Text>
+                    </View>
 
-              <Text
-                style={[
-                  styles.heroSubtitle,
-                  styles.heroSubtitleCentered,
-                  { color: theme.textSecondary },
-                ]}>
-                Reliable local and inter-state delivery services across Nigeria. Fast. Affordable.
-                Insured.
-              </Text>
+                    <View
+                      style={[
+                        styles.searchBar,
+                        {
+                          backgroundColor: theme.surfaceMuted,
+                          borderColor: theme.border,
+                        },
+                        focused && styles.searchBarFocused,
+                      ]}>
+                      <Search color={focused ? theme.primary : theme.textMuted} size={16} />
+                      <TextInput
+                        style={[styles.searchInput, { color: theme.text }]}
+                        placeholder="#PKG-1234"
+                        placeholderTextColor={theme.textMuted}
+                        value={query}
+                        onChangeText={setQuery}
+                        onFocus={() => setFocused(true)}
+                        onBlur={() => setFocused(false)}
+                        onSubmitEditing={handleTrack}
+                        autoCorrect={false}
+                        returnKeyType="search"
+                      />
+                      {isSearching && (
+                        <Pressable
+                          onPress={() => setQuery('')}
+                          hitSlop={10}
+                          accessibilityLabel="Clear">
+                          <X color={theme.textMuted} size={16} />
+                        </Pressable>
+                      )}
+                    </View>
 
-              {/*
-                One action card, not two.
-
-                The second was "Available packages" — a city box and a Schedule
-                a journey button. It went because declaring a journey already
-                lives under Jobs & Drivers, and a second door to the same screen
-                on the landing page split the hero between a customer action and
-                a driver one. The people who arrive here are overwhelmingly
-                senders; drivers know where their tab is.
-
-                `heroCards` is centred by `heroCenter` and its max width drops
-                from 620 to 340 — see the style. The card itself is `flex: 1`,
-                so without that it would have stretched to fill the pair's
-                width.
-              */}
-              <View style={[styles.heroCards, !twoUpCards && styles.heroCardsStacked]}>
-                <GlassCard>
-                  <View style={styles.heroCardHeader}>
-                    <Radar color={theme.primary} size={16} />
-                    <Text style={[styles.heroCardTitle, { color: theme.text }]}>
-                      Track a parcel
-                    </Text>
-                  </View>
-
-                  <View
-                    style={[
-                      styles.searchBar,
-                      {
-                        backgroundColor: theme.surfaceMuted,
-                        borderColor: theme.border,
-                      },
-                      focused && styles.searchBarFocused,
-                    ]}>
-                    <Search color={focused ? theme.primary : theme.textMuted} size={16} />
-                    <TextInput
-                      style={[styles.searchInput, { color: theme.text }]}
-                      placeholder="#PKG-1234"
-                      placeholderTextColor={theme.textMuted}
-                      value={query}
-                      onChangeText={setQuery}
-                      onFocus={() => setFocused(true)}
-                      onBlur={() => setFocused(false)}
-                      onSubmitEditing={handleTrack}
-                      autoCorrect={false}
-                      returnKeyType="search"
+                    <Button
+                      label="Track Parcel"
+                      size="md"
+                      icon={(color, size) => <Search color={color} size={size} />}
+                      onPress={handleTrack}
                     />
-                    {isSearching && (
-                      <Pressable
-                        onPress={() => setQuery('')}
-                        hitSlop={10}
-                        accessibilityLabel="Clear">
-                        <X color={theme.textMuted} size={16} />
-                      </Pressable>
-                    )}
-                  </View>
-
-                  <Button
-                    label="Track Parcel"
-                    size="md"
-                    icon={(color, size) => <Search color={color} size={size} />}
-                    onPress={handleTrack}
-                  />
-                </GlassCard>
+                  </GlassCard>
+                </View>
               </View>
             </View>
           </View>
@@ -440,11 +615,26 @@ export default function HomeScreen() {
             </View>
 
             {/* ---------- Quick quote ---------- */}
-            <View style={styles.quote}>
+            <View style={[styles.quote, { marginBottom: gap }]}>
               <QuickQuote onBook={(params) => router.navigate({ pathname: '/book', params })} />
 
               <View style={styles.quoteStrapline}>
-                <Text style={styles.straplineTitle}>We Deliver Packages Within City</Text>
+                {/*
+                  ⚠ A section header, not a card title.
+
+                    This was `Typography.cardTitle` — 17px, the same style the
+                    cards *underneath* it use, at every width up to 2560. The
+                    page therefore had no visible step between "section" and
+                    "the things in the section", which is the hierarchy a
+                    visitor reads a landing page by. `AppDownload` and
+                    `HowItWorks` were already on `sectionHeading`; this one had
+                    been missed.
+                */}
+                <Text
+                  style={[styles.straplineTitle, headingType]}
+                  accessibilityRole="header">
+                  We Deliver Packages Within City
+                </Text>
                 <Text style={[styles.straplineBody, { color: theme.textSecondary }]}>
                   Send envelopes, documents and packages across town in no time.
                 </Text>
@@ -453,7 +643,7 @@ export default function HomeScreen() {
 
             {/* ---------- Service categories ---------- */}
             {/* Grey-blue panel: gives the tinted cards something to lift off. */}
-            <View style={styles.gridPanel}>
+            <View style={[styles.gridPanel, { marginBottom: gap }]}>
               {/*
                 ⚠ Measured rather than guessed from the window.
                 
@@ -492,7 +682,7 @@ export default function HomeScreen() {
               colors={[GlassSection.gradientFrom, GlassSection.gradientTo]}
               start={{ x: 0, y: 0 }}
               end={{ x: 0, y: 1 }}
-              style={styles.glassSection}>
+              style={[styles.glassSection, { marginBottom: gap }]}>
               {/* ---------- How it works ---------- */}
               <HowItWorks />
 
@@ -754,9 +944,19 @@ const styles = StyleSheet.create({
     paddingBottom: 0,
   },
   /** max-w-7xl, centred, with its own gutter. */
+  /**
+   * ⚠ One shape, used three times, and that is the point.
+   *
+   *   `contentWrap`, `heroInner` and the nav capsule's own wrapper are all
+   *   "cap at the measure, centre, then gutter as padding". Spelled the same
+   *   way in all three places, they put the wordmark, the hero headline and
+   *   every band below it on one left edge at every width. Written differently
+   *   in any one of them, they do not — which is what this page looked like
+   *   before, and only on a monitor wide enough for the cap to engage.
+   */
   contentWrap: {
     width: '100%',
-    maxWidth: 1280,
+    maxWidth: PageMeasure,
     alignSelf: 'center',
     paddingHorizontal: Spacing.four,
   },
@@ -778,18 +978,32 @@ const styles = StyleSheet.create({
   hero: {
     width: '100%',
     marginBottom: SectionGap,
-    paddingHorizontal: Spacing.four,
+    // The gutter moved to `heroInner` — this box is deliberately full-bleed.
     // Halved from Spacing.five (32) to keep the banner compact.
     paddingVertical: Spacing.four,
     borderRadius: 24,
     overflow: 'hidden',
     position: 'relative',
     justifyContent: 'center',
+    /* The copy is a column against the left edge, not a centred block. */
+    alignItems: 'flex-start',
   },
   heroFallbackSurface: {
     backgroundColor: HeroSurface,
   },
   heroPhoto: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  /**
+   * Sits between the photo and the copy. Same box as `heroPhoto`, so it washes
+   * the crop rather than the asset — a gradient sized to the image would move
+   * independently of the text once `cover` started cropping.
+   */
+  heroScrim: {
     position: 'absolute',
     top: 0,
     left: 0,
@@ -802,8 +1016,24 @@ const styles = StyleSheet.create({
     bottom: -12,
     opacity: 0.85,
   },
-  heroCenter: {
-    alignItems: 'center',
+  /**
+   * ⚠ `heroCenter` until the photograph changed.
+   *
+   *   Centred copy over the old illustration was fine — it was pale across its
+   *   whole width. The picture that replaced it keeps its left 45% empty and
+   *   puts two people in the right, so centred text crossed the subject and
+   *   needed a wash over the part of the image worth looking at. Against the
+   *   left edge it sits in the band the photograph leaves for it.
+   */
+  /** `contentWrap`'s shape, inside a box that stays full-bleed. */
+  heroInner: {
+    width: '100%',
+    maxWidth: PageMeasure,
+    alignSelf: 'center',
+    paddingHorizontal: Spacing.four,
+  },
+  heroCopy: {
+    alignItems: 'flex-start',
     justifyContent: 'center',
     // Halved from Spacing.six (64) — the cards carry the height now.
     paddingVertical: Spacing.four,
@@ -870,30 +1100,41 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textTransform: 'uppercase',
     marginBottom: Spacing.two - 2,
-    textAlign: 'center',
+    textAlign: 'left',
   },
   /**
-   * Measured against the illustration across the text block: #0F172A sits at a
-   * median 16.1:1 and only 2.7% of the area falls under 4.5:1, so it needs no
-   * scrim. The accent word is the exception — see the render.
+   * #0F172A across the copy column: a median 16.7:1 over the washed photo and
+   * 15.2:1 over the bare one, with 0% of either under 4.5:1 at every width
+   * measured. The weight is `Typography.heroTitle` (800) — at 48px that is what
+   * makes it read as a headline over a photograph rather than as large text on
+   * it. The accent word is the exception; see the render.
    */
   heroHeadline: {
     ...Typography.heroTitle,
     letterSpacing: -1,
     lineHeight: undefined,
   },
-  heroHeadlineCentered: {
-    textAlign: 'center',
+  heroHeadlineLeft: {
+    textAlign: 'left',
     maxWidth: 720,
   },
   heroSubtitle: {
     ...Typography.body,
     lineHeight: 23,
     marginTop: Spacing.three,
-    maxWidth: 560,
+    /*
+      ⚠ 460, down from 560, and it is a contrast number as much as a measure.
+
+        This is the longest line in the hero and the lightest colour in it. On a
+        phone it is the only element that reaches the far edge of the frame, so
+        it alone decided how heavy the wash had to be. Holding it to 460 let the
+        wash drop from 0.94–0.70 to 0.93–0.55 — the difference between a
+        photograph you can see and a ghost behind the text.
+    */
+    maxWidth: Hero.subtitleMaxWidth,
   },
-  heroSubtitleCentered: {
-    textAlign: 'center',
+  heroSubtitleLeft: {
+    textAlign: 'left',
   },
 
   /**
@@ -921,7 +1162,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
   },
   straplineTitle: {
-    ...Typography.cardTitle,
+    ...Typography.sectionHeading,
     textAlign: 'center',
     color: GlassSection.title,
   },

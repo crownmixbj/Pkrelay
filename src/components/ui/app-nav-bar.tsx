@@ -45,7 +45,15 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HUB_SECTION_LABELS } from '@/constants/hubs';
-import { FontSize, Elevation, Radius, Spacing, Typography, font } from '@/constants/theme';
+import {
+  FontSize,
+  Elevation,
+  PageMeasure,
+  Radius,
+  Spacing,
+  Typography,
+  font,
+} from '@/constants/theme';
 import { AppStoreModal, detectStorePlatform, openStore } from '@/components/ui/app-store-modal';
 import { useTheme } from '@/hooks/use-theme';
 import { showDialog } from '@/components/ui/dialog';
@@ -1409,7 +1417,22 @@ function SideMenu({
 
 const styles = StyleSheet.create({
   wrapper: {
-    // Side margins only — the capsule stretches to fill the rest of the width.
+    /*
+      ⚠ Capped and centred, where it used to stretch to the window.
+
+        The capsule filled whatever width it was given, so on a 2560px monitor
+        the wordmark sat at x=24 while the page content below started at x=664.
+        A logo that does not share a left edge with the content under it is the
+        single loudest "this is not a commercial site" signal there is, and it
+        is invisible on a laptop, where the cap never engages.
+
+        The fit arithmetic is unaffected: `capsuleWidth` is measured with
+        onLayout, so it reads whatever this resolves to rather than assuming.
+    */
+    width: '100%',
+    maxWidth: PageMeasure,
+    alignSelf: 'center',
+    // Side margins only — the capsule fills the rest of the measure.
     paddingHorizontal: Spacing.four,
     paddingBottom: Spacing.two,
     /*

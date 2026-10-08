@@ -132,14 +132,23 @@ check(
  *
  * The navbar and the live ticker are siblings. Without an explicit z-index on
  * each they stack in document order, and the ticker — rendered second — drew
- * over any open dropdown, hiding its first item behind the "No parcels moving
- * right now" bar. Asserted on both files because a fix applied to only one of
- * them is a fix that survives until the next person reorders the header.
+ * over any open dropdown, hiding its first item behind the idle bar. Asserted
+ * on both files because a fix applied to only one of them is a fix that
+ * survives until the next person reorders the header.
+ *
+ * ⚠ The ticker's z-index moved file, and this read the old one.
+ *
+ *   It used to sit on a `ticker` wrapper in `sticky-header.tsx`. The ticker now
+ *   renders nothing at all when no parcel is moving, so its own layout — the
+ *   measure, the gutter, the gap above it and this z-index — moved onto the
+ *   component, because a parent's margin would have outlived the child. The
+ *   rule is unchanged; only the file that has to state it is.
  */
+const tickerSource = read('src/components/ui/top-status-bar.tsx');
 const stickyHeader = read('src/components/ui/sticky-header.tsx');
 
 const navZ = /wrapper:\s*\{[^}]*zIndex:\s*(\d+)/s.exec(navSource);
-const tickerZ = /ticker:\s*\{[^}]*zIndex:\s*(\d+)/s.exec(stickyHeader);
+const tickerZ = /band:\s*\{[^}]*zIndex:\s*(\d+)/s.exec(tickerSource);
 
 check('the navbar wrapper declares a z-index', navZ !== null, 'nothing lifts it above the ticker');
 check('the ticker declares one too', tickerZ !== null, 'implicit order is what caused the bug');

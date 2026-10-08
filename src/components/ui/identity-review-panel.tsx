@@ -198,6 +198,8 @@ type Revealed = {
   selfieUrl: string | null;
   slipUrl: string | null;
   slipIsPdf: boolean;
+  /** The full NIN, which only a reveal returns. See 81. */
+  nin: string | null;
 };
 
 function IdentityCard({
@@ -258,6 +260,7 @@ function IdentityCard({
         selfieUrl: outcome.identity.selfieUrl,
         slipUrl: outcome.identity.slipUrl,
         slipIsPdf: outcome.identity.slipIsPdf,
+        nin: outcome.identity.nin,
       });
     } finally {
       setRevealing(false);
@@ -317,6 +320,29 @@ function IdentityCard({
         />
       ) : (
         <View style={styles.evidence}>
+          {/*
+            ⚠ The number, beside the document it was copied from.
+
+              This is the whole point of the reveal. Before 81 the reviewer was
+              shown a scan of the slip and four digits, so the only error they
+              could catch was one in the last four — and a transposed digit
+              anywhere else read as a match. The slip is already open above; the
+              typed copy next to it is what makes the comparison possible.
+
+              Selectable, because the next thing a reviewer does with a number
+              that does not match is paste it into the enquiry that settles it.
+          */}
+          {!!revealed.nin && (
+            <View style={[styles.ninRow, { backgroundColor: theme.surfaceMuted }]}>
+              <Text style={[styles.ninLabel, { color: theme.textSecondary }]}>
+                NIN as entered
+              </Text>
+              <Text selectable style={[styles.ninValue, { color: theme.text }]}>
+                {revealed.nin}
+              </Text>
+            </View>
+          )}
+
           {revealed.selfieUrl !== null && (
             <View style={styles.shot}>
               <Text style={[styles.shotLabel, { color: theme.textMuted }]}>Selfie</Text>
@@ -473,6 +499,19 @@ function IdentityCard({
 }
 
 const styles = StyleSheet.create({
+  ninRow: {
+    gap: Spacing.half,
+    padding: Spacing.three - 4,
+    borderRadius: Radius.md,
+  },
+  ninLabel: {
+    ...Typography.caption,
+  },
+  ninValue: {
+    ...Typography.meta,
+    ...font(700),
+    letterSpacing: 1,
+  },
   loading: { paddingVertical: Spacing.six, alignItems: 'center' },
   card: { gap: Spacing.two },
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.two },

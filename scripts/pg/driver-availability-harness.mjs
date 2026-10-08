@@ -1463,13 +1463,26 @@ const CLOCK_DRIVERS = [
   );
   await db.exec(repair);
 
+  /*
+   * ⚠ And then 81, because 79 carries an *older* copy of
+   *   `admin_reveal_identity_for_user` — 43's, which masks the NIN to four
+   *   digits. Replaying 79 on its own therefore un-fixes 81, and the report
+   *   below says so, which is the detector doing its job rather than a fault.
+   *
+   *   A real `db push` runs them in order and ends on 81. This mirrors that,
+   *   and incidentally proves 81 is re-runnable over a database that has it.
+   */
+  await db.exec(
+    readFileSync(join(ROOT, 'supabase/migrations/20250101000081_nin_visibility.sql'), 'utf8'),
+  );
+
   const afterRepair = await report();
   check(
     '79 restores it',
     afterRepair.find((row) => row.object === 'admin_assign_parcel')?.state === 'current',
   );
   check(
-    'and 79 is re-runnable over a database that already has it',
+    'and the pair is re-runnable over a database that already has them',
     afterRepair.filter(
       (row) => row.state !== 'current' && !SKIPPED_OWNERS.has(row.owner_migration),
     ).length === 0,
@@ -1802,6 +1815,190 @@ const CLOCK_DRIVERS = [
     'but a parcel may lose its driver, which is what erasure does to it',
     letGo === null,
     String(letGo),
+  );
+}
+
+// ------------------ 14. the full NIN, from a reveal and nowhere else (81) --
+
+/*
+ * ⚠ The review screens were handing over a scan of a national ID card and
+ *   withholding the number typed off it, while the driver application list put
+ *   the same kind of number on screen with no record of who looked. This pins
+ *   both ends of that.
+ */
+{
+  const FULL_NIN = '12345678901';
+
+  await asOwner();
+  await db.query(
+    `insert into public.sender_identity (user_id, nin, status, slip_path, created_at)
+     values ($1, $2, 'pending', 'sender-identity/slip.jpg', now())
+     on conflict (user_id) do update
+       set nin = excluded.nin, status = 'pending', slip_path = excluded.slip_path`,
+    [SENDER, FULL_NIN],
+  );
+
+  /* ------------------------------------------------- the queue stays masked */
+
+  await asUser(ADMIN);
+  const queue = (await db.query('select * from public.admin_identity_queue()')).rows;
+  const queued = queue.find((row) => row.user_id === SENDER);
+  check('the sender is in the review queue', !!queued, JSON.stringify(queue.map((r) => r.user_id)));
+  check(
+    'and the list carries four digits, not eleven',
+    queued?.nin_last4 === '8901',
+    JSON.stringify(queued?.nin_last4),
+  );
+  check(
+    'with no column anywhere in it holding the whole number',
+    !Object.values(queued ?? {}).some((value) => value === FULL_NIN),
+    'a masked field beside an unmasked one is not masking',
+  );
+
+  /* ------------------------------------------- the reveal returns it, logged */
+
+  const before = (
+    await db.query(
+      `select count(*)::int as n from public.app_events
+        where area = 'privacy' and message = 'admin revealed sender identity'`,
+    )
+  ).rows[0].n;
+
+  const revealed = (
+    await db.query('select * from public.admin_reveal_identity_for_user($1, $2)', [
+      SENDER,
+      'Identity review — checking the number against the slip',
+    ])
+  ).rows[0];
+
+  check(
+    'the reveal hands over the whole number',
+    revealed?.nin === FULL_NIN,
+    `got ${JSON.stringify(revealed?.nin)} — the reviewer is looking at the slip it was copied from`,
+  );
+  check('and still the last four, for a caller that only wants those', revealed?.nin_last4 === '8901');
+  check('and the slip it is to be compared against', revealed?.slip_path === 'sender-identity/slip.jpg');
+
+  const after = (
+    await db.query(
+      `select count(*)::int as n from public.app_events
+        where area = 'privacy' and message = 'admin revealed sender identity'`,
+    )
+  ).rows[0].n;
+  check('looking is recorded', after === before + 1, `${before} → ${after}`);
+
+  const line = (
+    await db.query(
+      `select actor_id, level, context from public.app_events
+        where area = 'privacy' and message = 'admin revealed sender identity'
+        order by created_at desc limit 1`,
+    )
+  ).rows[0];
+  check('naming the administrator', line.actor_id === ADMIN);
+  check('at warning, because reading somebody’s ID is not routine', line.level === 'warning');
+  check(
+    'and carrying why',
+    /checking the number against the slip/.test(String(line.context?.reason ?? '')),
+  );
+
+  /* ⚠ A non-admin gets nothing, and the refusal comes before the audit line. */
+  await asUser(SENDER);
+  const refused = await refusal(() =>
+    db.query('select * from public.admin_reveal_identity_for_user($1, $2)', [SENDER, 'mine surely']),
+  );
+  check(
+    'a sender cannot reveal even their own this way',
+    refused !== null && /Only an administrator/.test(refused),
+    'the sender has their own NIN already; this door is the audited one, for other people’s',
+  );
+
+  /* ---------------------------------- the application list stops carrying it */
+
+  await asOwner();
+  const app = (
+    await db.query(
+      `select id, nin from public.driver_applications where user_id = $1`,
+      [LATER],
+    )
+  ).rows[0];
+  check('an application with a NIN exists to test against', !!app?.nin, JSON.stringify(app));
+
+  await asUser(ADMIN);
+  const masked = (
+    await db.query('select * from public.driver_applications_admin where id = $1', [app.id])
+  ).rows[0];
+
+  check(
+    'the console view has no nin column at all',
+    masked !== undefined && !('nin' in masked) && !('guarantor_nin' in masked),
+    `columns: ${Object.keys(masked ?? {}).filter((k) => k.includes('nin')).join(', ')}`,
+  );
+  check(
+    'only the last four, under a name that says so',
+    masked?.nin_last4 === String(app.nin).slice(-4),
+    JSON.stringify(masked?.nin_last4),
+  );
+  check(
+    'and everything else the review needs is still there',
+    masked?.full_name !== undefined && masked?.status !== undefined && masked?.documents !== undefined,
+    'a masked view that drops half the screen is a different bug',
+  );
+
+  /*
+   * ⚠ `security_invoker`, so the view is not a hole in the row policies. A
+   *   signed-in non-admin sees their own application through it and nobody
+   *   else's — exactly what the table gives them.
+   */
+  await asUser(LATER);
+  const ownView = (await db.query('select id from public.driver_applications_admin')).rows;
+  check(
+    'a driver sees only their own row through the view',
+    ownView.length === 1 && ownView[0].id === app.id,
+    `${ownView.length} rows — without security_invoker this would be every application`,
+  );
+
+  /* ------------------------------------------ and the application reveal --- */
+
+  await asUser(ADMIN);
+  const nins = (
+    await db.query('select * from public.admin_reveal_application_nin($1, $2)', [
+      app.id,
+      'Application review — checking the number against the uploaded document',
+    ])
+  ).rows[0];
+  check(
+    'the reveal returns the applicant’s number in full',
+    nins?.applicant_nin === app.nin,
+    `got ${JSON.stringify(nins?.applicant_nin)}`,
+  );
+  check(
+    'and null rather than an error where no guarantor has submitted',
+    nins !== undefined && nins.guarantor_nin === null,
+    JSON.stringify(nins?.guarantor_nin),
+  );
+
+  const appLine = (
+    await db.query(
+      `select actor_id, level from public.app_events
+        where message = 'admin revealed application identity numbers'
+        order by created_at desc limit 1`,
+    )
+  ).rows[0];
+  check('that reveal is logged too', appLine?.actor_id === ADMIN && appLine?.level === 'warning');
+
+  await asUser(LATER);
+  const appRefused = await refusal(() =>
+    db.query('select * from public.admin_reveal_application_nin($1, $2)', [app.id, 'curious']),
+  );
+  check(
+    'and refuses a driver asking about their own application',
+    appRefused !== null && /Only an administrator/.test(appRefused),
+  );
+
+  await asOwner();
+  check(
+    'the deployment panel can tell whether any of this is deployed',
+    (await db.query('select public.nin_reveal_installed() as ok')).rows[0].ok === true,
   );
 }
 

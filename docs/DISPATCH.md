@@ -673,11 +673,85 @@ system-logs screen.
 affordance during that window. It is one element rather than a full-page card,
 and gating it means threading session state through a 1,300-line component.
 
+## The reviewer sees the number they are checking (81)
+
+Sender ID Review hands over a **scan of the NIN slip** and then shows four
+digits of the number typed off it. So a reviewer can catch a wrong NIN only if
+the error happens to land in the last four — which is not where a transposed
+digit usually lands. Masking the typed copy of a number that is legible in the
+image beside it protects nobody; it only prevents the comparison the review
+exists to make.
+
+Meanwhile the opposite rule was live in the same console: **driver applications
+showed every applicant's full NIN in the list**, fetched with `select('*')`,
+with no click and no record of who looked.
+
+| surface | before | after |
+|---|---|---|
+| sender ID review list | `•••• •••• 4747` | unchanged |
+| sender reveal | `•••• •••• 4747` | **full, audited** |
+| driver application list | **full, unaudited** | `•••• •••• 4747` |
+| driver application reveal | — | **full, audited** (applicant + guarantor) |
+| a person's own profile | `•••• •••• 4747` | unchanged |
+| a person's own edit form | full | unchanged — it is theirs |
+
+### The list stops carrying it, not just stops drawing it
+
+`fetchAllApplications` did `select('*')` on `driver_applications`, so both NINs
+arrived in the browser whether or not anything rendered them — on a screen an
+operator leaves open all day. Masking in the component would have been a label
+over data already on the machine.
+
+The console now reads `driver_applications_admin`, a view with the two NIN
+columns replaced by `right(nin, 4)`. It is declared `security_invoker = on`, so
+the row policies decide who may read it exactly as they do for the table — this
+changes which *columns* come back, not who may ask. The harness asserts that by
+reading the view as a driver and getting back one row: their own.
+
+`fetchMyApplication` still selects from the table. An applicant's own NIN is
+theirs, and their edit form has to prefill.
+
+### One audited door per screen
+
+- **Senders**: `admin_reveal_identity_for_user` and `admin_reveal_sender_identity`
+  now return `nin` in full alongside `slip_path`. Both already wrote a
+  `'privacy'` line into `app_events`, in the same transaction as the read — if
+  the insert fails, nothing is returned. The reviewer presses the same button
+  they already press to see the slip.
+- **Driver applications**: `admin_reveal_application_nin` returns the
+  applicant's number and the guarantor's in one call, because reviewing an
+  application is one act of looking. Two reveals would mean two log lines for
+  one decision and a reason box that becomes a formality — the same call 41 made
+  about the selfie and the slip.
+
+A revealed number is cleared when the card becomes a different person, the same
+rule the selfie reveal already follows: a NIN on screen under the wrong name is
+worse than no NIN at all.
+
+### Where it is drawn
+
+Next to the document, selectable. The slip is already open above it — that
+adjacency is the whole point — and the next thing a reviewer does with a number
+that does not match is paste it into the enquiry that settles it.
+
+⚠ **79 is a replay hazard for this file.** It is a repair migration, so it
+carries 43's copy of `admin_reveal_identity_for_user` — the one that masks.
+Running 79 again after 81 puts the mask back. `stale_definitions` reports it
+(the manifest names 81 as the owner) and the fix is to run 81 again. The pg
+harness does exactly that and asserts the report comes back clean.
+
+### What this does not do
+
+It does not put a NIN on a list. The queue stays masked, and a sweep in
+`verify:availability` fails the build if any screen renders `.nin` straight into
+JSX from a list row, a profile or a queue fetch. A full NIN belongs to a reveal
+result, which is audited; a list row is not one.
+
 ## Tests
 
 ```bash
-npm run verify:availability      # source assertions, including 75, 76, 79 and 80
-npm run verify:pg-availability   # 69-80 against real Postgres under RLS
+npm run verify:availability      # source assertions, including 75, 76, 79, 80 and 81
+npm run verify:pg-availability   # 69-81 against real Postgres under RLS
 ```
 
 The pg harness pins the retry loop as well: a lapsed offer is not re-offered
@@ -725,13 +799,14 @@ history:
 
 ```sql
 select public.definitions_current();         -- must be true
+select public.nin_reveal_installed();        -- must be true
 select public.notification_spine_live();     -- must be true
 select public.departure_priority_live();     -- must be true
 select public.release_controls_installed();  -- must be true
 select * from public.stale_definitions() where state <> 'current';   -- must be empty
 ```
 
-All four are on the deployment panel in the admin console, so the answer is one
+All five are on the deployment panel in the admin console, so the answer is one
 screen away without opening the SQL editor.
 
 ⚠ **Never `supabase db push --include-all` against a live project**, and never

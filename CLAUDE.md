@@ -88,6 +88,36 @@ turn the suite red. Run `npm run verify` before declaring anything done.
   be listed there with a reason. Three are: the departure picker (a driver's own
   calendar), document expiry (a date, formatted against UTC on purpose) and
   member-since (a month and a year).
+- There are **two measures and one left edge**. `PageMeasure` (1280) is what
+  the chrome and the marketing page share: the nav capsule, the live ticker,
+  the home hero's copy and every band below it all cap there and centre, with
+  the gutter as `paddingHorizontal: Spacing.four` *inside* the cap. Spell that
+  shape the same way every time — `verify:layout` checks all four. Only media
+  breaks out of it; the hero photograph is deliberately full-bleed, and the
+  hero box carries no gutter of its own because the gutter belongs to
+  `heroInner`. `MaxContentWidth` (800) is narrower on purpose: it is the
+  reading measure for app routes (forms, lists, parcel detail), so chrome is
+  wider than content, which is normal rather than a second system. Before this
+  existed a 2560px window had four different left edges and nothing on the page
+  lined up — invisible below ~1328px, where the cap never engages.
+- Desktop type steps are **functions, not breakpoint guesses**:
+  `heroTitleSize` (36 / 48 / 60 at `PageMeasure`), `sectionHeadingType` (22 →
+  32 at 1024, returning its own line height so a larger glyph never keeps a
+  smaller leading) and `sectionGap` (48 → 72 at 1024). Section headers on the
+  landing page use `sectionHeadingType`, never `cardTitle` — that was the bug
+  that left a section and the cards inside it at the same size.
+- The home hero's photograph is **composed for the layout**, not decorative.
+  `assets/images/New-hero-bg.jpeg` (1024×572) puts the handover in its right
+  half and leaves the left 45% an empty blue-to-cream gradient; the copy column
+  lives in that band, which is why the headline is left-aligned and not
+  centred. The `Hero` and `HeroScrim` constants at the top of
+  `src/app/(tabs)/index.tsx` carry the column cap, the crop anchors, the height
+  floor and the wash alphas, each with the contrast measurement that chose it.
+  Swapping in a picture that fills the frame edge to edge will not drop in —
+  the headline would land on the subject and those numbers would stop being
+  true. `verify:layout` asserts the arrangement, including that the accent word
+  stays `primaryPressed` (#0077B6 measures 4.14:1 over this photo, every pixel
+  of it under AA).
 - Back and close controls go through `useGoBack(fallback?)` in
   `src/hooks/use-go-back.ts` — never `router.back()` directly. Every route here
   is directly addressable, so the history stack is routinely empty (a parcel

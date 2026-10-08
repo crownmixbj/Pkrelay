@@ -2,7 +2,7 @@ import { Smartphone } from 'lucide-react-native';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import { StoreBadges } from '@/components/ui/store-badges';
-import { Elevation, Radius, Spacing, Typography } from '@/constants/theme';
+import { Elevation, Radius, Spacing, Typography, sectionHeadingType } from '@/constants/theme';
 import { useExperience } from '@/hooks/use-experience';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -61,7 +61,12 @@ export function AppDownload() {
         </View>
 
         <Text
-          style={[styles.title, { color: theme.text }, !sideBySide && styles.centred]}
+          style={[
+            styles.title,
+            sectionHeadingType(width),
+            { color: theme.text },
+            !sideBySide && styles.centred,
+          ]}
           /*
            * A heading on the web, not a paragraph that happens to be large.
            * react-native-web maps this to <h2>, which is what puts the section

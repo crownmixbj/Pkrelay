@@ -55,9 +55,19 @@ export function StickyHeader() {
   return (
     <View style={styles.header}>
       <Navbar />
-      <View style={styles.ticker}>
-        <LiveTicker />
-      </View>
+      {/*
+        ⚠ No wrapper around the ticker any more, and the reason is that it can
+          now be absent.
+
+          The parent used to own this block's margin and gutter, which is the
+          convention everywhere else on the page. It cannot here: the ticker
+          renders nothing when no parcel is moving, and a wrapper that still
+          carried `marginTop` would hold 8px of empty band open above the hero
+          to separate the header from a component that is not there. The
+          component owns its own spacing because the component is what decides
+          whether it exists.
+      */}
+      <LiveTicker />
     </View>
   );
 }
@@ -165,18 +175,5 @@ const styles = StyleSheet.create({
     zIndex: 50,
     backgroundColor: PageCanvas,
     paddingBottom: Spacing.two,
-  },
-  /**
-   * Explicitly *below* the navbar.
-   *
-   * The two are siblings, so without a z-index each they stack in document
-   * order and the ticker — being second — covered any open nav dropdown. Stated
-   * on both sides rather than only on the navbar, so the ordering is visible
-   * from whichever file someone opens first.
-   */
-  ticker: {
-    paddingHorizontal: Spacing.four,
-    marginTop: Spacing.two,
-    zIndex: 1,
   },
 });
