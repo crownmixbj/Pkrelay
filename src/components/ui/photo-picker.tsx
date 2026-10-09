@@ -8,6 +8,7 @@ import { showDialog } from '@/components/ui/dialog';
 
 import { Radius, Spacing, Typography, font } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { rememberPickedFile } from '@/lib/upload';
 
 export type PhotoPickerProps = {
   label: string;
@@ -65,7 +66,9 @@ export function PhotoPicker({ label, hint, value, onChange, error }: PhotoPicker
           : await ImagePicker.launchImageLibraryAsync(options);
 
       // `canceled` covers the user backing out; assets is empty in that case.
-      if (!result.canceled && result.assets[0]?.uri) onChange(result.assets[0].uri);
+      /* `rememberPickedFile` keeps the browser's File behind the uri. See upload.ts. */
+      if (!result.canceled && result.assets[0]?.uri)
+        onChange(rememberPickedFile(result.assets[0]));
     } catch {
       showDialog('Could not attach photo', 'Something went wrong opening the picker.');
     } finally {

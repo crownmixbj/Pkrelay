@@ -17,6 +17,7 @@ import {
 import { Radius, Spacing, Typography, font } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { captureInstruction, captureLink } from '@/constants/links';
+import { rememberPickedFile } from '@/lib/upload';
 import {
   livenessBlocks,
   livenessLabel,
@@ -203,7 +204,8 @@ export function SenderPhotoSheet({
     });
 
     if (result.canceled || !result.assets[0]) return;
-    setUri(result.assets[0].uri);
+    /* Keeps the browser's File, so the upload never has to reopen a blob: URL. */
+    setUri(rememberPickedFile(result.assets[0]));
   };
 
   const captureWebcam = () => {

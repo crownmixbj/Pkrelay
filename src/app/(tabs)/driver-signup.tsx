@@ -102,7 +102,7 @@ import {
 } from '@/store/driver-applications';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { schemaGapMessage } from '@/lib/schema-gap';
-import { fileSizeOf } from '@/lib/upload';
+import { fileSizeOf, rememberPickedFile } from '@/lib/upload';
 import {
   ACCEPTED_MIME_TYPES,
   DOCUMENT_RULE,
@@ -815,7 +815,8 @@ export default function DriverSignupScreen() {
 
       setDocuments((prev) => ({
         ...prev,
-        [key]: { fileName: asset.name, uri: asset.uri, size },
+        /* `rememberPickedFile` keeps the browser's File behind the uri. See upload.ts. */
+        [key]: { fileName: asset.name, uri: rememberPickedFile(asset), size },
       }));
       clearDocumentError(key);
     } catch {
@@ -873,7 +874,8 @@ export default function DriverSignupScreen() {
         ...prev,
         [key]: {
           fileName: asset.fileName ?? `${key}-${new Date().toISOString().slice(0, 10)}.jpg`,
-          uri: asset.uri,
+          /* `rememberPickedFile` keeps the browser's File behind the uri. See upload.ts. */
+          uri: rememberPickedFile(asset),
           size,
         },
       }));

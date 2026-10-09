@@ -21,6 +21,7 @@ import {
   type LivenessOutcome,
 } from '@/store/capture-session';
 import { useSession } from '@/store/session';
+import { rememberPickedFile } from '@/lib/upload';
 
 /**
  * The screen a QR code opens.
@@ -179,7 +180,8 @@ export default function CaptureScreen() {
     });
 
     if (result.canceled || !result.assets[0]) return;
-    setUri(result.assets[0].uri);
+    /* Keeps the browser's File, so the upload never has to reopen a blob: URL. */
+    setUri(rememberPickedFile(result.assets[0]));
   };
 
   const send = async () => {

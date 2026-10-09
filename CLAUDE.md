@@ -55,7 +55,7 @@ supabase/functions/   Deno edge functions + _shared/
 scripts/            the test suite (see below)
 docs/               STAGING, DEEP-LINKS, AUTH-REDIRECTS, DOJAH, DISTRIBUTION,
                     PUSH-DEPLOY, PRIVACY-NOTES, SCHEMA-AUDIT, PAYMENTS, SUPPORT,
-                    DISPATCH
+                    DISPATCH, UPLOADS
 ```
 
 ## Commands that matter

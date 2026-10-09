@@ -32,6 +32,15 @@ function check(name: string, condition: boolean, detail?: string) {
 const ROOT = process.cwd();
 const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');
 
+/** Every .ts/.tsx under `src`, as repo-relative paths. */
+function sourceFiles(dir = 'src'): string[] {
+  return readdirSync(join(ROOT, dir), { withFileTypes: true }).flatMap((entry) => {
+    const path = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) return sourceFiles(path);
+    return /\.tsx?$/.test(entry.name) ? [path] : [];
+  });
+}
+
 /*
  * ⚠ `/*` only counts as a comment when something could precede it.
  *
@@ -402,6 +411,70 @@ for (const claim of claims) {
     `and creates ${claim.fn}`,
     read(`supabase/migrations/${claim.file}`).includes(`function public.${claim.fn}(`),
     'the panel would report this as never applied, however many times it was run',
+  );
+}
+
+
+// ------------------------- every picker keeps the file it was handed --------
+
+/*
+ * ⚠ On the web a picker returns two things, and only one of them is reliable.
+ *
+ *   `expo-image-picker` and `expo-document-picker` both return
+ *   `uri: URL.createObjectURL(file)` *and* `file`, the real `File`. The uri is
+ *   a handle into the document that made it: revocable, and droppable by the
+ *   browser under memory pressure. A sender on a mobile browser got "Could not
+ *   read that file off this device" for a photograph that was in memory the
+ *   whole time, because the handle was all we kept.
+ *
+ *   `rememberPickedFile` keeps the `File` behind the uri, so the upload never
+ *   has to reopen the URL. It is one word at the call site and it is the whole
+ *   fix — which is exactly the kind of thing a new screen forgets.
+ */
+{
+  const PICKERS = /launchCameraAsync|launchImageLibraryAsync|getDocumentAsync/;
+
+  const forgetful = sourceFiles().filter((path) => {
+    const source = code(read(path));
+    if (!PICKERS.test(source)) return false;
+    return !source.includes('rememberPickedFile');
+  });
+
+  check(
+    'every screen that opens a picker keeps the file it was handed',
+    forgetful.length === 0,
+    `${forgetful.join(', ')} — pass the asset through \`rememberPickedFile\` from lib/upload,\n` +
+      '       or a browser upload depends on a blob: URL still being alive',
+  );
+
+  /*
+   * And the ladder it feeds is still in the order that makes it work.
+   *
+   * Scoped to `readFileBytesOnWeb`: the native branch above it calls
+   * `readFileBytesOverXhr` as its own fallback, which would make a whole-file
+   * search report the rungs in the wrong order for the right reason.
+   */
+  const upload = code(read('src/lib/upload.ts'));
+  const webRead = upload.slice(
+    upload.indexOf('async function readFileBytesOnWeb('),
+    upload.indexOf('function readFileBytesOverXhr('),
+  );
+  const order = ['PICKED_BLOBS.get(uri)', "uri.startsWith('data:')", 'fetch(uri)', 'readFileBytesOverXhr'];
+  const positions = order.map((needle) => webRead.indexOf(needle));
+
+  check(
+    'the web read tries the held file, then data:, then fetch, then XHR',
+    webRead.length > 200 &&
+      positions.every((at) => at !== -1) &&
+      positions.every((at, index) => index === 0 || at > positions[index - 1]),
+    `${JSON.stringify(order.map((needle, index) => [needle, positions[index]]))}\n` +
+      '       the held file first is the only rung a revoked object URL cannot defeat',
+  );
+
+  check(
+    'and a failed read no longer tells somebody their file is missing',
+    !/Could not read that file off this device\.`?\s*\+?\s*`?\(\$\{schemeOf/.test(upload),
+    'that wording sent a sender hunting through their gallery for a photo that was in memory',
   );
 }
 

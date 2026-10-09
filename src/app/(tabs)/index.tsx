@@ -54,6 +54,7 @@ import { serviceArtwork } from '@/constants/service-artwork';
 import { servicePrefillParams } from '@/constants/services';
 import { HERO_BACKGROUND } from '@/constants/hero-background';
 import {
+  Colors,
   FontSize,
   HeroSurface,
   PageMeasure,
@@ -84,11 +85,15 @@ import {
 import { useSession } from '@/store/session';
 
 /**
- * Cyan glass section shared by How Package Relay Works and My Sent Packages.
+ * Glass section shared by How Package Relay Works and My Sent Packages.
  *
- * `action` is #005FC5 rather than the specified #007FFF: measured on this
- * gradient that blue reads 2.93:1, well under AA, where #005FC5 clears it at
- * 4.66:1 and still scans as the same primary blue.
+ * ⚠ `action` and `trackActive` were hand-picked blues and are now the brand's.
+ *
+ *   `action` was #005FC5, chosen when the brand blue was #0077B6 and too light
+ *   to use here; `trackActive` was #2563EB for the same reason. The brand is
+ *   #0B5FFF now — 4.90:1 on the ground, 5.13:1 on white — so the reason both
+ *   existed is gone, and three near-identical blues one shade apart is how a
+ *   palette stops being a palette.
  */
 const GlassSection = {
   /**
@@ -97,9 +102,9 @@ const GlassSection = {
    */
   gradientFrom: 'transparent',
   gradientTo: 'transparent',
-  /** Deep navy for headings: 10.37:1 on the canvas, 11.08:1 on the frosted cards. */
+  /** Deep navy for headings: 11.04:1 on the ground, 11.55:1 on the frosted cards. */
   title: '#0B3C5D',
-  action: '#005FC5',
+  action: Colors.light.primary,
   cardFill: 'rgba(255,255,255,0.6)',
   cardBorder: 'rgba(255,255,255,0.6)',
   /** Waiting on a driver. */
@@ -110,7 +115,7 @@ const GlassSection = {
   routeFill: 'rgba(209,250,229,0.8)',
   routeText: '#064E3B',
   trackInactive: '#E2E8F0',
-  trackActive: '#2563EB',
+  trackActive: Colors.light.primary,
 } as const;
 
 /** py-12 — the vertical rhythm between major sections. */
@@ -494,14 +499,16 @@ export default function HomeScreen() {
                   ]}>
                   Delivering with{'\n'}
                   {/*
-                    ⚠ primaryPressed, not primary — the second photograph in a row
-                      to decide this.
+                    ⚠ primaryPressed, not primary, and the reason survived a
+                      repaint.
 
-                      #0077B6 over this one measures 4.14:1 median in the copy
-                      column with 100% of its area under AA, and on a phone 34% of
-                      it stays under 4.5:1 even through the wash. #005E92 is the
-                      same blue a shade deeper: 5.9:1 unwashed, 6.5:1 through the
-                      wash, and 0% under AA at every width measured.
+                      When the brand was #0077B6 this was forced: that blue
+                      measured 4.14:1 median over the photograph with 100% of
+                      its area under AA. #0B5FFF clears it — 4.69:1 at its worst
+                      pixel across every width swept — but only just, and over a
+                      photograph "only just" moves whenever the crop does.
+                      primaryPressed holds 7.12:1 at its worst and still reads
+                      as the brand.
                   */}
                   <Text style={{ color: theme.primaryPressed }}>Excellence</Text>
                 </Text>

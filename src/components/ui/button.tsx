@@ -55,7 +55,15 @@ export function Button({
                 ? theme.backgroundSelected
                 : theme.surface,
           borderColor: disabled ? theme.border : isPrimary ? 'transparent' : theme.borderStrong,
-          shadowColor: theme.shadow,
+          /*
+            A primary button casts its own colour, not a grey.
+
+            The ink-coloured shadow every other surface uses reads as dirt under
+            a saturated fill; tinting it to the fill is what makes the button
+            sit on the page rather than on top of it. Secondary and disabled
+            keep the neutral shadow — they are surfaces, not actions.
+          */
+          shadowColor: disabled ? theme.shadow : isPrimary ? theme.primary : theme.shadow,
         },
         // No lift on a button that does nothing.
         isPrimary && !disabled && Elevation.card,

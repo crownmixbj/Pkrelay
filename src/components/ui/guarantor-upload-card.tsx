@@ -22,6 +22,7 @@ import {
 import { Radius, Spacing, Typography, font } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { uploadGuarantorDocument } from '@/store/guarantor';
+import { rememberPickedFile } from '@/lib/upload';
 
 /**
  * One of the guarantor's two files: attach it, upload it, show that it landed.
@@ -152,7 +153,9 @@ export function GuarantorUploadCard({
         cameraType: live ? ImagePicker.CameraType.front : ImagePicker.CameraType.back,
       });
 
-      if (!result.canceled && result.assets[0]?.uri) await send(result.assets[0].uri);
+      /* `rememberPickedFile` keeps the browser's File behind the uri. See upload.ts. */
+      if (!result.canceled && result.assets[0]?.uri)
+        await send(rememberPickedFile(result.assets[0]));
     } catch {
       setError('Something went wrong opening the camera.');
     }
@@ -217,7 +220,7 @@ export function GuarantorUploadCard({
     }
     stop();
     setWebcamOpen(false);
-    /* A data: URL, which `readFileBytes` reads over XHR on the web. */
+    /* A data: URL, which `readFileBytes` decodes directly on the web. */
     await send(frame);
   };
 

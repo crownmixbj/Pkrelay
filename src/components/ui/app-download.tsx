@@ -2,7 +2,13 @@ import { Smartphone } from 'lucide-react-native';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import { StoreBadges } from '@/components/ui/store-badges';
-import { Elevation, Radius, Spacing, Typography, sectionHeadingType } from '@/constants/theme';
+import {
+  Bands,
+  Radius,
+  Spacing,
+  Typography,
+  sectionHeadingType,
+} from '@/constants/theme';
 import { useExperience } from '@/hooks/use-experience';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -48,11 +54,19 @@ export function AppDownload() {
         styles.panel,
         sideBySide && styles.panelRow,
         {
-          backgroundColor: theme.surface,
-          borderColor: theme.border,
+          /*
+            ⚠ A band, not another white card.
+
+              On the old cyan ground every section was a white rectangle, so
+              nothing on the page was visually a *section* — they were all the
+              same object repeated. With a near-neutral ground the tint is what
+              separates this block from the quote card below it, and it costs
+              no contrast: ink on `Bands.cool` is 16.2:1.
+          */
+          backgroundColor: Bands.cool,
+          borderColor: 'transparent',
           shadowColor: theme.shadow,
         },
-        Elevation.raised,
       ]}>
       <View style={[styles.copy, !sideBySide && styles.copyCentered]}>
         <View style={[styles.eyebrow, !sideBySide && styles.eyebrowCentered]}>

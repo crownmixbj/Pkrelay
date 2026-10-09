@@ -1245,14 +1245,16 @@ check(
 // ---------------------------------------------------- the accent word ------
 
 /*
- * ⚠ `primaryPressed`, not `primary` — the second photograph in a row to decide
- *   this, and the first time it has been asserted.
+ * ⚠ `primaryPressed`, not `primary`, and the rule outlived the colours it was
+ *   written for.
  *
- *   #0077B6 over this picture measures 4.14:1 median in the copy column with
- *   100% of its area under AA, and on a phone 34% stays under 4.5:1 even
- *   through the wash. #005E92 is the same blue a shade deeper: 5.9:1 unwashed,
- *   6.5:1 washed, 0% under AA at every width measured. It is an easy line to
- *   "tidy" back to the brand token.
+ *   Under the old #0077B6 brand this was forced: 4.14:1 median over the
+ *   picture, 100% of it under AA. The brand is #0B5FFF now and clears the floor
+ *   on its own — 4.69:1 at its worst pixel — which makes this exactly the line
+ *   somebody tidies back to `theme.primary`. Over a photograph, 4.69 is a
+ *   margin that moves with the crop; `primaryPressed` holds 7.12:1 at its worst
+ *   and is still visibly the brand. Asserted on the token, so a future repaint
+ *   carries the decision with it.
  */
 const accentAt = homeScreen.indexOf('>Excellence<');
 const accentTag =
@@ -1262,7 +1264,7 @@ check('the accent word parsed', accentTag.length > 0, 'the headline no longer sa
 check(
   'the accent word uses the deeper blue',
   accentTag.includes('theme.primaryPressed'),
-  'theme.primary is #0077B6 — 4.14:1 over this photograph, every pixel of it under AA',
+  'the pressed shade keeps 7.12:1 at its worst pixel; theme.primary manages 4.69 and moves with the crop',
 );
 
 

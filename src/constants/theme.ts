@@ -27,24 +27,53 @@ export const Colors = {
     border: '#E2E8F0',
     /** Slightly stronger border for inputs at rest. */
     borderStrong: '#CBD5E1',
-    /** Tertiary text: tracking IDs, placeholders, disabled labels. */
-    textMuted: '#64748B',
+    /**
+     * Tertiary text: tracking IDs, placeholders, disabled labels.
+     *
+     * ⚠ #64748B until `verify:palette` was written, and it never cleared AA on
+     *   anything but white — 4.34:1 on `surfaceMuted`, 4.31:1 on a band. Every
+     *   placeholder inside an input (which is `surfaceMuted`) was under the
+     *   floor. One step darker clears every surface in the system with room to
+     *   spare and is visually indistinguishable from the old one.
+     */
+    textMuted: '#5B687E',
     shadow: '#0F172A',
 
     /**
-     * Brand blue. The bright #00A8E8 measures only 2.70:1 on white — it fails
-     * as a text colour, as a fill behind white text, and even as a 3:1 icon or
-     * border. So the deeper #0077B6 (4.87:1) carries anything that means
-     * something, and #00A8E8 is kept for decorative tints via `primaryAccent`.
+     * Brand blue.
+     *
+     * ⚠ This was #0077B6, and it was failing AA on the page it sat on.
+     *
+     *   The old note reasoned from 4.87:1 *on white* — correct, and not the
+     *   measurement that mattered, because the page ground was `PageCanvas`,
+     *   a flat cyan. On that, #0077B6 measures **4.37:1**: every nav link,
+     *   every "See all", every price in brand blue was under the floor. The
+     *   number was right about a surface the text was never on.
+     *
+     *   #0B5FFF is both brighter and safer: 5.13:1 on white, 4.90:1 on the
+     *   ground, 4.68:1 on `surfaceMuted`, and 5.13:1 the other way round for
+     *   white labels on a primary fill. `verify:palette` now computes every
+     *   one of these from the tokens rather than from a comment.
      */
-    primary: '#0077B6',
-    primaryPressed: '#005E92',
+    primary: '#0B5FFF',
+    /** 7.80:1 under a white label — the pressed state is never the weak one. */
+    primaryPressed: '#0A47C2',
     primaryText: '#FFFFFF',
-    /** Decorative only — never behind text or as a lone indicator. */
-    primaryAccent: '#00A8E8',
+    /**
+     * Decorative only — never behind text, and never as a lone indicator.
+     *
+     * ⚠ And this is why primary buttons are a flat fill rather than a gradient.
+     *
+     *   A `primaryAccent → primary` gradient looks the part, but white on the
+     *   bright end measures 3.20:1. A button whose label is legible at one end
+     *   and not the other is worse than a flat one. Where a gradient is wanted,
+     *   `primary → primaryPressed` is the accessible pair: 5.13:1 at its
+     *   lightest point.
+     */
+    primaryAccent: '#4D8DFF',
     /** Tinted fill behind primary-toned pills and icon chips. */
-    primarySoft: '#E0F2FE',
-    primaryOnSoft: '#0369A1',
+    primarySoft: '#E4EDFF',
+    primaryOnSoft: '#1D4ED8',
 
     // Status tones
     successSoft: '#DCFCE7',
@@ -116,11 +145,58 @@ export const Colors = {
 
 export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
 
-/** Soft cyan behind every screen in the app. */
-export const PageCanvas = '#E0F7FA';
+/**
+ * The ground behind every screen.
+ *
+ * ⚠ This was a flat cyan (#E0F7FA), and that one line is most of why the app
+ *   read as washed out rather than bright.
+ *
+ *   When the whole page is tinted there is nothing for a tint to stand out
+ *   from: white cards read as holes punched in the ground rather than surfaces
+ *   lifted off it, and the brand blue has no neutral to be brand-coloured
+ *   against. It also pushed `primary` under AA — see the note on that token.
+ *   Bright commercial apps do the opposite: a near-neutral ground, then colour
+ *   spent deliberately on `Bands`, chips, tones and the primary action.
+ *
+ * ⚠ Derived rather than typed out, because the hero's wash has to match it.
+ *
+ *   `(tabs)/index.tsx` paints a gradient over the hero photograph in this
+ *   colour so the page appears to come forward over the picture. Written as a
+ *   second literal, the two drift and the wash turns into a visible grey veil.
+ *   `verify:layout` asserts the wash equals `Colors.light.background`; this
+ *   makes `PageCanvas` the same value by construction.
+ */
+export const PageCanvas = Colors.light.background;
 
-/** Warm hero block behind the headline. */
-export const HeroSurface = '#FDF6F0';
+/**
+ * Tinted section bands — the replacement for tinting the whole page.
+ *
+ * A band is how a section says "I am a different thing from the one above me"
+ * without the page having to be a colour. Used by the app-download block and
+ * available to any full-width section that needs separating from its
+ * neighbours.
+ */
+export const Bands = {
+  /** Cool, brand-adjacent. The default, and currently the only one. */
+  cool: '#EEF4FF',
+} as const;
+
+/*
+ * ⚠ There was a `coolStrong: '#E4EDFF'` here and it lasted one test run.
+ *
+ *   Nothing used it, and `primary` on it measures 4.36:1 — so its first use
+ *   would have been its first AA failure. A second band is easy to add once
+ *   something needs one and the pairs are computed for it; an unused token
+ *   that quietly fails is a trap with a nice name.
+ */
+
+/**
+ * Hero block behind the headline when no photograph is set.
+ *
+ * ⚠ Was a warm cream (#FDF6F0), which is now the one warm surface in a cool
+ *   system — on the new ground it reads as a stain rather than a choice.
+ */
+export const HeroSurface = Bands.cool;
 
 /** Semantic tones used by badges and pills. Each maps to a `<tone>Soft` / `<tone>OnSoft` pair. */
 export type Tone = 'primary' | 'success' | 'warning' | 'danger' | 'neutral';
@@ -229,30 +305,40 @@ export const BaseFont = font(400);
  * exact hue asked for.
  */
 export const ServiceTones = {
+  /*
+   * ⚠ Every `text` here moved one step darker, and none of them were new bugs.
+   *
+   *   Measured against their own card fills the originals ran 4.31:1 to
+   *   4.43:1 — all four under AA, all four shipped, none noticed, because the
+   *   numbers had never been computed. `azure.accent` was worse: white on
+   *   #007FFF is 3.83:1, on a badge that carries an icon. The fills and the
+   *   character of each tone are unchanged; only the ink on them moved.
+   */
   teal: {
     accent: '#008080',
-    text: '#008080',
+    text: '#026B6B',
     onAccent: '#FFFFFF',
     backgroundFrom: '#EDF7F5',
     backgroundTo: '#FFFDF6',
   },
   azure: {
-    accent: '#007FFF',
-    text: '#006EDE',
+    /* The brand blue itself — azure was always a second name for it. */
+    accent: '#0B5FFF',
+    text: '#0062C7',
     onAccent: '#FFFFFF',
     backgroundFrom: '#E8F1FF',
     backgroundTo: '#F8FBFF',
   },
   gold: {
     accent: '#DAA520',
-    text: '#8E6B15',
+    text: '#7E5D0C',
     onAccent: '#3D2E06',
     backgroundFrom: '#FBF1DC',
     backgroundTo: '#FFFCF4',
   },
   royal: {
     accent: '#4169E1',
-    text: '#3F66DA',
+    text: '#3457C4',
     onAccent: '#FFFFFF',
     backgroundFrom: '#EAEFFC',
     backgroundTo: '#F8FAFE',

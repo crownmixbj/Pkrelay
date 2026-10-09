@@ -88,7 +88,16 @@ export function contentTypeFor(nameOrUri: string): string {
  * before sending, which is the backstop.
  */
 export async function fileSizeOf(uri: string): Promise<number | null> {
-  if (Platform.OS === 'web') return null;
+  if (Platform.OS === 'web') {
+    /*
+      The picker's own `size` is the usual answer on the web and the caller
+      reaches for it first. This covers the rest: a file we were handed knows
+      how big it is, and returning null meant the size cap simply did not exist
+      in a browser — a photo over the limit was accepted here and refused at
+      submit, thirty fields later.
+    */
+    return PICKED_BLOBS.get(uri)?.size ?? null;
+  }
 
   try {
     const info = new FileSystemFile(uri).info();
@@ -131,6 +140,82 @@ export function assertImageBytes(file: FileBytes, what = 'photo'): FileBytes {
 /** The bit before the `:`, for error messages. `file`, `content`, `ph`, `blob`. */
 function schemeOf(uri: string): string {
   return /^([a-z][a-z0-9+.-]*):/i.exec(uri.trim())?.[1]?.toLowerCase() ?? 'none';
+}
+
+/**
+ * The `Blob` behind an object URL, where we were handed one.
+ *
+ * ⚠ This exists because a `blob:` URL is a *handle*, not a file.
+ *
+ *   `expo-image-picker` on the web returns `uri: URL.createObjectURL(file)` —
+ *   and, on the same object, `file`, the real `File`. The URL is a pointer into
+ *   the document that made it: it dies with that document, it dies when
+ *   anything revokes it, and on a phone the browser may drop the backing store
+ *   under memory pressure while the page is still alive. A sender in a mobile
+ *   browser got
+ *
+ *       Could not read that file off this device. (blob URI, web, …)
+ *
+ *   on a photograph that was sitting in memory the whole time, because the only
+ *   thing we kept was the pointer.
+ *
+ *   So: when a picker hands us the `File`, we keep the `File`. Reading it needs
+ *   no URL, no network stack and no document — `Blob.arrayBuffer()` is the
+ *   bytes themselves.
+ *
+ * ⚠ Bounded, because this holds photographs in memory.
+ *
+ *   Eight is more than any flow needs — the longest is the driver application,
+ *   with a licence, an insurance document and a selfie — and the oldest entry
+ *   is dropped rather than letting a long session accumulate megabytes of faces
+ *   nobody is going to upload.
+ */
+const PICKED_BLOBS = new Map<string, Blob>();
+const PICKED_LIMIT = 8;
+
+/**
+ * Remembers the file a picker returned, and gives back its uri unchanged.
+ *
+ * Written to be dropped into an existing call site:
+ *
+ *     setUri(rememberPickedFile(result.assets[0]));
+ *
+ * A no-op off the web, where `file` is never set and the uri is a real path the
+ * file system can open.
+ */
+export function rememberPickedFile(asset: { uri: string; file?: Blob } | undefined): string {
+  const uri = asset?.uri ?? '';
+  if (Platform.OS !== 'web' || !asset?.file || !uri) return uri;
+
+  if (PICKED_BLOBS.size >= PICKED_LIMIT) {
+    const oldest = PICKED_BLOBS.keys().next().value;
+    if (oldest !== undefined) PICKED_BLOBS.delete(oldest);
+  }
+
+  PICKED_BLOBS.set(uri, asset.file);
+  return uri;
+}
+
+/** Decodes a `data:` URI without going near the network. */
+function bytesFromDataUri(uri: string): ArrayBuffer | null {
+  const comma = uri.indexOf(',');
+  if (comma === -1) return null;
+
+  const meta = uri.slice(0, comma);
+  const payload = uri.slice(comma + 1);
+
+  try {
+    if (!/;base64/i.test(meta)) {
+      return new TextEncoder().encode(decodeURIComponent(payload)).buffer as ArrayBuffer;
+    }
+
+    const binary = atob(payload);
+    const out = new Uint8Array(binary.length);
+    for (let at = 0; at < binary.length; at += 1) out[at] = binary.charCodeAt(at);
+    return out.buffer;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -199,7 +284,73 @@ export async function readFileBytes(uri: string, contentTypeHint?: string): Prom
     }
   }
 
-  return readFileBytesOverXhr(uri, contentType);
+  return readFileBytesOnWeb(uri, contentType);
+}
+
+/**
+ * The web read, in order of how much can go wrong.
+ *
+ * ⚠ Four ways, and the order is the whole point.
+ *
+ *   1. **The `Blob` the picker gave us.** No URL, no document, no network. The
+ *      only one of these that cannot be defeated by a revoked or discarded
+ *      object URL, which is the bug this ladder was built for.
+ *   2. **A `data:` URI, decoded here.** That is what the browser camera
+ *      produces — `canvas.toDataURL` in `webcam-capture.tsx` — and it is
+ *      already the bytes. Handing a multi-megabyte string to a network client
+ *      to parse is work for nothing, and on a phone it is work for nothing
+ *      twice: the string is copied again to do it.
+ *   3. **`fetch`.** The browser's own loader, and the one that is specified to
+ *      understand `blob:`.
+ *   4. **`XMLHttpRequest`.** What this file did for a year, kept because it
+ *      works everywhere it ever worked.
+ *
+ *   The error carries every attempt, so the next report of this says which
+ *   rungs were tried rather than only that the bottom one failed.
+ */
+async function readFileBytesOnWeb(uri: string, contentType: string): Promise<FileBytes> {
+  const picked = PICKED_BLOBS.get(uri);
+  if (picked) {
+    const bytes = await picked.arrayBuffer();
+    if (bytes.byteLength > 0) {
+      /* Spent. Holding it after the upload is holding a face for no reason. */
+      PICKED_BLOBS.delete(uri);
+      return { bytes, contentType: picked.type || contentType };
+    }
+    PICKED_BLOBS.delete(uri);
+  }
+
+  if (uri.startsWith('data:')) {
+    const bytes = bytesFromDataUri(uri);
+    if (bytes && bytes.byteLength > 0) return { bytes, contentType };
+  }
+
+  const tried: string[] = [];
+
+  if (typeof fetch === 'function') {
+    try {
+      const response = await fetch(uri);
+      if (!response.ok) throw new Error(`status ${response.status}`);
+
+      const bytes = await response.arrayBuffer();
+      if (bytes.byteLength === 0) throw new Error('empty');
+
+      return { bytes, contentType };
+    } catch (thrown) {
+      tried.push(`fetch: ${errorMessage(thrown, 'failed')}`);
+    }
+  }
+
+  try {
+    return await readFileBytesOverXhr(uri, contentType);
+  } catch (thrown) {
+    tried.push(`xhr: ${errorMessage(thrown, 'failed')}`);
+  }
+
+  throw new Error(
+    `Could not read that photo from this browser. Take it again. ` +
+      `(${schemeOf(uri)} URI, web, ${buildLabel()}; ${tried.join('; ')})`,
+  );
 }
 
 function readFileBytesOverXhr(uri: string, contentType: string): Promise<FileBytes> {
@@ -224,12 +375,18 @@ function readFileBytesOverXhr(uri: string, contentType: string): Promise<FileByt
       resolve({ bytes, contentType });
     };
 
+    /*
+      ⚠ Factual, and deliberately not addressed to anybody.
+
+        This used to read "Could not read that file off this device", which is
+        what a sender saw for a photograph that was in memory the whole time —
+        and it sent them hunting through their gallery for a file that was never
+        lost. Both callers wrap this: the native path prefers the file system's
+        own error, and the web path lists it beside the other attempts under a
+        sentence that does say what to do.
+    */
     request.onerror = () =>
-      reject(
-        new Error(
-          `Could not read that file off this device. (${schemeOf(uri)} URI, ${Platform.OS}, ${buildLabel()})`,
-        ),
-      );
+      reject(new Error(`the browser could not open that ${schemeOf(uri)} URL`));
     request.onabort = () => reject(new Error('Reading the file was interrupted.'));
     request.ontimeout = () => reject(new Error('Reading the file timed out.'));
 
