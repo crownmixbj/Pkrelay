@@ -1750,6 +1750,100 @@ for (const fn of FUNCTIONS) {
   );
 }
 
+// ------------------- 23. the reveal looks where the queue looks (82) ------
+
+/*
+ * ⚠ The queue promised a selfie the reveal could not find.
+ *
+ *   43 added `sender_selfie_path` — identity row first, newest completed
+ *   capture session second — because a sender's selfie is banked into
+ *   `photo_capture_sessions` when they take it and only copied into
+ *   `sender_identity.reference_path` later. It wired that into
+ *   `admin_identity_queue`, so `has_selfie` is true for anybody who has taken
+ *   one, and left both reveals reading `coalesce(candidate_path,
+ *   reference_path)` — the first half of the question.
+ *
+ *   On production: a sender with twelve capture sessions, three completed with
+ *   a photo, and both identity columns null. Queue says yes, reveal says null,
+ *   and the panel rendered *nothing* — which looks exactly like a photograph
+ *   that has not loaded yet, which is why it went unreported.
+ */
+{
+  const selfieSql = code(read('supabase/migrations/20250101000082_reveal_finds_the_selfie.sql'));
+  const panel = read('src/components/ui/identity-review-panel.tsx');
+
+  for (const fn of ['admin_reveal_identity_for_user', 'admin_reveal_sender_identity']) {
+    check(
+      `${fn} asks the same helper the queue asks`,
+      new RegExp(`create or replace function public\\.${fn}\\(`).test(selfieSql),
+      'one definition of where a face is, used by everything that wants one',
+    );
+  }
+  check(
+    'the user-keyed reveal uses the helper outright',
+    /public\.sender_selfie_path\(target\)/.test(selfieSql),
+    'the identity columns alone are the half that is empty while a decision is pending',
+  );
+  check(
+    'and the parcel-keyed one keeps the booking photo first, falling back to it',
+    /coalesce\(b\.sender_photo_path, public\.sender_selfie_path\(b\.sender_id\)\)/.test(selfieSql),
+    'that reveal is about one parcel, and the face photographed for it is the right answer',
+  );
+
+  /*
+   * ⚠ A row even with no identity row at all, or the client reads "a selfie and
+   *   no NIN" as "nothing to show".
+   */
+  check(
+    'the reveal starts from the target rather than from the identity table',
+    /from \(select target as user_id\) t\s*left join public\.sender_identity i/.test(selfieSql),
+    'an account that took a selfie and never submitted a NIN returned zero rows',
+  );
+
+  check(
+    'the probe asserts the queue and both reveals agree',
+    /reveal_finds_the_selfie/.test(selfieSql) &&
+      (selfieSql.match(/like '%sender_selfie_path%'/g) ?? []).length === 3,
+    'neither was wrong alone — the bug was that they disagreed, invisibly',
+  );
+  check(
+    'and it is on the deployment panel',
+    /20250101000082_reveal_finds_the_selfie\.sql/.test(gaps) && /reveal_finds_the_selfie/.test(gaps),
+  );
+
+  /* ------------------------------------------------------------ on screen */
+
+  /*
+   * ⚠ The component that makes the bug unwritable. `Evidence` has exactly two
+   *   outcomes — the thing, or a sentence saying it is absent — so a caller
+   *   cannot render a blank space that reads as "still loading".
+   */
+  check(
+    'all three pieces go through one component that cannot render nothing',
+    /function Evidence\(\{/.test(panel) &&
+      /const present = Boolean\(children\);/.test(panel) &&
+      (panel.match(/<Evidence/g) ?? []).length === 3,
+    `${(panel.match(/<Evidence/g) ?? []).length} of them — the number, the slip and the selfie`,
+  );
+  check(
+    'and a missing selfie says what to do about it',
+    /No selfie on file\. Ask them to take it again before deciding/.test(panel),
+    'the reviewer is otherwise asked to attest to a comparison they cannot make',
+  );
+  /*
+   * ⚠ And nothing draws an evidence slot outside that component.
+   *
+   *   `styles.shot` is the slot. If a fourth thing is ever added beside the
+   *   three, it has to go through `Evidence` too, or it can go missing the same
+   *   silent way.
+   */
+  check(
+    'and nothing draws an evidence slot outside it',
+    (panel.match(/style=\{styles\.shot\}/g) ?? []).length === 1,
+    `${(panel.match(/style=\{styles\.shot\}/g) ?? []).length} — the only one should be inside Evidence`,
+  );
+}
+
 if (failures > 0) {
   console.error(`\n${failures} check(s) failed.\n`);
   process.exit(1);

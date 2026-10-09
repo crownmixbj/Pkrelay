@@ -447,6 +447,23 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
     migration: '20250101000081_nin_visibility.sql',
   },
   /*
+   * ⚠ Without 82 the review queue says a sender has a selfie and the reveal
+   *   cannot find it.
+   *
+   *   43 taught `admin_identity_queue` to look in `photo_capture_sessions` when
+   *   `sender_identity` has no photo — which is where a selfie lives before
+   *   anything has been decided, so it is where every account in the queue
+   *   keeps one — and left both reveals reading the identity columns alone. The
+   *   panel then renders nothing where the face should be, and a reviewer is
+   *   asked to tick "I have compared the selfie against the NIN slip" with no
+   *   selfie on screen.
+   */
+  {
+    label: 'The reveal finds the selfie',
+    fn: 'reveal_finds_the_selfie',
+    migration: '20250101000082_reveal_finds_the_selfie.sql',
+  },
+  /*
    * Without 62 nothing breaks on screen — new accounts are simply never sent
    * the welcome email — which is exactly why it needs a line here.
    */

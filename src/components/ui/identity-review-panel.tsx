@@ -332,33 +332,36 @@ function IdentityCard({
               Selectable, because the next thing a reviewer does with a number
               that does not match is paste it into the enquiry that settles it.
           */}
-          {!!revealed.nin && (
-            <View style={[styles.ninRow, { backgroundColor: theme.surfaceMuted }]}>
-              <Text style={[styles.ninLabel, { color: theme.textSecondary }]}>
-                NIN as entered
-              </Text>
-              <Text selectable style={[styles.ninValue, { color: theme.text }]}>
-                {revealed.nin}
-              </Text>
-            </View>
-          )}
+          {/*
+            ⚠ All three, always — a missing one says so rather than vanishing.
 
-          {revealed.selfieUrl !== null && (
-            <View style={styles.shot}>
-              <Text style={[styles.shotLabel, { color: theme.textMuted }]}>Selfie</Text>
-              <Image
-                source={{ uri: revealed.selfieUrl }}
-                style={[styles.photo, { borderColor: theme.border }]}
-                resizeMode="cover"
-                accessibilityLabel={`Selfie submitted by ${who}`}
-              />
-            </View>
-          )}
+              Each of these used to render only when it had something, so a
+              selfie the reveal could not find left *no mark at all*: the slip
+              appeared, the face did not, and the reviewer was asked to tick "I
+              have compared the selfie against the NIN slip" with nothing to
+              compare. A blank space is indistinguishable from a photograph
+              still loading, which is why nobody reported it as missing for
+              weeks — it looked like a slow page.
 
-          {revealed.slipUrl !== null && (
-            <View style={styles.shot}>
-              <Text style={[styles.shotLabel, { color: theme.textMuted }]}>NIN slip</Text>
-              {revealed.slipIsPdf ? (
+              The three are the three things a sender provides, in the order a
+              reviewer uses them: the number they typed, the document it came
+              from, and the face.
+          */}
+          <Evidence label="NIN as entered" missing="Not provided.">
+            {!!revealed.nin && (
+              <View style={[styles.ninRow, { backgroundColor: theme.surfaceMuted }]}>
+                <Text selectable style={[styles.ninValue, { color: theme.text }]}>
+                  {revealed.nin}
+                </Text>
+              </View>
+            )}
+          </Evidence>
+
+          <Evidence
+            label="NIN slip"
+            missing="No slip on file. Nothing was uploaded, so there is nothing to read the number off.">
+            {revealed.slipUrl !== null &&
+              (revealed.slipIsPdf ? (
                 <Button
                   label="Open slip (PDF)"
                   variant="secondary"
@@ -373,9 +376,21 @@ function IdentityCard({
                   resizeMode="contain"
                   accessibilityLabel={`NIN slip submitted by ${who}`}
                 />
-              )}
-            </View>
-          )}
+              ))}
+          </Evidence>
+
+          <Evidence
+            label="Selfie"
+            missing="No selfie on file. Ask them to take it again before deciding — there is nothing here to compare the slip against.">
+            {revealed.selfieUrl !== null && (
+              <Image
+                source={{ uri: revealed.selfieUrl }}
+                style={[styles.photo, { borderColor: theme.border }]}
+                resizeMode="cover"
+                accessibilityLabel={`Selfie submitted by ${who}`}
+              />
+            )}
+          </Evidence>
         </View>
       )}
 
@@ -498,14 +513,54 @@ function IdentityCard({
   );
 }
 
+/**
+ * One of the three things a sender provided, or a sentence saying it is absent.
+ *
+ * ⚠ `children` is rendered when it is truthy, and the sentence when it is not.
+ *
+ *   Written this way so a caller cannot accidentally render nothing: the only
+ *   two outcomes are the evidence or an explanation of its absence. That is the
+ *   bug this component exists to make unwritable.
+ */
+function Evidence({
+  label,
+  missing,
+  children,
+}: {
+  label: string;
+  missing: string;
+  children: React.ReactNode;
+}) {
+  const theme = useTheme();
+  const present = Boolean(children);
+
+  return (
+    <View style={styles.shot}>
+      <Text style={[styles.shotLabel, { color: theme.textMuted }]}>{label}</Text>
+      {present ? (
+        children
+      ) : (
+        <View style={[styles.absent, { backgroundColor: theme.warningSoft }]}>
+          <Text style={[styles.absentText, { color: theme.warningOnSoft }]}>{missing}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  absent: {
+    padding: Spacing.three - 4,
+    borderRadius: Radius.md,
+  },
+  absentText: {
+    ...Typography.caption,
+    lineHeight: 18,
+  },
   ninRow: {
     gap: Spacing.half,
     padding: Spacing.three - 4,
     borderRadius: Radius.md,
-  },
-  ninLabel: {
-    ...Typography.caption,
   },
   ninValue: {
     ...Typography.meta,

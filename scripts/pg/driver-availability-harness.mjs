@@ -1464,17 +1464,22 @@ const CLOCK_DRIVERS = [
   await db.exec(repair);
 
   /*
-   * ⚠ And then 81, because 79 carries an *older* copy of
-   *   `admin_reveal_identity_for_user` — 43's, which masks the NIN to four
-   *   digits. Replaying 79 on its own therefore un-fixes 81, and the report
-   *   below says so, which is the detector doing its job rather than a fault.
+   * ⚠ And then everything after it, in order, because 79 is a *repair* file.
    *
-   *   A real `db push` runs them in order and ends on 81. This mirrors that,
-   *   and incidentally proves 81 is re-runnable over a database that has it.
+   *   It carries older copies of functions that later migrations have changed
+   *   since — 43's `admin_reveal_identity_for_user`, among others. Replaying 79
+   *   on its own therefore un-fixes them, and the report below says so, which
+   *   is the detector doing its job rather than a fault.
+   *
+   *   A real `db push` runs the chain in order and ends on the newest file.
+   *   This mirrors that by replaying every migration after 79 rather than
+   *   naming one — so the next file added does not quietly leave this test
+   *   asserting against a database two fixes behind.
    */
-  await db.exec(
-    readFileSync(join(ROOT, 'supabase/migrations/20250101000081_nin_visibility.sql'), 'utf8'),
-  );
+  for (const name of MIGRATIONS) {
+    if (SKIP.has(name) || name <= '20250101000079') continue;
+    await db.exec(read(name));
+  }
 
   const afterRepair = await report();
   check(
@@ -1999,6 +2004,122 @@ const CLOCK_DRIVERS = [
   check(
     'the deployment panel can tell whether any of this is deployed',
     (await db.query('select public.nin_reveal_installed() as ok')).rows[0].ok === true,
+  );
+}
+
+// ------------- 15. the reveal finds the selfie the queue counted (82) -----
+
+/*
+ * ⚠ A sender's selfie is not in `sender_identity` until something decides.
+ *
+ *   It is banked into `photo_capture_sessions` the moment they take it, and
+ *   only copied to `reference_path` later. 43 taught `admin_identity_queue`
+ *   that, so `has_selfie` is true for anybody who has taken one — and left the
+ *   reveal reading the identity columns alone, which are exactly the ones that
+ *   are empty while a decision is pending. Queue says yes; reveal returns null;
+ *   the panel renders nothing, which looks like a photograph still loading.
+ */
+{
+  await asOwner();
+
+  /* The state of every account in the review queue: a slip, a NIN, no copy of
+     the face on the identity row yet. */
+  await db.query(
+    `update public.sender_identity
+        set candidate_path = null, reference_path = null, status = 'pending'
+      where user_id = $1`,
+    [SENDER],
+  );
+
+  const SELFIE = 'a4f1c0de-0000-4000-8000-00000000beef/1791544862879.jpg';
+  await db.query(
+    `insert into public.photo_capture_sessions
+       (owner_id, photo_path, completed_at, liveness_status, liveness_environment, liveness_checked_at)
+     values ($1, $2, now(), 'unavailable', 'sandbox', now())`,
+    [SENDER, SELFIE],
+  );
+
+  await asUser(ADMIN);
+
+  const queued = (await db.query('select * from public.admin_identity_queue()')).rows.find(
+    (row) => row.user_id === SENDER,
+  );
+  check(
+    'the queue counts the selfie, as it has since 43',
+    queued?.has_selfie === true,
+    JSON.stringify(queued?.has_selfie),
+  );
+
+  const revealed = (
+    await db.query('select * from public.admin_reveal_identity_for_user($1, $2)', [
+      SENDER,
+      'Identity review — looking at the face and the slip',
+    ])
+  ).rows[0];
+
+  check(
+    'and the reveal now finds the same one',
+    revealed?.selfie_path === SELFIE,
+    `got ${JSON.stringify(revealed?.selfie_path)} — this returned null, so the panel drew nothing\n` +
+      '       and the reviewer was asked to compare a face that was not on screen',
+  );
+  check(
+    'with the slip and the number still beside it',
+    revealed?.slip_path !== null && typeof revealed?.nin === 'string' && revealed.nin.length > 0,
+    JSON.stringify({ slip: revealed?.slip_path, nin: revealed?.nin }),
+  );
+
+  /* ⚠ The identity row's own photo still wins when there is one. */
+  await asOwner();
+  const REFERENCE = 'b7c2d0ef-0000-4000-8000-00000000cafe/1791544999999.jpg';
+  await db.query(`update public.sender_identity set reference_path = $2 where user_id = $1`, [
+    SENDER,
+    REFERENCE,
+  ]);
+
+  await asUser(ADMIN);
+  const preferred = (
+    await db.query('select * from public.admin_reveal_identity_for_user($1, $2)', [
+      SENDER,
+      'Identity review — again',
+    ])
+  ).rows[0];
+  check(
+    'the identity row wins over the capture session once it has a photo',
+    preferred?.selfie_path === REFERENCE,
+    `got ${JSON.stringify(preferred?.selfie_path)}`,
+  );
+
+  /*
+   * ⚠ And a row comes back even when there is no identity row at all, or the
+   *   client reads "a selfie and no NIN" as "nothing to show at all".
+   */
+  await asOwner();
+  await db.query('delete from public.sender_identity where user_id = $1', [SENDER]);
+
+  await asUser(ADMIN);
+  const bare = (
+    await db.query('select * from public.admin_reveal_identity_for_user($1, $2)', [
+      SENDER,
+      'Identity review — account with no NIN submitted',
+    ])
+  ).rows;
+
+  check(
+    'an account with a selfie and no NIN still answers',
+    bare.length === 1,
+    `${bare.length} rows — zero reads as "nothing to show", which is a different sentence`,
+  );
+  check(
+    'carrying the selfie and nulls for the rest',
+    bare[0]?.selfie_path === SELFIE && bare[0]?.nin === null && bare[0]?.slip_path === null,
+    JSON.stringify(bare[0]),
+  );
+
+  await asOwner();
+  check(
+    'and the deployment panel can tell whether any of this is deployed',
+    (await db.query('select public.reveal_finds_the_selfie() as ok')).rows[0].ok === true,
   );
 }
 

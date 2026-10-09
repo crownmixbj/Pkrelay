@@ -747,11 +747,91 @@ It does not put a NIN on a list. The queue stays masked, and a sweep in
 JSX from a list row, a profile or a queue fetch. A full NIN belongs to a reveal
 result, which is audited; a list row is not one.
 
+## The reveal looks where the queue looks (82)
+
+A sender took their selfie; the review screen showed the slip, the number, and
+**nothing** where the face should be — with no explanation, because a null image
+url renders the same as a photograph that has not loaded yet.
+
+### Where a selfie actually lives
+
+It is banked into `photo_capture_sessions` the moment it is taken, and only
+copied to `sender_identity.reference_path` once something decides. So while an
+account is *waiting on review* — which is every account in this queue — the
+identity columns are empty and the photo is in a capture session.
+
+Migration 43 knew this. It added `sender_selfie_path(target)`:
+
+```
+candidate_path → reference_path → newest completed capture session
+```
+
+…and wired it into both `admin_identity_queue` (so `has_selfie` is true) **and**
+`admin_reveal_identity_for_user`.
+
+### How it came back
+
+⚠ **Migration 81 reverted it.** Writing 81 I rebuilt
+`admin_reveal_identity_for_user` to add the full NIN, and copied the body from
+**41** rather than **43** — losing the helper and going back to
+`coalesce(candidate_path, reference_path)`. 81 is applied on production, so the
+regression is a day old and mine.
+
+The production account that prompted this: twelve capture sessions, three
+completed with a photo, both identity columns null. Queue says there is a
+selfie. Reveal returns null. The panel drew nothing, and the reviewer was asked
+to tick *"I have compared the selfie against the NIN slip"* with no selfie on
+screen.
+
+⚠ **The drift detector should have caught it and did not.** 81's manifest marker
+for that function was `nin text,` — it tested the thing 81 added, not the thing
+81 broke. A marker proves the newest definition is present; it cannot know which
+*other* definition you copied from. The structural answer is below.
+
+### The fix
+
+Both reveals call `sender_selfie_path`. The parcel-keyed one keeps the booking's
+own photo first — that reveal is about one parcel, and the face photographed for
+it is the right answer when there is one — and falls back to the helper.
+
+`reveal_finds_the_selfie()` asserts the queue and both reveals all reference the
+helper. Neither was wrong alone; the bug was that they disagreed, invisibly.
+
+The reveal also now starts from the target and left joins:
+
+```sql
+from (select target as user_id) t
+left join public.sender_identity i on i.user_id = t.user_id
+```
+
+An account with a selfie and no NIN returned **zero rows**, which the client
+reads as "nothing to show" rather than "a selfie and no NIN".
+
+### All three, always
+
+The panel now renders the number, the slip and the selfie through one
+`Evidence` component with exactly two outcomes: the thing, or a sentence saying
+it is absent. A missing selfie reads *"No selfie on file. Ask them to take it
+again before deciding — there is nothing here to compare the slip against."*
+
+That is the structural half of the fix. A blank space is indistinguishable from
+a slow page, which is why this went unreported for a day; a component that
+cannot render nothing makes that un-writable. `verify:availability` asserts
+there are exactly three `<Evidence>` blocks and that nothing draws an evidence
+slot outside it.
+
+### And the harness replays the whole tail
+
+The drift test in `verify:pg-availability` replays 79 — a repair file carrying
+older copies of several functions — and then **every migration after it, in
+order**, rather than naming the newest one. Naming it is how this test would
+quietly start asserting against a database two fixes behind.
+
 ## Tests
 
 ```bash
-npm run verify:availability      # source assertions, including 75, 76, 79, 80 and 81
-npm run verify:pg-availability   # 69-81 against real Postgres under RLS
+npm run verify:availability      # source assertions, including 75, 76 and 79-82
+npm run verify:pg-availability   # 69-82 against real Postgres under RLS
 ```
 
 The pg harness pins the retry loop as well: a lapsed offer is not re-offered
@@ -800,13 +880,14 @@ history:
 ```sql
 select public.definitions_current();         -- must be true
 select public.nin_reveal_installed();        -- must be true
+select public.reveal_finds_the_selfie();     -- must be true
 select public.notification_spine_live();     -- must be true
 select public.departure_priority_live();     -- must be true
 select public.release_controls_installed();  -- must be true
 select * from public.stale_definitions() where state <> 'current';   -- must be empty
 ```
 
-All five are on the deployment panel in the admin console, so the answer is one
+All six are on the deployment panel in the admin console, so the answer is one
 screen away without opening the SQL editor.
 
 ⚠ **Never `supabase db push --include-all` against a live project**, and never
