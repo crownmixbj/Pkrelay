@@ -6,6 +6,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { Footer } from '@/components/Footer';
 import { RoutePill } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ParcelChatButton } from '@/components/ui/parcel-chat-button';
 import { Card } from '@/components/ui/card';
 import { ChipGroup } from '@/components/ui/chip';
 import { ProgressBar } from '@/components/ui/progress-bar';
@@ -411,6 +412,13 @@ function ParcelRow({
         />
 
       </Pressable>
+
+      {/*
+        A sibling of the Pressable, not inside it, for the reason the comment
+        above gives about the Pay button. Only appears once a driver has the
+        parcel and until it is delivered.
+      */}
+      <ParcelChatButton booking={booking} />
 
       {unpaid && (
         <View style={styles.unpaid}>

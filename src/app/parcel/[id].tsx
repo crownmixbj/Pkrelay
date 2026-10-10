@@ -28,6 +28,7 @@ import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/screen';
 import { Skeleton, SkeletonGroup, SkeletonText } from '@/components/ui/skeleton';
 import { CancelAction } from '@/components/ui/cancel-action';
+import { ParcelChatButton } from '@/components/ui/parcel-chat-button';
 import { MapView, type MapMarker } from '@/components/ui/map-view';
 import { StickyHeaderScreen } from '@/components/ui/sticky-header';
 import { FontSize, MaxContentWidth, Radius, Spacing, Typography, font } from '@/constants/theme';
@@ -214,6 +215,13 @@ export default function ParcelDetailScreen() {
               />
             )}
           </View>
+
+          {/*
+            Message the other side — the sender sees "Message driver", the
+            driver sees "Message sender". Nothing renders before a driver has
+            the parcel or after it is delivered.
+          */}
+          <ParcelChatButton booking={booking} size="lg" />
 
           {/* Journey */}
           <Card style={styles.card}>

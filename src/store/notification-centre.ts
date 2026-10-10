@@ -253,8 +253,11 @@ export function routeFor(notification: Pick<AppNotification, 'kind' | 'metadata'
     case 'delivery_completed':
     case 'parcel_cancelled':
     case 'parcel_booked':
-    case 'message_received':
       return typeof bookingId === 'string' && bookingId ? `/parcel/${bookingId}` : '/my-packages';
+
+    case 'message_received':
+      // Straight into the conversation, not the parcel page above it.
+      return typeof bookingId === 'string' && bookingId ? `/messages/${bookingId}` : '/my-packages';
 
     case 'earning_recorded':
     case 'payout_requested':

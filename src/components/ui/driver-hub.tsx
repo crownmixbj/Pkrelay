@@ -24,6 +24,7 @@ import { DispatchOffers } from '@/components/ui/dispatch-offers';
 import { DriverSummaryCard } from '@/components/ui/driver-summary-card';
 import { EarningsSheet } from '@/components/ui/earnings-sheet';
 import { OperatingModeCard } from '@/components/ui/operating-mode-card';
+import { ParcelChatButton } from '@/components/ui/parcel-chat-button';
 import { PinnedHeaderScreen } from '@/components/ui/sticky-header';
 import { Card } from '@/components/ui/card';
 import { showDialog } from '@/components/ui/dialog';
@@ -890,6 +891,11 @@ function CurrentJob({
             style={styles.actionHalf}
           />
         </View>
+        {/*
+          Talk to the sender without leaving the app — "on my way", "at the
+          gate". Shows an unread count when they have written back.
+        */}
+        <ParcelChatButton booking={job} />
       </View>
 
       <View style={[styles.divider, { backgroundColor: theme.border }]} />

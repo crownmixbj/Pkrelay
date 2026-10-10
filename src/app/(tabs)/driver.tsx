@@ -25,6 +25,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { formatDay } from '@/lib/when';
 import { Footer } from '@/components/Footer';
 import { CancelAction } from '@/components/ui/cancel-action';
+import { ParcelChatButton } from '@/components/ui/parcel-chat-button';
 import { Badge, RoutePill } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -536,6 +537,9 @@ function JobCard({ booking }: { booking: Booking }) {
           gets nothing, and a collected parcel gets the sentence, because
           releasing stops at pickup.
       */}
+      {/* Message the sender while the job is live; renders nothing once delivered. */}
+      <ParcelChatButton booking={booking} />
+
       <CancelAction booking={booking} />
 
       <View style={[styles.payoutRow, { backgroundColor: theme.surfaceMuted }]}>
