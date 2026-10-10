@@ -27,6 +27,7 @@
     "expo-status-bar": "~56.0.4",
     "expo-symbols": "~56.0.6",
     "expo-system-ui": "~56.0.5",
+    "expo-updates": "~56.0.28",
     "expo-web-browser": "~56.0.6",
     "lucide-react-native": "^1.28.0",
     "qrcode-generator": "^2.0.4",

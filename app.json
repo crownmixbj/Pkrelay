@@ -93,6 +93,12 @@
         "projectId": "75625d41-84a6-478e-959c-2d420981d4ad"
       }
     },
-    "owner": "loci-team"
+    "owner": "loci-team",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/75625d41-84a6-478e-959c-2d420981d4ad"
+    }
   }
 }
