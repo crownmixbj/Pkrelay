@@ -31,6 +31,8 @@ export type OfferParcel = {
   destinationCity: string;
   weight: number;
   fare: number;
+  /** The sender's parcel photo, if any. Readable while this offer is live (84). */
+  photoPath: string | null;
 };
 
 export type LiveOffer = DispatchOffer & {
@@ -51,6 +53,7 @@ type Row = {
     destination_city: string;
     weight: number | string;
     estimated_fee: number | string;
+    item_photo_path: string | null;
   } | null;
 };
 
@@ -96,7 +99,7 @@ export async function refreshLiveOffers(): Promise<void> {
     .from('dispatch_offers')
     .select(
       'id, booking_id, journey_id, status, offered_at, expires_at, ' +
-        'booking:bookings(tracking_id, origin_city, destination_city, weight, estimated_fee)',
+        'booking:bookings(tracking_id, origin_city, destination_city, weight, estimated_fee, item_photo_path)',
     )
     .eq('status', 'offered')
     .order('offered_at', { ascending: true });
@@ -125,6 +128,7 @@ export async function refreshLiveOffers(): Promise<void> {
               destinationCity: row.booking.destination_city,
               weight: Number(row.booking.weight),
               fare: Number(row.booking.estimated_fee),
+              photoPath: row.booking.item_photo_path ?? null,
             }
           : null,
       })),

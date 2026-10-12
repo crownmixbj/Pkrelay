@@ -357,6 +357,13 @@ export type Booking = {
    * evidence of anything until a real backend stores it.
    */
   itemPhotoUri: string | null;
+  /**
+   * Where the sender's parcel photo lives in the `parcel-photo` bucket, as
+   * `<booking id>/<file>`, or null if none was uploaded. Open it with
+   * `signedParcelPhotoUrl`. Readable by the sender, admins, the driver carrying
+   * the parcel and a driver holding a live offer for it (84).
+   */
+  itemPhotoPath?: string | null;
   category: Category;
   weight: number;
   /** Declared value in naira, used for the 1% insurance component of the fee. */

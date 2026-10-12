@@ -38,6 +38,7 @@ export type BookingRow = {
   recipient_phone: string;
   item_description: string;
   item_photo_uri: string | null;
+  item_photo_path?: string | null;
   category: string;
   weight: number;
   declared_value: number;
@@ -87,6 +88,7 @@ export function rowToBooking(row: BookingRow): Booking {
     recipientPhone: row.recipient_phone,
     itemDescription: row.item_description,
     itemPhotoUri: row.item_photo_uri,
+    itemPhotoPath: row.item_photo_path ?? null,
     category: row.category as Category,
     // Postgres `numeric` arrives as a string through PostgREST when it exceeds
     // what JSON can hold safely, so coerce rather than trusting the type.

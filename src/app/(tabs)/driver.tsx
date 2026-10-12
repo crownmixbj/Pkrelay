@@ -26,6 +26,7 @@ import { formatDay } from '@/lib/when';
 import { Footer } from '@/components/Footer';
 import { CancelAction } from '@/components/ui/cancel-action';
 import { ParcelChatButton } from '@/components/ui/parcel-chat-button';
+import { ParcelPhoto } from '@/components/ui/parcel-photo';
 import { Badge, RoutePill } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -494,6 +495,9 @@ function JobCard({ booking }: { booking: Booking }) {
           isLocal ? <MapPin color={color} size={11} /> : <Milestone color={color} size={11} />
         }
       />
+
+      {/* Only while the job is live; a delivered card does not need it. */}
+      {!isDelivered && <ParcelPhoto path={booking.itemPhotoPath} height={180} />}
 
       <View style={[styles.divider, { backgroundColor: theme.border }]} />
 

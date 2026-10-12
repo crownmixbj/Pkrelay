@@ -25,6 +25,7 @@ import { DriverSummaryCard } from '@/components/ui/driver-summary-card';
 import { EarningsSheet } from '@/components/ui/earnings-sheet';
 import { OperatingModeCard } from '@/components/ui/operating-mode-card';
 import { ParcelChatButton } from '@/components/ui/parcel-chat-button';
+import { ParcelPhoto } from '@/components/ui/parcel-photo';
 import { PinnedHeaderScreen } from '@/components/ui/sticky-header';
 import { Card } from '@/components/ui/card';
 import { showDialog } from '@/components/ui/dialog';
@@ -847,6 +848,9 @@ function CurrentJob({
       <Text style={[styles.currentRoute, { color: theme.textSecondary }]}>
         {routeEndpoints(job)}
       </Text>
+
+      {/* What the driver is collecting — size and whether it fits the vehicle. */}
+      <ParcelPhoto path={job.itemPhotoPath} height={150} />
 
       {/*
         The end of the trip the driver is on, not always the far end.

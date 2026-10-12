@@ -29,6 +29,7 @@ import { EmptyState } from '@/components/ui/screen';
 import { Skeleton, SkeletonGroup, SkeletonText } from '@/components/ui/skeleton';
 import { CancelAction } from '@/components/ui/cancel-action';
 import { ParcelChatButton } from '@/components/ui/parcel-chat-button';
+import { ParcelPhoto } from '@/components/ui/parcel-photo';
 import { MapView, type MapMarker } from '@/components/ui/map-view';
 import { StickyHeaderScreen } from '@/components/ui/sticky-header';
 import { FontSize, MaxContentWidth, Radius, Spacing, Typography, font } from '@/constants/theme';
@@ -222,6 +223,15 @@ export default function ParcelDetailScreen() {
             the parcel or after it is delivered.
           */}
           <ParcelChatButton booking={booking} size="lg" />
+
+          {/*
+            The sender's photo of the parcel. The driver uses it to judge size
+            and fit before collecting; the sender sees what they submitted.
+          */}
+          <Card style={styles.card}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Parcel photo</Text>
+            <ParcelPhoto path={booking.itemPhotoPath} height={220} />
+          </Card>
 
           {/* Journey */}
           <Card style={styles.card}>

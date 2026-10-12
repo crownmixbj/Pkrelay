@@ -5,6 +5,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { ParcelPhoto } from '@/components/ui/parcel-photo';
 import { SectionLabel } from '@/components/ui/screen';
 import { Spacing, Typography, font } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -34,7 +35,18 @@ export function DispatchOffers({
   busy,
   onAnswer,
 }: {
-  offers: DispatchOffer[];
+  /*
+   * `parcel` is optional so a plain DispatchOffer still renders; the shared
+   * store (`@/store/live-offers`) supplies it with the route and photo.
+   */
+  offers: (DispatchOffer & {
+    parcel?: {
+      originCity: string;
+      destinationCity: string;
+      weight: number;
+      photoPath: string | null;
+    } | null;
+  })[];
   busy: boolean;
   onAnswer: (offer: DispatchOffer, accept: boolean) => void;
 }) {
@@ -108,6 +120,17 @@ export function DispatchOffers({
                 </Text>
               </View>
 
+              {!!offer.parcel && (
+                <>
+                  <Text style={[styles.route, { color: theme.text }]}>
+                    {offer.parcel.originCity} → {offer.parcel.destinationCity} ·{' '}
+                    {offer.parcel.weight} kg
+                  </Text>
+                  {/* The sender's photo, so the driver can judge the fit before accepting. */}
+                  <ParcelPhoto path={offer.parcel.photoPath} height={140} />
+                </>
+              )}
+
               <Text style={[styles.body, { color: theme.textSecondary }]}>
                 Matched to one of your journeys. Accept and it becomes your assigned trip. Decline
                 and it goes straight to another driver — and it will not come back to you for at
@@ -160,6 +183,7 @@ const styles = StyleSheet.create({
   countdown: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
   countdownText: { ...Typography.caption, ...font(600) },
   body: { ...Typography.caption, lineHeight: 18 },
+  route: { ...Typography.meta, ...font(700) },
   actions: { flexDirection: 'row', gap: Spacing.two },
   half: { flex: 1 },
 });

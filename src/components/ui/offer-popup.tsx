@@ -12,6 +12,7 @@ import { useExperience } from '@/hooks/use-experience';
 import { useLiveRefresh } from '@/hooks/use-live-refresh';
 import { useTheme } from '@/hooks/use-theme';
 import { formatNaira } from '@/store/bookings';
+import { ParcelPhoto } from '@/components/ui/parcel-photo';
 import { OFFER_COOLDOWN_MINUTES, offerIsUrgent, secondsLeft } from '@/store/dispatch';
 import {
   answerLiveOffer,
@@ -187,6 +188,8 @@ function OfferModal({
                   #{parcel.trackingId} · {parcel.weight} kg · Fare {formatNaira(parcel.fare)}
                 </Text>
               </Row>
+              {/* Size check before accepting: will it fit in the vehicle? */}
+              <ParcelPhoto path={parcel.photoPath} height={150} />
             </View>
           ) : (
             <Text style={[styles.meta, { color: theme.textSecondary }]}>
