@@ -57,6 +57,7 @@ import {
   Colors,
   FontSize,
   HeroSurface,
+  InvertedBand,
   PageMeasure,
   Radius,
   Spacing,
@@ -625,6 +626,20 @@ export default function HomeScreen() {
             <View style={[styles.quote, { marginBottom: gap }]}>
               <QuickQuote onBook={(params) => router.navigate({ pathname: '/book', params })} />
 
+            </View>
+
+            {/* ---------- Service categories ---------- */}
+            {/*
+              ⚠ The strapline moved in here, out of the quote block above it.
+
+                "We Deliver Packages Within City" was the last child of the
+                quick-quote section, which is not what it introduces — it
+                introduces the four cards. That was invisible while everything
+                sat on one flat canvas and became a real problem the moment the
+                section needed a band of its own, because a heading and the
+                things it heads have to be inside the same box.
+            */}
+            <View style={[styles.cityBand, { marginBottom: gap }]}>
               <View style={styles.quoteStrapline}>
                 {/*
                   ⚠ A section header, not a card title.
@@ -642,15 +657,12 @@ export default function HomeScreen() {
                   accessibilityRole="header">
                   We Deliver Packages Within City
                 </Text>
-                <Text style={[styles.straplineBody, { color: theme.textSecondary }]}>
+                <Text style={styles.straplineBody}>
                   Send envelopes, documents and packages across town in no time.
                 </Text>
               </View>
-            </View>
 
-            {/* ---------- Service categories ---------- */}
-            {/* Grey-blue panel: gives the tinted cards something to lift off. */}
-            <View style={[styles.gridPanel, { marginBottom: gap }]}>
+              <View style={styles.gridPanel}>
               {/*
                 ⚠ Measured rather than guessed from the window.
                 
@@ -677,7 +689,8 @@ export default function HomeScreen() {
                         : router.navigate(category.href)
                     }
                   />
-                ))}
+                  ))}
+                </View>
               </View>
             </View>
 
@@ -1162,16 +1175,44 @@ const styles = StyleSheet.create({
     marginTop: Spacing.five,
     marginBottom: SectionGap,
   },
+  /**
+   * The inverted band behind the city section — the footer's token, so the two
+   * are the same colour by construction rather than by eye.
+   *
+   * Shaped like the app-download panel above it: same radius, same padding, so
+   * the page reads as a stack of blocks of one family rather than two bands
+   * that happen to share a colour.
+   */
+  cityBand: {
+    backgroundColor: InvertedBand.background,
+    borderRadius: Radius.lg,
+    /*
+      ⚠ The side padding is not a taste decision — it costs columns.
+
+        This was a flat `padding: Spacing.four`, and 24px each side took 48px
+        off the grid's width. At a 1280 window that is exactly enough to drop
+        the four cards from four columns to three, which leaves the fourth
+        alone on a second row with a half-band of blue beside it. The band
+        looked fine and the grid under it looked broken.
+
+        `MIN_CARD_WIDTH` is a readability floor, not a preference — the
+        artwork has its title baked in at about 7% of the image height — so the
+        padding is what gives way. `verify:layout` now computes the margin
+        rather than trusting this comment.
+    */
+    paddingVertical: Spacing.four,
+    paddingHorizontal: Spacing.two,
+    gap: Spacing.four,
+  },
   quoteStrapline: {
     alignItems: 'center',
     gap: Spacing.one,
-    marginTop: Spacing.four,
     paddingHorizontal: Spacing.three,
   },
   straplineTitle: {
     ...Typography.sectionHeading,
     textAlign: 'center',
-    color: GlassSection.title,
+    color: InvertedBand.text,
   },
   /**
    * Measured against the real Plus Jakarta Sans metrics, not eyeballed.
@@ -1191,13 +1232,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 21,
     maxWidth: 480,
+    /* Pure white, not a muted tier — there is nothing under it on this blue. */
+    color: InvertedBand.text,
   },
 
   // Category grid
-  /** No fill: the cards carry themselves on the cyan canvas now. */
-  gridPanel: {
-    marginBottom: SectionGap,
-  },
+  /** The band above owns the fill and the gap; this is just the grid's box. */
+  gridPanel: {},
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

@@ -5,26 +5,20 @@ import {
   cookiePreferencesAvailable,
   openCookiePreferences,
 } from '@/components/ui/cookie-banner';
-import { Radius, Spacing, Typography, font } from '@/constants/theme';
+import { InvertedBand, Radius, Spacing, Typography, font } from '@/constants/theme';
 import { useExperience } from '@/hooks/use-experience';
 
 /**
- * Minimal brand-blue strip. Text is pure white throughout rather than the
- * white/90 and white/70 the reference uses — measured on #0077B6 those land at
- * 4.24:1 and 3.18:1, both under the 4.5:1 AA floor. Pure white is 4.87:1, and
- * size carries the hierarchy instead of opacity.
+ * ⚠ These values moved to `InvertedBand` in the theme; this is now an alias.
  *
- * The social chips darken rather than lighten for the same reason: a white/10
- * fill lifts the background and drops the white monogram to 4.09:1, where
- * black/12 reads 5.95:1 and looks near-identical.
+ *   The footer was the only inverted block on the site, so it owned the blue and
+ *   the reasoning behind pure-white type. Two sections on the home page now have
+ *   to be *the same colour as the footer* — a stated requirement, not a
+ *   resemblance — so the token owns it and all three read it. The alias stays
+ *   because this file's styles name it in a dozen places and renaming them would
+ *   add nothing.
  */
-const FooterColors = {
-  background: '#0077B6',
-  text: '#FFFFFF',
-  chip: 'rgba(0,0,0,0.12)',
-  chipActive: 'rgba(0,0,0,0.22)',
-  chipBorder: 'rgba(255,255,255,0.30)',
-} as const;
+const FooterColors = InvertedBand;
 
 /** Every route the footer can reach. Anything without one has no screen yet. */
 export type FooterRoute =

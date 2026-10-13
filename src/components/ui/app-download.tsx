@@ -3,7 +3,7 @@ import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import { StoreBadges } from '@/components/ui/store-badges';
 import {
-  Bands,
+  InvertedBand,
   Radius,
   Spacing,
   Typography,
@@ -55,30 +55,37 @@ export function AppDownload() {
         sideBySide && styles.panelRow,
         {
           /*
-            ⚠ A band, not another white card.
+            ⚠ The footer's blue, from the footer's token, not a tint of its own.
 
-              On the old cyan ground every section was a white rectangle, so
-              nothing on the page was visually a *section* — they were all the
-              same object repeated. With a near-neutral ground the tint is what
-              separates this block from the quote card below it, and it costs
-              no contrast: ink on `Bands.cool` is 16.2:1.
+              This was a pale `Bands.cool` wash. It is the inverted band now
+              because the brief was that it read as the same block the footer
+              does — so it takes the same token rather than a colour that
+              resembles it, and `verify:layout` holds the three of them
+              together.
+
+              Everything inside flips to pure white with it. On this blue there
+              is nothing between white and failing: white/90 is 4.24:1 and even
+              slate-100 is 4.44:1, so the eyebrow, the heading and the body are
+              all one colour and size does the hierarchy.
           */
-          backgroundColor: Bands.cool,
+          backgroundColor: InvertedBand.background,
           borderColor: 'transparent',
           shadowColor: theme.shadow,
         },
       ]}>
       <View style={[styles.copy, !sideBySide && styles.copyCentered]}>
         <View style={[styles.eyebrow, !sideBySide && styles.eyebrowCentered]}>
-          <Smartphone color={theme.primary} size={14} />
-          <Text style={[styles.eyebrowText, { color: theme.primary }]}>THE PACKAGE RELAY APP</Text>
+          <Smartphone color={InvertedBand.text} size={14} />
+          <Text style={[styles.eyebrowText, { color: InvertedBand.text }]}>
+            THE PACKAGE RELAY APP
+          </Text>
         </View>
 
         <Text
           style={[
             styles.title,
             sectionHeadingType(width),
-            { color: theme.text },
+            { color: InvertedBand.text },
             !sideBySide && styles.centred,
           ]}
           /*
@@ -91,7 +98,7 @@ export function AppDownload() {
         </Text>
 
         <Text
-          style={[styles.body, { color: theme.textSecondary }, !sideBySide && styles.centred]}>
+          style={[styles.body, { color: InvertedBand.text }, !sideBySide && styles.centred]}>
           Post a parcel, follow it from pickup to handover, and get live status updates on
           your delivery. Free on iPhone and Android.
         </Text>

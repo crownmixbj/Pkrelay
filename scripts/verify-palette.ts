@@ -16,7 +16,14 @@
  *   floor. A palette change that breaks a pair now breaks the build instead of
  *   shipping.
  */
-import { Bands, Colors, HeroSurface, PageCanvas, ServiceTones } from '../src/constants/theme';
+import {
+  Bands,
+  Colors,
+  HeroSurface,
+  InvertedBand,
+  PageCanvas,
+  ServiceTones,
+} from '../src/constants/theme';
 import { FORCED_SCHEME } from '../src/hooks/use-theme';
 
 let failures = 0;
@@ -172,6 +179,50 @@ pair('white on danger', t.primaryText, t.danger);
  *   above at 4.57:1.
  */
 pair('success as a non-text indicator', t.success, t.surface, NON_TEXT);
+
+// ------------------------------------------------- the inverted band ------
+
+/*
+ * ⚠ The band has no tier under white, and that is the whole rule.
+ *
+ *   A designer reaching for hierarchy on a dark block reaches for white/90 and
+ *   white/70. On this blue those are 4.24:1 and 3.18:1; even slate-100 is
+ *   4.44:1. Pure white is 4.87:1 and there is nothing between. Asserted in both
+ *   directions — that white works, and that the obvious next step down does
+ *   not — so the next person finds the reason here rather than rediscovering it.
+ */
+pair('InvertedBand.text on the band', InvertedBand.text, InvertedBand.background);
+check(
+  'and nothing under white would pass',
+  contrast('#F1F5F9', InvertedBand.background) < AA,
+  'if a muted tier ever clears AA here, the band colour changed and these notes are stale',
+);
+
+/* The band has to read as a band against the page it sits on. */
+pair('the band against the ground', InvertedBand.background, PageCanvas, NON_TEXT);
+
+/*
+ * ⚠ The cards inside it are opaque for a measured reason.
+ *
+ *   At 70% white over the band they composite to #B2D6E9, where all four
+ *   service tones fail. Asserted as the composite, so the day somebody makes
+ *   them translucent again the number says why not.
+ */
+const overBand = (alpha: number) => {
+  const mix = (a: string, b: string, i: number) =>
+    Math.round(alpha * parseInt(a.slice(i, i + 2), 16) + (1 - alpha) * parseInt(b.slice(i, i + 2), 16));
+  const white = 'FFFFFF';
+  const band = InvertedBand.background.replace('#', '');
+  return `#${[0, 2, 4].map((i) => mix(white, band, i).toString(16).padStart(2, '0')).join('')}`.toUpperCase();
+};
+
+for (const [name, tone] of Object.entries(ServiceTones)) {
+  check(
+    `ServiceTones.${name} would fail on a translucent card`,
+    contrast(tone.text, overBand(0.7)) < AA,
+    'this exception is only worth stating while it is true — if it passes now, simplify the card back',
+  );
+}
 
 // ------------------------------------------------- the service card tones --
 

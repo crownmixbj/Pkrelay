@@ -1045,6 +1045,115 @@ check(
 );
 
 
+// ------------------------------- three blocks, one blue, by construction ---
+
+/*
+ * ⚠ "The same colour as the footer" is a requirement, so it is asserted rather
+ *   than matched by eye.
+ *
+ *   The footer owned #0077B6 as a private constant. The app-download band and
+ *   the city band now have to be that exact blue, and three literals would
+ *   agree until the first time somebody nudged one of them. All three read
+ *   `InvertedBand`, and none of them may name the hex.
+ */
+const footerSource = code(read('src/components/Footer.tsx'));
+const downloadSource = code(read('src/components/ui/app-download.tsx'));
+
+for (const [label, source] of [
+  ['the footer', footerSource],
+  ['the download band', downloadSource],
+  ['the city band', homeScreen],
+] as const) {
+  check(
+    `${label} takes its blue from the token`,
+    source.includes('InvertedBand'),
+    'three copies of a hex is three chances for one of them to drift',
+  );
+  check(
+    `and ${label} does not name the hex itself`,
+    !/#0077B6/i.test(source),
+    'a literal here is the drift it was meant to prevent',
+  );
+}
+
+/*
+ * ⚠ And the type on them is pure white, with no muted tier.
+ *
+ *   `verify:palette` proves there is nothing between white and failing on this
+ *   blue. This is the other half: that the sections actually use it, rather
+ *   than inheriting the light-ground text roles they were written with.
+ */
+check(
+  'the download band writes in white, not in page ink',
+  !/color: theme\.(text|textSecondary|textMuted|primary)\b/.test(
+    downloadSource.slice(downloadSource.indexOf('InvertedBand.background')),
+  ),
+  'a light-ground text role on the band is the failure this band creates',
+);
+check(
+  'the city band writes in white too',
+  measured(homeScreen, 'straplineTitle').includes('InvertedBand.text') &&
+    measured(homeScreen, 'straplineBody').includes('InvertedBand.text'),
+  'the heading and its sentence both sit on the blue',
+);
+
+/*
+ * ⚠ The heading has to be inside the box it heads.
+ *
+ *   "We Deliver Packages Within City" was the last child of the quick-quote
+ *   block — it introduced the four cards from inside a different section. Flat
+ *   on one canvas that was invisible; with a band it would have left the
+ *   heading outside the colour and the cards inside it.
+ */
+check(
+  'the city heading and its cards share one band',
+  (() => {
+    const band = homeScreen.indexOf('styles.cityBand');
+    const strap = homeScreen.indexOf('styles.quoteStrapline');
+    const grid = homeScreen.indexOf('styles.gridPanel');
+    return band !== -1 && strap > band && grid > strap;
+  })(),
+  'a heading outside the band it introduces reads as a caption for whatever is above it',
+);
+/*
+ * ⚠ The band's side padding is a column count, computed rather than eyeballed.
+ *
+ *   24px each side took 48px off the grid and dropped the four cards from four
+ *   columns to three at a 1280 window — the fourth stranded on its own row
+ *   beside half a band of blue. The card minimum is a readability floor (the
+ *   artwork carries its title at about 7% of image height), so the padding is
+ *   the part that gives. This recomputes the fit from the same constants the
+ *   layout uses, so the next change to any of them fails here rather than on
+ *   somebody's monitor.
+ */
+check(
+  'the band still leaves room for four cards across',
+  (() => {
+    const num = (name: string) => {
+      const m = new RegExp(`const ${name} = (\\d+)`).exec(homeScreen);
+      return m ? Number(m[1]) : NaN;
+    };
+    const minCard = num('MIN_CARD_WIDTH');
+    const gap = /const GRID_GAP = Spacing\.three - 4/.test(homeScreen) ? 12 : NaN;
+    const bandPad = /paddingHorizontal: Spacing\.two,/.test(measured(homeScreen, 'cityBand')) ? 8 : NaN;
+    if ([minCard, gap, bandPad].some(Number.isNaN)) return false;
+    /* A 1280 window: page gutter 24 each side, contentWrap gutter 24, then the band's. */
+    const grid = 1280 - 48 - 48 - bandPad * 2;
+    const columns = Math.floor((grid + gap) / (minCard + gap));
+    return columns >= 4;
+  })(),
+  'at a 1280 window the four cards must still fit on one row — three columns strands the fourth',
+);
+
+check(
+  'and the cards are opaque on it',
+  !/rgba\(255,\s*255,\s*255,\s*0\.\d+\)/.test(
+    measured(code(read('src/components/ui/service-category-card.tsx')), 'fill'),
+  ),
+  'translucent over the band composites to #B2D6E9, where all four tone colours fail',
+);
+
+
 // ---------------------------------------- the hero, and the picture in it ---
 
 /*

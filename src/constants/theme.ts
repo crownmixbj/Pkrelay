@@ -177,8 +177,36 @@ export const PageCanvas = Colors.light.background;
  * neighbours.
  */
 export const Bands = {
-  /** Cool, brand-adjacent. The default, and currently the only one. */
+  /** Cool, brand-adjacent. The default. */
   cool: '#EEF4FF',
+} as const;
+
+/**
+ * The inverted band: solid blue, white type, used where a section has to read
+ * as a block rather than as a card.
+ *
+ * ⚠ One token, three sections, because "the same colour as the footer" is a
+ *   requirement and not a coincidence.
+ *
+ *   The footer owned this blue as a private constant. Two more sections now use
+ *   it, and three copies of a hex is three chances for one to drift the next
+ *   time somebody adjusts a shade. `verify:layout` asserts all three read this
+ *   token rather than a literal.
+ *
+ * ⚠ Pure white only, at every size.
+ *
+ *   The footer's original note worked this out and it still holds: on this blue
+ *   white is 4.87:1, and the white/90 and white/70 tiers a design would normally
+ *   reach for land at 4.24:1 and 3.18:1. Even slate-100 is 4.44:1. There is no
+ *   room under white, so hierarchy here comes from size and weight.
+ */
+export const InvertedBand = {
+  background: '#0077B6',
+  text: '#FFFFFF',
+  /** Chips darken rather than lighten: a white/10 fill lifts the ground and drops the monogram to 4.09:1. */
+  chip: 'rgba(0,0,0,0.12)',
+  chipActive: 'rgba(0,0,0,0.22)',
+  chipBorder: 'rgba(255,255,255,0.30)',
 } as const;
 
 /*

@@ -88,6 +88,31 @@ turn the suite red. Run `npm run verify` before declaring anything done.
   be listed there with a reason. Three are: the departure picker (a driver's own
   calendar), document expiry (a date, formatted against UTC on purpose) and
   member-since (a month and a year).
+- Colour is **computed, not commented**. `verify:palette` imports the real
+  tokens and pairs every text role with every surface it can land on; a change
+  that drops a pair under 4.5:1 fails the build. It exists because `primary`
+  carried the note "4.87:1" for months — true, and measured against *white*,
+  while the page ground was a cyan on which the same blue was 4.37:1. Its first
+  run found eleven failures, most of them long-standing. Add a token, add its
+  pairs.
+- The ground is **near-neutral on purpose**. A tinted page is what made the old
+  one look washed: white cards read as holes rather than lifted surfaces and
+  the brand had no neutral to be a colour against. Colour goes into `Bands`,
+  `InvertedBand`, the tone pairs, `ServiceTones` and the primary action — never
+  into the ground. `PageCanvas` is derived from `Colors.light.background` so the
+  hero's wash cannot drift from it.
+- Primary buttons are a **flat fill with a primary-tinted shadow**, not a
+  gradient. A `primaryAccent → primary` gradient measures 3.20:1 under a white
+  label at its bright end. If a gradient is ever wanted, `primary →
+  primaryPressed` is the accessible pair (5.13:1 at its lightest point).
+- `InvertedBand` is the **one blue** behind the footer, the app-download band
+  and the city band. All three read the token and none may name the hex —
+  `verify:layout` checks both halves, because "the same colour as the footer"
+  is a requirement rather than a resemblance. On that blue there is **nothing
+  between white and failing**: white/90 is 4.24:1 and even slate-100 is 4.44:1,
+  so type on a band is pure white at every size and hierarchy comes from size
+  and weight. Anything placed on a band goes opaque — the service cards at 70%
+  white composite to #B2D6E9, where all four tone colours fail.
 - There are **two measures and one left edge**. `PageMeasure` (1280) is what
   the chrome and the marketing page share: the nav capsule, the live ticker,
   the home hero's copy and every band below it all cap there and centre, with

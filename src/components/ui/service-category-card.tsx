@@ -130,9 +130,14 @@ export function ServiceCategoryCard({
         pressed && styles.pressed,
       ]}>
       {/*
-        Translucent white rather than the tone's own fill, so the cyan canvas
-        reads through. The palette still drives the icon, arrow, copy and
-        pattern, so the cards stay colour-coded.
+        ⚠ Opaque, where this used to be translucent white at 70%.
+
+          Letting the ground read through was right when the ground was a pale
+          cyan. These cards now sit on the inverted blue band, and 70% white
+          over it composites to #B2D6E9 — on which all four tone colours fail:
+          teal 4.13:1, azure 3.83:1, gold 3.96:1, royal 4.14:1. On opaque white
+          the same four read 6.33, 5.88, 6.07 and 6.35. The palette still drives
+          the icon, arrow, copy and pattern, so the cards stay colour-coded.
       */}
       <View style={styles.fill} />
 
@@ -228,7 +233,7 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.98 }],
   },
   fill: {
-    backgroundColor: 'rgba(255,255,255,0.7)',
+    backgroundColor: '#FFFFFF',
     position: 'absolute',
     top: 0,
     left: 0,
